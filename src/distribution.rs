@@ -84,6 +84,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
         let hash = Rc::new(hash);
         let hash2 = Rc::clone(&hash);
 
+        let mut states: Vec<HashMap<K, D>> = vec![HashMap::new(); 1 << BIN_SHIFT];    // bin -> keys -> state
 
         let stream = self.binary_frontier(control, Pipeline, Pipeline, "StateMachine S", |_cap| {
             let mut notificator = FrontierNotificator::new();
@@ -97,6 +98,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                     if control_in.frontier().less_than(time.time()) {
                         // Control is behind, stash data
                         data_stash.entry(time.clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                        notificator.notify_at(time)
                     } else {
                         let mut session = output.session(&time);
                         // Determine bin
@@ -108,7 +110,8 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                 });
 
                 control_in.for_each(|time, data| {
-                    pending_control.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                    pending_control.entry(time.clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                    notificator.notify_at(time)
                 });
 
                 notificator.for_each(&[control_in.frontier()], |time, _not| {
@@ -120,13 +123,13 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                             session.give_iterator(vec.drain(..).map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d)))
                         }
                     }
-                    if let Some(mut vec) = pending_control.remove(time.time()) {
+                    if let Some(mut vec) = pending_control.remove(&time) {
                         configurations.extend(vec.drain(..).map(|d| (time.time().clone(), d)));
                         configurations.sort_by_key(|d| d.1.sequence);
                         // Configurations are well-formed if a bigger sequence number implies that
                         // actions are not reversely ordered.
                         for cs in configurations.windows(2) {
-                            debug_assert!(!cs[0].0.less_than(&cs[1].0));
+                            debug_assert!(!cs[1].0.less_than(&cs[0].0));
                         }
                     }
                 });
@@ -137,8 +140,6 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
         });
 
         let mut pending = HashMap::new();   // times -> (keys -> state)
-//        let mut states = vec![HashMap::new(); 256];    // bin -> keys -> state
-        let mut states: Vec<HashMap<K, D>> = vec![HashMap::new(); 1 << BIN_SHIFT];    // bin -> keys -> state
 
         stream.unary_notify(Exchange::new(move |&(bin, _)| bin as u64), "StateMachine", vec![], move |input, output, notificator| {
 
