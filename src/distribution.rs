@@ -29,12 +29,12 @@ const BIN_SHIFT: usize = 8;
 /// Events are applied in time-order, but no other promises are made. Each state transition can
 /// produce output, which is sent.
 ///
-/// `state_machine` will buffer inputs if earlier inputs may still arrive. it will directly apply
+/// `control_state_machine` will buffer inputs if earlier inputs may still arrive. it will directly apply
 /// updates for the current time reflected in the notificator, though. In the case of partially
 /// ordered times, the only guarantee is that updates are not applied out of order, not that there
 /// is some total order on times respecting the total order (updates may be interleaved).
 
-/// Provides the `state_machine` method.
+/// Provides the `control_state_machine` method.
 pub trait ControlStateMachine<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> {
     /// Tracks a state for each presented key, using user-supplied state transition logic.
     ///
@@ -43,7 +43,7 @@ pub trait ControlStateMachine<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData
     /// the state is no longer helpful.
     ///
     /// #Examples
-    /// ```
+    /// ```rust,ignore
     /// use timely::dataflow::operators::{ToStream, Map, Inspect};
     /// use timely::dataflow::operators::aggregation::StateMachine;
     ///
@@ -87,12 +87,25 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
         let mut states: Vec<HashMap<K, D>> = vec![HashMap::new(); 1 << BIN_SHIFT];    // bin -> keys -> state
 
         let stream = self.binary_frontier(control, Pipeline, Pipeline, "StateMachine S", |_cap| {
+
             let mut notificator = FrontierNotificator::new();
+
+            // Data input stash, time -> Vec<D>
             let mut data_stash = HashMap::new();
+
+            // Control input stash, time -> Vec<ControlInstr>
             let mut pending_control = HashMap::new();
+
+            // Active configurations: Vec<(T, ControlInstr)>
             let mut configurations: Vec<(S::Timestamp, ControlInst)> = Vec::new();
+
+            // Number of bits to use as container number
             let bin_shift = ::std::mem::size_of::<usize>() - BIN_SHIFT;
+
+            // Handle input data
             move |data_in, control_in, output| {
+
+                // Read data from the main data channel
                 data_in.for_each(|time, data| {
                     // Test if we're permitted to send out data at `time`
                     if control_in.frontier().less_than(time.time()) {
@@ -100,8 +113,9 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                         data_stash.entry(time.clone()).or_insert_with(Vec::new).extend(data.drain(..));
                         notificator.notify_at(time)
                     } else {
+                        // Control input is ahead of `time`, pass data
                         let mut session = output.session(&time);
-                        // Determine bin
+                        // Determine bin: Find the last one that is `less_than`
                         if let Some(ref config_inst) = configurations.iter().rev().find(|&&(ref t, _)| t.less_equal(time.time())) {
                             let map = &config_inst.1.map;
                             session.give_iterator(data.drain(..).map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d)))
@@ -109,12 +123,16 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                     }
                 });
 
+                // Read control input
                 control_in.for_each(|time, data| {
+                    // Stash configuration commands and notify on time
                     pending_control.entry(time.clone()).or_insert_with(Vec::new).extend(data.drain(..));
                     notificator.notify_at(time)
                 });
 
+                // Analyze control frontier
                 notificator.for_each(&[control_in.frontier()], |time, _not| {
+                    // Check for stashed data - now control input has to have advanced
                     if let Some(mut vec) = data_stash.remove(&time) {
                         let mut session = output.session(&time);
                         // Determine bin
@@ -123,7 +141,9 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                             session.give_iterator(vec.drain(..).map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d)))
                         }
                     }
+                    // Check if there are pending control instructions
                     if let Some(mut vec) = pending_control.remove(&time) {
+                        // Extend the configurations with (T, ControlInst) tuples
                         configurations.extend(vec.drain(..).map(|d| (time.time().clone(), d)));
                         configurations.sort_by_key(|d| d.1.sequence);
                         // Configurations are well-formed if a bigger sequence number implies that
@@ -133,8 +153,11 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                         }
                     }
                 });
+
+                // Analyze data frontier
                 notificator.for_each(&[data_in.frontier()], |time, _not| {
                     // Redistribute bins
+                    // TODO
                 });
             }
         });
