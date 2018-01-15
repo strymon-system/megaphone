@@ -1,0 +1,9 @@
+[package]
+name = "dynamic_scaling_mechanism"
+version = "0.0.1"
+
+[dependencies]
+timely = { version = "0.3.0", git = "https://github.com/frankmcsherry/timely-dataflow" }
+timely_communication = { version = "0.1.8", git = "https://github.com/frankmcsherry/timely-dataflow" }
+abomonation = { git = "https://github.com/frankmcsherry/abomonation" }
+abomonation_derive = { git = "https://github.com/mystor/abomonation_derive.git" }
