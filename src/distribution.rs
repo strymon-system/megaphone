@@ -1,15 +1,16 @@
 //! General purpose state transition operator.
 use std::hash::Hash;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 use timely::{Data, ExchangeData};
-use timely::order::PartialOrder;
 use timely::dataflow::{Stream, Scope};
-use timely::dataflow::operators::generic::unary::Unary;
-use timely::dataflow::operators::generic::Operator;
-use timely::dataflow::operators::FrontierNotificator;
 use timely::dataflow::channels::pact::{Exchange, Pipeline};
+use timely::dataflow::operators::FrontierNotificator;
+use timely::dataflow::operators::generic::binary::Binary;
+use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
+use timely::order::PartialOrder;
 
 #[derive(Abomonation, Clone, Debug)]
 pub struct ControlInst {
@@ -84,9 +85,18 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
         let hash = Rc::new(hash);
         let hash2 = Rc::clone(&hash);
 
-        let mut states: Vec<HashMap<K, D>> = vec![HashMap::new(); 1 << BIN_SHIFT];    // bin -> keys -> state
+        // bin -> keys -> state
+        let states: Rc<RefCell<Vec<HashMap<K, D>>>> = Rc::new(RefCell::new(vec![HashMap::new(); 1 << BIN_SHIFT]));
+        let states_f = Rc::clone(&states);
 
-        let stream = self.binary_frontier(control, Pipeline, Pipeline, "StateMachine S", |_cap| {
+        let mut builder = OperatorBuilder::new("StateMachine F".into(), self.scope());
+
+        let mut data_in = builder.new_input(self, Pipeline);
+        let mut control_in = builder.new_input(control, Pipeline);
+        let (mut data_out, stream) = builder.new_output();
+        let (mut state_out, state) = builder.new_output();
+
+        builder.build(move |_capability| {
 
             let mut notificator = FrontierNotificator::new();
 
@@ -103,18 +113,20 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
             let bin_shift = ::std::mem::size_of::<usize>() - BIN_SHIFT;
 
             // Handle input data
-            move |data_in, control_in, output| {
+            move |frontiers| {
+                let mut data_out = data_out.activate();
+                let mut state_out = state_out.activate();
 
                 // Read data from the main data channel
                 data_in.for_each(|time, data| {
                     // Test if we're permitted to send out data at `time`
-                    if control_in.frontier().less_than(time.time()) {
+                    if frontiers[1].less_than(time.time()) {
                         // Control is behind, stash data
                         data_stash.entry(time.clone()).or_insert_with(Vec::new).extend(data.drain(..));
                         notificator.notify_at(time)
                     } else {
                         // Control input is ahead of `time`, pass data
-                        let mut session = output.session(&time);
+                        let mut session = data_out.session(&time);
                         // Determine bin: Find the last one that is `less_than`
                         if let Some(ref config_inst) = configurations.iter().rev().find(|&&(ref t, _)| t.less_equal(time.time())) {
                             let map = &config_inst.1.map;
@@ -131,10 +143,10 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                 });
 
                 // Analyze control frontier
-                notificator.for_each(&[control_in.frontier()], |time, _not| {
+                notificator.for_each(&[&frontiers[1]], |time, _not| {
                     // Check for stashed data - now control input has to have advanced
                     if let Some(mut vec) = data_stash.remove(&time) {
-                        let mut session = output.session(&time);
+                        let mut session = data_out.session(&time);
                         // Determine bin
                         if let Some(ref config_inst) = configurations.iter().rev().find(|&&(ref t, _)| t.less_equal(time.time())) {
                             let map = &config_inst.1.map;
@@ -155,8 +167,12 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                 });
 
                 // Analyze data frontier
-                notificator.for_each(&[data_in.frontier()], |time, _not| {
+                notificator.for_each(&[&frontiers[0]], |time, _not| {
                     // Redistribute bins
+                    let states = states_f.borrow_mut();
+                    if false {
+                        state_out.session(&time).give((0, ()));
+                    }
                     // TODO
                 });
             }
@@ -164,7 +180,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
         let mut pending = HashMap::new();   // times -> (keys -> state)
 
-        stream.unary_notify(Exchange::new(move |&(bin, _)| bin as u64), "StateMachine", vec![], move |input, output, notificator| {
+        stream.binary_notify(&state, Exchange::new(move |&(bin, _)| bin as u64), Exchange::new(move |&(bin, _)| bin as u64), "StateMachine", vec![], move |input, state, output, notificator| {
 
             // stash each input and request a notification when ready
             input.for_each(|time, data| {
@@ -176,6 +192,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                     else {
                         // else we can process immediately
                         let mut session = output.session(&time);
+                        let mut states = states.borrow_mut();
                         for (bin, (key, val)) in data.drain(..) {
                             let (remove, output) = {
                                 let state = states[bin].entry(key.clone()).or_insert_with(Default::default);
@@ -191,6 +208,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
             notificator.for_each(|time,_,_| {
                 if let Some(pend) = pending.remove(time.time()) {
                     let mut session = output.session(&time);
+                    let mut states = states.borrow_mut();
                     for (bin, (key, val)) in pend {
                         let (remove, output) = {
                             let state = states[bin].entry(key.clone()).or_insert_with(Default::default);
