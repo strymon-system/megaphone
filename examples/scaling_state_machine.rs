@@ -60,9 +60,10 @@ fn main() {
                 .probe_with(&mut probe);
         });
 
-        control_input.send(ControlInst::new(0, vec![0; 256]));
+        control_input.send(Control::new(0,  1, ControlInst::Map(vec![0; 256])));
+
         control_input.advance_to(5);
-        control_input.send(ControlInst::new(1, vec![0; 256]));
+        control_input.send(Control::new(1,  1, ControlInst::Map(vec![1; 256])));
         control_input.advance_to(10);
         // introduce data and watch!
         for round in 0..10 {
