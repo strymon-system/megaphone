@@ -6,16 +6,16 @@ use timely::dataflow::*;
 use timely::dataflow::operators::{Input, Probe, Map, Inspect};
 use timely::dataflow::operators::aggregation::StateMachine;
 
-use dynamic_scaling_mechanism::distribution::{ControlInst, ControlStateMachine};
+use dynamic_scaling_mechanism::distribution::{ControlInst, Control, ControlStateMachine};
 
 fn main() {
     timely::execute_from_args(std::env::args(), |worker| {
 
         // these results happen to be right, but aren't guaranteed.
         // the system is at liberty to re-order within a timestamp.
-        let result = vec![(0, 0), (0, 2), (0, 6), (0, 12), (0, 20),
+        let mut result = vec![(0, 0), (0, 2), (0, 6), (0, 12), (0, 20),
                           (1, 1), (1, 4), (1, 9), (1, 16), (1, 25)];
-        let result2 = result.clone();
+        let mut result2 = result.clone();
 
         let index = worker.index();
         let mut input = InputHandle::new();
@@ -35,8 +35,9 @@ fn main() {
                     |key| *key as u64
                 )
                 .inspect(move |x| {
+                    println!("[{:?}] state_machine x: {:?}", index, x);
                     assert!(result.contains(x));
-                    println!("state_machine x: {:?}", x)
+                    result.retain(|e| e != x);
                 })
                 .probe_with(&mut probe);
 
@@ -52,8 +53,9 @@ fn main() {
                     &control
                 )
                 .inspect(move |x| {
+                    println!("[{:?}] control_state_machine x: {:?}", index, x);
                     assert!(result2.contains(x));
-                    println!("control_state_machine x: {:?}", x)
+                    result2.retain(|e| e != x);
                 })
                 .probe_with(&mut probe);
         });
