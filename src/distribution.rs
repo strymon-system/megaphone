@@ -13,6 +13,8 @@ use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::order::PartialOrder;
 use timely::progress::frontier::Antichain;
 
+/// A control message consisting of a sequence number, a total count of messages to be expected
+/// and an instruction.
 #[derive(Abomonation, Clone, Debug)]
 pub struct Control {
     sequence: u64,
@@ -21,6 +23,7 @@ pub struct Control {
     inst: ControlInst,
 }
 
+/// A bin identifier. Wraps a `usize`.
 #[derive(Abomonation, Clone, Debug)]
 pub struct Bin(usize);
 
@@ -31,35 +34,41 @@ impl ::std::ops::Deref for Bin {
     }
 }
 
+/// A control instruction
 #[derive(Abomonation, Clone, Debug)]
 pub enum ControlInst {
+    /// Provide a new map
     Map(Vec<usize>),
+    /// Provide a map update
     Move(Bin, /*worker*/ usize),
+    /// No-op
     None,
 }
 
 impl Control {
+    /// Construct a new `Control`
     pub fn new(sequence: u64, count: usize, inst: ControlInst) -> Self {
         Self { sequence, count, inst }
     }
 }
 
+/// A compiled set of control instructions
 struct ControlSet<T> {
+    /// Its sequence number
     sequence: u64,
+    /// The frontier at which to apply the instructions
     frontier: Antichain<T>,
-    instructions: Vec<ControlInst>,
+    /// Collection of instructions
+    map: Vec<usize>,
 }
 
 impl<T> ControlSet<T> {
 
+    ///
     fn map(&self) -> &Vec<usize> {
-        for inst in &self.instructions {
-            if let &ControlInst::Map(ref map) = inst {
-                return map;
-            }
-        };
-        unreachable!();
+        &self.map
     }
+
 }
 
 struct ControlSetBuilder<T> {
@@ -104,14 +113,32 @@ impl<T: PartialOrder> ControlSetBuilder<T> {
         self.frontier.extend(caps);
     }
 
-    fn build(self) -> ControlSet<T> {
+    fn build(self, previous: Option<&ControlSet<T>>) -> ControlSet<T> {
         assert_eq!(0, self.count.unwrap_or(0));
         let mut frontier = Antichain::new();
         for f in self.frontier {frontier.insert(f);}
+
+        let mut map = if let Some(ref previous) = previous {
+            previous.map().clone()
+        } else {
+            vec![0; 1 << BIN_SHIFT]
+        };
+
+        for inst in self.instructions {
+            match inst {
+                ControlInst::Map(ref new_map) => {
+                    map.clear();
+                    map.extend( new_map.iter());
+                },
+                ControlInst::Move(Bin(bin), target) => map[bin] = target,
+                ControlInst::None => {},
+            }
+        }
+
         ControlSet {
             sequence: self.sequence.unwrap(),
             frontier: frontier,
-            instructions: self.instructions,
+            map: map,
         }
     }
 }
@@ -247,7 +274,8 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                         }
                         // TODO: We don't know the frontier at the time the command was received.
                         builder.frontier(vec![time.time().clone()].into_iter());
-                        configurations.push(builder.build());
+                        let config = builder.build(configurations.last());
+                        configurations.push(config);
                         configurations.sort_by_key(|d| d.sequence);
                         // Configurations are well-formed if a bigger sequence number implies that
                         // actions are not reversely ordered.
@@ -286,23 +314,10 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                     for config in &configurations {
                         if config.frontier.elements()[0] == *time.time() {
 
-                            let mut new_map = map.clone();
-                            for inst in &config.instructions {
-                                match *inst {
-                                    ControlInst::Map(ref map) => {
-                                        new_map.clear();
-                                        new_map.extend(map.iter());
-                                    },
-                                    ControlInst::Move(Bin(bin), target) => new_map[bin] = target,
-                                    ControlInst::None => {},
-                                }
-                            }
-
-
                             // Redistribute bins
                             let mut states = states_f.borrow_mut();
                             let mut session = state_out.session(&time);
-                            for (bin, (old, new)) in map.iter_mut().zip(new_map.iter()).enumerate() {
+                            for (bin, (old, new)) in map.iter_mut().zip(config.map().iter()).enumerate() {
                                 if old != new && !states[bin].is_empty(){
                                     let state = ::std::mem::replace(&mut states[bin], HashMap::new());
                                     session.give((*new, Bin(bin), state.into_iter().collect::<Vec<_>>()));
