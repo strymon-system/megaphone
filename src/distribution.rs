@@ -216,7 +216,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
         let (mut state_out, state) = builder.new_output();
 
         // Number of bits to use as container number
-        let bin_shift = ::std::mem::size_of::<usize>() - BIN_SHIFT;
+        let bin_shift = ::std::mem::size_of::<usize>() * 8 - BIN_SHIFT;
 
         builder.build(move |_capability| {
 
