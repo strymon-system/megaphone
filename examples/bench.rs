@@ -89,10 +89,10 @@ fn main() {
             // introduce data and watch!
 
             for round in behind..(rounds*2 + behind) {
-                input.advance_to(round + 1);
                 for i in 0..batch {
-                    input.send((round | (i << 56), i as u64));
+                    input.send((i | (i << 56), i as u64));
                 }
+                input.advance_to(round + 1);
                 let start = Instant::now();
                 while probe.less_than(&RootTimestamp::new(input.time().inner - behind)) {
                     worker.step();
