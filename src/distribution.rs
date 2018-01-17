@@ -218,6 +218,9 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
         // Number of bits to use as container number
         let bin_shift = ::std::mem::size_of::<usize>() * 8 - BIN_SHIFT;
 
+        let data_frontier = Rc::new(RefCell::new(Antichain::new()));
+        let data_frontier_f = Rc::clone(&data_frontier);
+
         builder.build(move |_capability| {
 
             let mut notificator = FrontierNotificator::new();
@@ -311,20 +314,19 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                     // Did we cross a frontier?
                     // Here we can't really express frontier equality yet ):
                     // What we really want is to know if we can apply a configuration change or not.
-                    for config in &configurations {
-                        if config.frontier.elements()[0] == *time.time() {
+                    let data_frontier_f = data_frontier_f.borrow();
+                    if let Some(ref config) = configurations.iter().rev().find(|&c| c.frontier.dominates(&data_frontier_f)) {
 
-                            // Redistribute bins
-                            let mut states = states_f.borrow_mut();
-                            let mut session = state_out.session(&time);
-                            for (bin, (old, new)) in map.iter_mut().zip(config.map().iter()).enumerate() {
-                                if old != new && !states[bin].is_empty(){
-                                    let state = ::std::mem::replace(&mut states[bin], HashMap::new());
-                                    session.give((*new, Bin(bin), state.into_iter().collect::<Vec<_>>()));
-                                    *old = *new;
-                                }
+                        // Redistribute bins
+                        let mut states = states_f.borrow_mut();
+                        let mut session = state_out.session(&time);
+                        for (bin, (old, new)) in map.iter_mut().zip(config.map().iter()).enumerate() {
+                            if old != new && !states[bin].is_empty(){
+                                let state = ::std::mem::replace(&mut states[bin], HashMap::new());
+                                let state = state.into_iter().collect::<Vec<_>>();
+                                session.give((*new, Bin(bin), state));
+                                *old = *new;
                             }
-                            break;
                         }
                     }
                 });
@@ -338,6 +340,12 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
             // stash each input and request a notification when ready
             input.for_each(|time, data| {
+                // Grab frontier to report to upstream fixer
+                let mut data_frontier = data_frontier.borrow_mut();
+                for t in notificator.frontier(0).iter() {
+                    data_frontier.insert(t.clone());
+                }
+
                 // stash if not time yet
                 if notificator.frontier(0).iter().any(|x| x.less_than(time.time()))
                     && notificator.frontier(1).iter().any(|x| x.less_than(time.time())){
