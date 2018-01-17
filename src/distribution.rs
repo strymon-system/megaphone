@@ -22,9 +22,19 @@ pub struct Control {
 }
 
 #[derive(Abomonation, Clone, Debug)]
+pub struct Bin(usize);
+
+impl ::std::ops::Deref for Bin {
+    type Target = usize;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Abomonation, Clone, Debug)]
 pub enum ControlInst {
     Map(Vec<usize>),
-    Move(/*bin*/ usize, /*worker*/ usize),
+    Move(Bin, /*worker*/ usize),
     None,
 }
 
@@ -283,7 +293,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                                         new_map.clear();
                                         new_map.extend(map.iter());
                                     },
-                                    ControlInst::Move(bin, target) => new_map[bin] = target,
+                                    ControlInst::Move(Bin(bin), target) => new_map[bin] = target,
                                     ControlInst::None => {},
                                 }
                             }
@@ -295,7 +305,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                             for (bin, (old, new)) in map.iter_mut().zip(new_map.iter()).enumerate() {
                                 if old != new && !states[bin].is_empty(){
                                     let state = ::std::mem::replace(&mut states[bin], HashMap::new());
-                                    session.give((*new, bin, state.into_iter().collect::<Vec<_>>()));
+                                    session.give((*new, Bin(bin), state.into_iter().collect::<Vec<_>>()));
                                     *old = *new;
                                 }
                             }
@@ -309,7 +319,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
         let mut pending = HashMap::new();   // times -> (keys -> state)
         let mut pending_states = HashMap::new();
 
-        stream.binary_notify(&state, Exchange::new(move |&(target, _)| target as u64), Exchange::new(move |&(target, _bin, _)| target as u64), "StateMachine", vec![], move |input, state, output, notificator| {
+        stream.binary_notify(&state, Exchange::new(move |&(target, _)| target as u64), Exchange::new(move |&(target, _, _)| target as u64), "StateMachine", vec![], move |input, state, output, notificator| {
 
             // stash each input and request a notification when ready
             input.for_each(|time, data| {
@@ -345,8 +355,8 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                 if let Some(state_update) = pending_states.remove(time.time()) {
                     let mut states = states.borrow_mut();
                     for (_target, bin, internal) in state_update {
-                        assert!(states[bin].is_empty());
-                        states[bin].extend(internal.into_iter());
+                        assert!(states[*bin].is_empty());
+                        states[*bin].extend(internal.into_iter());
                     }
                 }
 
