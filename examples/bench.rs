@@ -43,9 +43,9 @@ fn main() {
             input
                 .filter(|_| false)
                 .state_machine(
-                    |_key, val, agg: &mut u64| {
-                        *agg += val;
-                        (false, Some((*_key, factor(*agg))))
+                    |_key, val, agg: &mut Vec<u64>| {
+                        agg.push(val);
+                        (false, Some((*_key, factor(agg.iter().sum()))))
                     },
                     |key| *key as u64
                 )
@@ -57,9 +57,9 @@ fn main() {
 
             input
                 .control_state_machine(
-                    |_key, val, agg: &mut u64| {
-                        *agg += val;
-                        (false, Some((*_key, factor(*agg))))
+                    |_key, val, agg: &mut Vec<u64>| {
+                        agg.push(val);
+                        (false, Some((*_key, factor(agg.iter().sum()))))
                     },
                     |key| *key as u64
                     ,
