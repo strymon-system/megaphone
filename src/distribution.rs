@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use timely::{Data, ExchangeData};
-use timely::dataflow::{Stream, Scope};
+use timely::dataflow::{Stream, Scope, ProbeHandle};
 use timely::dataflow::channels::pact::{Exchange, Pipeline};
-use timely::dataflow::operators::FrontierNotificator;
+use timely::dataflow::operators::{FrontierNotificator, Probe};
 use timely::dataflow::operators::generic::binary::Binary;
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::order::PartialOrder;
@@ -53,6 +53,7 @@ impl Control {
 }
 
 /// A compiled set of control instructions
+#[derive(Debug)]
 struct ControlSet<T> {
     /// Its sequence number
     sequence: u64,
@@ -113,16 +114,16 @@ impl<T: PartialOrder> ControlSetBuilder<T> {
         self.frontier.extend(caps);
     }
 
-    fn build(self, previous: Option<&ControlSet<T>>) -> ControlSet<T> {
+    fn build(self, previous: &ControlSet<T>) -> ControlSet<T> {
         assert_eq!(0, self.count.unwrap_or(0));
         let mut frontier = Antichain::new();
         for f in self.frontier {frontier.insert(f);}
 
-        let mut map = if let Some(ref previous) = previous {
-            previous.map().clone()
-        } else {
-            vec![0; 1 << BIN_SHIFT]
-        };
+        let mut map = //if let Some(ref previous) = previous {
+            previous.map().clone();
+        // } else {
+        //     vec![0; 1 << BIN_SHIFT]
+        // };
 
         for inst in self.instructions {
             match inst {
@@ -218,8 +219,11 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
         // Number of bits to use as container number
         let bin_shift = ::std::mem::size_of::<usize>() * 8 - BIN_SHIFT;
 
-        let data_frontier = Rc::new(RefCell::new(Antichain::new()));
-        let data_frontier_f = Rc::clone(&data_frontier);
+        // let data_frontier = Rc::new(RefCell::new(Antichain::new()));
+        // let data_frontier_f = Rc::clone(&data_frontier);
+
+        let mut probe1 = ProbeHandle::new();
+        let probe2 = probe1.clone();
 
         builder.build(move |_capability| {
 
@@ -232,9 +236,14 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
             let mut pending_control = HashMap::new();
 
             // Active configurations: Vec<(T, ControlInstr)>
-            let mut configurations: Vec<ControlSet<S::Timestamp>> = Vec::new();
+            let mut pending_configurations: Vec<ControlSet<S::Timestamp>> = Vec::new();
 
-            let mut map: Vec<usize> = vec![0; 1 << BIN_SHIFT];
+            // TODO : default configuration may be poorly chosen.
+            let mut active_configuration: ControlSet<S::Timestamp> = ControlSet { 
+                sequence: 0, 
+                frontier: Antichain::from_elem(Default::default()),
+                map: vec![0; 1 << BIN_SHIFT],
+            };
 
             // Handle input data
             move |frontiers| {
@@ -243,25 +252,34 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
                 // Read data from the main data channel
                 data_in.for_each(|time, data| {
+
                     // Test if we're permitted to send out data at `time`
                     if frontiers[1].less_than(time.time()) {
                         // Control is behind, stash data
                         data_stash.entry(time.clone()).or_insert_with(Vec::new).extend(data.drain(..));
                         notificator.notify_at(time)
-                    } else {
+                    } 
+                    else {
                         // Control input is ahead of `time`, pass data
-                        let mut session = data_out.session(&time);
+                        
                         // Determine bin: Find the last one that is `less_than`
-                        if let Some(ref config_inst) = configurations.iter().rev().find(|&c| c.frontier.less_equal(time.time())) {
-                            let map = config_inst.map();
-                            session.give_iterator(data.drain(..).map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d)))
-                        }
+                        // If no pending configuration was valid, active configuration is *always* valid
+                        let map = 
+                        pending_configurations
+                            .iter()
+                            .rev()
+                            .find(|&c| c.frontier.less_equal(time.time()))
+                            .unwrap_or(&active_configuration)
+                            .map();
+
+                        data_out
+                            .session(&time)
+                            .give_iterator(data.drain(..).map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d)));
                     }
                 });
 
                 // Read control input
                 control_in.for_each(|time, data| {
-                    // Stash configuration commands and notify on time
                     pending_control.entry(time.clone()).or_insert_with(Vec::new).extend(data.drain(..));
                     notificator.notify_at(time)
                 });
@@ -277,58 +295,108 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                         }
                         // TODO: We don't know the frontier at the time the command was received.
                         builder.frontier(vec![time.time().clone()].into_iter());
-                        let config = builder.build(configurations.last());
-                        configurations.push(config);
-                        configurations.sort_by_key(|d| d.sequence);
+                        let config = builder.build(pending_configurations.last().unwrap_or(&active_configuration));
+                        pending_configurations.push(config);
+                        pending_configurations.sort_by_key(|d| d.sequence);
+
                         // Configurations are well-formed if a bigger sequence number implies that
                         // actions are not reversely ordered.
                         // TODO: This is not entirely correct - we have to check for dominance
-                        for cs in configurations.windows(2) {
+                        // TODO: This does not check active versus pending[0].
+                        for cs in pending_configurations.windows(2) {
                             debug_assert!(cs[0].frontier.dominates(&cs[1].frontier));
                         }
 
-                        // GC old configurations
-                        // \forall f \in frontier[0]: \exists t \in config: t \leq f
-                        let mut count = 0;
-                        for config in &configurations {
-                            if config.frontier.less_than(&time) {
-                                count += 1;
-                            } else {
-                                break;
-                            }
-                        }
-                        if count > 1 {
-                            while count > 0 { configurations.remove(0); count -= 1; }
-                        }
+                        // // GC old configurations
+                        // // \forall f \in frontier[0]: \exists t \in config: t \leq f
+                        // let mut count = 0;
+                        // for config in &configurations {
+                        //     if config.frontier.less_than(&time) {
+                        //         count += 1;
+                        //     } else {
+                        //         break;
+                        //     }
+                        // }
+                        // if count > 1 {
+                        //     while count > 0 { configurations.remove(0); count -= 1; }
+                        // }
                     }
+
                     // Check for stashed data - now control input has to have advanced
                     if let Some(mut vec) = data_stash.remove(&time) {
-                        let mut session = data_out.session(&time);
-                        // Determine bin
-                        if let Some(ref config_inst) = configurations.iter().rev().find(|&c| c.frontier.less_equal(time.time())) {
-                            let map = config_inst.map();
-                            session.give_iterator(vec.drain(..).map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d)))
-                        }
+                        // let mut session = data_out.session(&time);
+                        // // Determine bin
+                        // if let Some(ref config_inst) = configurations.iter().rev().find(|&c| c.frontier.less_equal(time.time())) {
+                        //     let map = config_inst.map();
+                        //     session.give_iterator(vec.drain(..).map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d)))
+                        // }
+
+                        let map = 
+                        pending_configurations
+                            .iter()
+                            .rev()
+                            .find(|&c| c.frontier.less_equal(time.time()))
+                            .unwrap_or(&active_configuration)
+                            .map();
+
+                        data_out
+                            .session(&time)
+                            .give_iterator(vec.drain(..).map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d)));
                     }
 
                     // Did we cross a frontier?
                     // Here we can't really express frontier equality yet ):
                     // What we really want is to know if we can apply a configuration change or not.
-                    let data_frontier_f = data_frontier_f.borrow();
-                    if let Some(ref config) = configurations.iter().rev().find(|&c| c.frontier.dominates(&data_frontier_f)) {
+                    // let data_frontier_f = data_frontier_f.borrow();
+                    // if let Some(ref config) = configurations.iter().rev().find(|&c| c.frontier.dominates(&data_frontier_f)) {
 
-                        // Redistribute bins
-                        let mut states = states_f.borrow_mut();
-                        let mut session = state_out.session(&time);
-                        for (bin, (old, new)) in map.iter_mut().zip(config.map().iter()).enumerate() {
-                            if old != new && !states[bin].is_empty(){
-                                let state = ::std::mem::replace(&mut states[bin], HashMap::new());
-                                let state = state.into_iter().collect::<Vec<_>>();
-                                session.give((*new, Bin(bin), state));
-                                *old = *new;
+                    // TODO : Perhaps we keep an active config and a queue of pending configs, because the *only*
+                    // transition that can happen is to install the config with the next sequence number. That is 
+                    // the only test to perform, rather than scanning all pending configs.
+                    
+                    // If the next configuration to install is no longer at all ahead of the state machine output, 
+                    // then there can be no more records or state updates for any configuration prior to the next.
+                    if pending_configurations.get(0).map(|conf| conf.frontier.elements().iter().all(|t| !probe2.less_than(t))).unwrap_or(false) {
+
+                        // We should now install `pending_configurations[0]` into `active_configuration`!
+                        let to_install = pending_configurations.remove(0);
+
+                        {   // Scoped to let `old_map` and `new_map` borrows drop.
+                            let old_map = active_configuration.map();
+                            let new_map = to_install.map();
+
+                            let mut states = states_f.borrow_mut();
+                            let mut session = state_out.session(&time);
+                            for (bin, (old, new)) in old_map.iter().zip(new_map.iter()).enumerate() {
+                                if (old != new) && !states[bin].is_empty(){
+                                    let state = states[bin].drain().collect::<Vec<_>>();
+                                    session.give((*new, Bin(bin), state));
+                                    // *old = *new;
+                                }
                             }
                         }
+
+                        active_configuration = to_install;
                     }
+
+                    // if let Some(ref config) = configurations.iter().rev().find(|&c| c.frontier.elements().iter().all(|t| !probe2.less_than(t))) {
+
+                    //     // println!("planning on redistributing: {:?}", config);
+
+                    //     // Redistribute bins
+                    //     let mut states = states_f.borrow_mut();
+                    //     let mut session = state_out.session(&time);
+                    //     for (bin, (old, new)) in map.iter_mut().zip(config.map().iter()).enumerate() {
+                    //         // println!("bin: {:?}, old: {:?}, new: {:?}, empty: {:?}", bin, old, new, states[bin].is_empty());
+                    //         if old != new && !states[bin].is_empty(){
+                    //             // println!("  sending something");
+                    //             let state = ::std::mem::replace(&mut states[bin], HashMap::new());
+                    //             let state = state.into_iter().collect::<Vec<_>>();
+                    //             session.give((*new, Bin(bin), state));
+                    //             *old = *new;
+                    //         }
+                    //     }
+                    // }
                 });
             }
         });
@@ -341,10 +409,12 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
             // stash each input and request a notification when ready
             input.for_each(|time, data| {
                 // Grab frontier to report to upstream fixer
-                let mut data_frontier = data_frontier.borrow_mut();
-                for t in notificator.frontier(0).iter() {
-                    data_frontier.insert(t.clone());
-                }
+                // TODO: This should probably use both frontiers, to avoid pre-grabbing not-yet-arrived state.
+                // let mut data_frontier = data_frontier.borrow_mut();
+                // data_frontier.clear();
+                // for t in notificator.frontier(0).iter() {
+                //     data_frontier.insert(t.clone());
+                // }
 
                 // stash if not time yet
                 if notificator.frontier(0).iter().any(|x| x.less_than(time.time()))
@@ -356,6 +426,10 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                         // else we can process immediately
                         let mut session = output.session(&time);
                         let mut states = states.borrow_mut();
+
+                        // let sum = states.iter().map(|x| x.len()).sum::<usize>();
+                        // println!("at {:?}, current sum: {:?}; about to add: {:?}", time.time(), sum, data.len());
+
                         for (_, (key, val)) in data.drain(..) {
                             let bin = (hash(&key) >> bin_shift) as usize;
                             let (remove, output) = {
@@ -369,6 +443,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
             });
 
             state.for_each(|time, data| {
+                // println!("state received!");
                 pending_states.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
                 notificator.notify_at(time);
             });
@@ -378,12 +453,17 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                 if let Some(state_update) = pending_states.remove(time.time()) {
                     let mut states = states.borrow_mut();
                     for (_target, bin, internal) in state_update {
+                        // println!("states[{}].len(): {:?}", *bin, internal.len());
                         assert!(states[*bin].is_empty());
                         states[*bin].extend(internal.into_iter());
                     }
                 }
 
                 if let Some(pend) = pending.remove(time.time()) {
+
+                    // let sum = states.borrow().iter().map(|x| x.len()).sum::<usize>();
+                    // println!("at {:?}, current sum: {:?}; about to add: {:?}", time.time(), sum, pend.len());
+
                     let mut session = output.session(&time);
                     let mut states = states.borrow_mut();
                     for (_, (key, val)) in pend {
@@ -398,5 +478,6 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                 }
             });
         })
+        .probe_with(&mut probe1)
     }
 }
