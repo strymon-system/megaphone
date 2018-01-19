@@ -254,7 +254,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                 data_in.for_each(|time, data| {
 
                     // Test if we're permitted to send out data at `time`
-                    if frontiers[1].less_than(time.time()) {
+                    if frontiers[0].less_than(time.time()) && frontiers[1].less_than(time.time()) {
                         // Control is behind, stash data
                         data_stash.entry(time.clone()).or_insert_with(Vec::new).extend(data.drain(..));
                         notificator.notify_at(time)
@@ -285,7 +285,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                 });
 
                 // Analyze control frontier
-                notificator.for_each(&[&frontiers[0], &frontiers[1]], |time, _not| {
+                notificator.for_each(&[&frontiers[0], &frontiers[1]], |time, not| {
                     // Check if there are pending control instructions
                     if let Some(mut vec) = pending_control.remove(&time) {
                         // Extend the configurations with (T, ControlInst) tuples
@@ -340,27 +340,34 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
                     // If the next configuration to install is no longer at all ahead of the state machine output,
                     // then there can be no more records or state updates for any configuration prior to the next.
-                    if pending_configurations.get(0).map(|conf| conf.frontier.elements().iter().all(|t| !probe2.less_than(t))).unwrap_or(false) {
+                    if let Some(_) = pending_configurations.get(0) {
+                        if pending_configurations.get(0).unwrap().frontier.elements().iter().all(|t| !probe2.less_than(t)) {
 
-                        // We should now install `pending_configurations[0]` into `active_configuration`!
-                        let to_install = pending_configurations.remove(0);
+                            // We should now install `pending_configurations[0]` into `active_configuration`!
+                            let to_install = pending_configurations.remove(0);
 
-                        {   // Scoped to let `old_map` and `new_map` borrows drop.
-                            let old_map = active_configuration.map();
-                            let new_map = to_install.map();
+                            {   // Scoped to let `old_map` and `new_map` borrows drop.
+                                let old_map = active_configuration.map();
+                                let new_map = to_install.map();
 
-                            let mut states = states_f.borrow_mut();
-                            let mut session = state_out.session(&time);
-                            for (bin, (old, new)) in old_map.iter().zip(new_map.iter()).enumerate() {
-                                if (old != new) && !states[bin].is_empty(){
-                                    let state = states[bin].drain().collect::<Vec<_>>();
-                                    session.give((*new, Bin(bin), state));
-                                    // *old = *new;
+                                let mut states = states_f.borrow_mut();
+                                let mut session = state_out.session(&time);
+                                for (bin, (old, new)) in old_map.iter().zip(new_map.iter()).enumerate() {
+                                    // Migration is needed if a bin is to be moved (`old != new`) and the state
+                                    // actually contains data.
+                                    if (old != new) && !states[bin].is_empty() {
+                                        // Capture bin's values as a `Vec` of (key, state) pairs
+                                        let state = states[bin].drain().collect::<Vec<_>>();
+                                        session.give((*new, Bin(bin), state));
+                                    }
                                 }
                             }
-                        }
 
-                        active_configuration = to_install;
+                            // Promote the pending config to active
+                            active_configuration = to_install;
+                        } else {
+                            not.notify_at(time);
+                        }
                     }
                 });
             }
