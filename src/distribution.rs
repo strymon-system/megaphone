@@ -300,36 +300,16 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                         pending_configurations.sort_by_key(|d| d.sequence);
 
                         // Configurations are well-formed if a bigger sequence number implies that
-                        // actions are not reversely ordered.
-                        // TODO: This is not entirely correct - we have to check for dominance
-                        // TODO: This does not check active versus pending[0].
+                        // actions are not reversely ordered. Each configuration has to dominate its
+                        // successors.
                         for cs in pending_configurations.windows(2) {
                             debug_assert!(cs[0].frontier.dominates(&cs[1].frontier));
                         }
 
-                        // // GC old configurations
-                        // // \forall f \in frontier[0]: \exists t \in config: t \leq f
-                        // let mut count = 0;
-                        // for config in &configurations {
-                        //     if config.frontier.less_than(&time) {
-                        //         count += 1;
-                        //     } else {
-                        //         break;
-                        //     }
-                        // }
-                        // if count > 1 {
-                        //     while count > 0 { configurations.remove(0); count -= 1; }
-                        // }
                     }
 
                     // Check for stashed data - now control input has to have advanced
                     if let Some(mut vec) = data_stash.remove(&time) {
-                        // let mut session = data_out.session(&time);
-                        // // Determine bin
-                        // if let Some(ref config_inst) = configurations.iter().rev().find(|&c| c.frontier.less_equal(time.time())) {
-                        //     let map = config_inst.map();
-                        //     session.give_iterator(vec.drain(..).map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d)))
-                        // }
 
                         let map = 
                         pending_configurations
@@ -351,10 +331,10 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                     // if let Some(ref config) = configurations.iter().rev().find(|&c| c.frontier.dominates(&data_frontier_f)) {
 
                     // TODO : Perhaps we keep an active config and a queue of pending configs, because the *only*
-                    // transition that can happen is to install the config with the next sequence number. That is 
+                    // transition that can happen is to install the config with the next sequence number. That is
                     // the only test to perform, rather than scanning all pending configs.
-                    
-                    // If the next configuration to install is no longer at all ahead of the state machine output, 
+
+                    // If the next configuration to install is no longer at all ahead of the state machine output,
                     // then there can be no more records or state updates for any configuration prior to the next.
                     if pending_configurations.get(0).map(|conf| conf.frontier.elements().iter().all(|t| !probe2.less_than(t))).unwrap_or(false) {
 
@@ -378,25 +358,6 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
                         active_configuration = to_install;
                     }
-
-                    // if let Some(ref config) = configurations.iter().rev().find(|&c| c.frontier.elements().iter().all(|t| !probe2.less_than(t))) {
-
-                    //     // println!("planning on redistributing: {:?}", config);
-
-                    //     // Redistribute bins
-                    //     let mut states = states_f.borrow_mut();
-                    //     let mut session = state_out.session(&time);
-                    //     for (bin, (old, new)) in map.iter_mut().zip(config.map().iter()).enumerate() {
-                    //         // println!("bin: {:?}, old: {:?}, new: {:?}, empty: {:?}", bin, old, new, states[bin].is_empty());
-                    //         if old != new && !states[bin].is_empty(){
-                    //             // println!("  sending something");
-                    //             let state = ::std::mem::replace(&mut states[bin], HashMap::new());
-                    //             let state = state.into_iter().collect::<Vec<_>>();
-                    //             session.give((*new, Bin(bin), state));
-                    //             *old = *new;
-                    //         }
-                    //     }
-                    // }
                 });
             }
         });
@@ -408,13 +369,6 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
             // stash each input and request a notification when ready
             input.for_each(|time, data| {
-                // Grab frontier to report to upstream fixer
-                // TODO: This should probably use both frontiers, to avoid pre-grabbing not-yet-arrived state.
-                // let mut data_frontier = data_frontier.borrow_mut();
-                // data_frontier.clear();
-                // for t in notificator.frontier(0).iter() {
-                //     data_frontier.insert(t.clone());
-                // }
 
                 // stash if not time yet
                 if notificator.frontier(0).iter().any(|x| x.less_than(time.time()))
@@ -443,7 +397,6 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
             });
 
             state.for_each(|time, data| {
-                // println!("state received!");
                 pending_states.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
                 notificator.notify_at(time);
             });
