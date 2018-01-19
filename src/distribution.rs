@@ -95,11 +95,11 @@ impl<T: PartialOrder> ControlSetBuilder<T> {
             self.count = Some(control.count);
         }
         if let Some(ref mut count) = self.count {
-            assert!(*count > 0);
+            assert!(*count > 0, "Received incorrect number of Controls");
             *count -= 1;
         }
         if let Some(sequence) = self.sequence {
-            assert_eq!(sequence, control.sequence);
+            assert_eq!(sequence, control.sequence, "Received control with inconsistent sequence number");
         } else {
             self.sequence = Some(control.sequence);
         }
