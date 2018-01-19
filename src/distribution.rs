@@ -305,6 +305,10 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                         for cs in pending_configurations.windows(2) {
                             debug_assert!(cs[0].frontier.dominates(&cs[1].frontier));
                         }
+                        // Assert that the currently active configuration dominates the first pending
+                        if let Some(ref config) = pending_configurations.first() {
+                            debug_assert!(active_configuration.frontier.dominates(&config.frontier));
+                        }
 
                     }
 
