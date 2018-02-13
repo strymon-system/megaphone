@@ -10,6 +10,7 @@ timely_communication = { version = "0.1.8", git = "https://github.com/frankmcshe
 abomonation = { git = "https://github.com/frankmcsherry/abomonation" }
 abomonation_derive = { git = "https://github.com/mystor/abomonation_derive.git" }
 rand = "^0.3.18"
+fnv="1.0"
 
 [profile.release]
 opt-level = 3

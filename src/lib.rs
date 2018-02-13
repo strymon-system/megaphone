@@ -1,3 +1,4 @@
+extern crate fnv;
 extern crate timely;
 extern crate timely_communication;
 extern crate abomonation;

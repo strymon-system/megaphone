@@ -1,8 +1,10 @@
 //! General purpose state transition operator.
 use std::hash::Hash;
 use std::cell::RefCell;
-use std::collections::HashMap;
+// use std::collections::HashMap;
 use std::rc::Rc;
+
+use fnv::FnvHashMap as HashMap;
 
 use timely::{Data, ExchangeData};
 use timely::dataflow::{Stream, Scope, ProbeHandle};
@@ -206,7 +208,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
         let hash2 = Rc::clone(&hash);
 
         // bin -> keys -> state
-        let states: Rc<RefCell<Vec<HashMap<K, D>>>> = Rc::new(RefCell::new(vec![HashMap::new(); 1 << BIN_SHIFT]));
+        let states: Rc<RefCell<Vec<HashMap<K, D, >>>> = Rc::new(RefCell::new(vec![Default::default(); 1 << BIN_SHIFT]));
         let states_f = Rc::clone(&states);
 
         let mut builder = OperatorBuilder::new("StateMachine F".into(), self.scope());
@@ -230,10 +232,10 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
             let mut notificator = FrontierNotificator::new();
 
             // Data input stash, time -> Vec<D>
-            let mut data_stash = HashMap::new();
+            let mut data_stash: HashMap<_,_> = Default::default();
 
             // Control input stash, time -> Vec<ControlInstr>
-            let mut pending_control = HashMap::new();
+            let mut pending_control: HashMap<_,_> = Default::default();
 
             // Active configurations: Vec<(T, ControlInstr)>
             let mut pending_configurations: Vec<ControlSet<S::Timestamp>> = Vec::new();
@@ -373,8 +375,8 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
             }
         });
 
-        let mut pending = HashMap::new();   // times -> (keys -> state)
-        let mut pending_states = HashMap::new();
+        let mut pending: HashMap<_,_> = Default::default();   // times -> (keys -> state)
+        let mut pending_states: HashMap<_,_> = Default::default();
 
         stream.binary_notify(&state, Exchange::new(move |&(target, _)| target as u64), Exchange::new(move |&(target, _, _)| target as u64), "StateMachine", vec![], move |input, state, output, notificator| {
 
