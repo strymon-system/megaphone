@@ -118,7 +118,7 @@ fn main() {
         while probe.less_than(input.time()) {
             worker.step();
         }
-        println!("data loaded");
+        eprintln!("debug: data loaded");
 
         if !open_loop {
             // TODO may be stale
@@ -168,7 +168,7 @@ fn main() {
 
             // rounds: number of seconds until reconfiguration.
             // batch: target number of records per second.
-
+            eprintln!("debug: open-loop");
 
             let requests_per_sec = batch;
             let ns_per_request = 1_000_000_000 / requests_per_sec;
@@ -253,18 +253,18 @@ fn main() {
             let max = measurements[measurements.len() - 1];
 
             if index == 0 {
-                println!("worker {}:\t{}\t{}\t{}\t{}\t(of {} measurements)", index, min, med, p99, max, measurements.len());
+                println!("worker {:02}:\t{}\t{}\t{}\t{}\t(of {} measurements)", index, min, med, p99, max, measurements.len());
 
                 let thing = to_print.len() / 1000;
                 for i in 0 .. to_print.len() {
                     if i % thing == 0 {
-                        println!("{:?}\t{:?}", to_print[i].0, to_print[i].1);
+                        println!("{:02}\tlatency\t{:?}\t{:?}", index, to_print[i].0, to_print[i].1);
                     }
                 }
 
                 println!();
                 for elt in redistributions.iter() {
-                    println!("{:?}\t10000000", elt);
+                    println!("{:02}\tredistr\t{:?}\t10000000", index, elt);
                 }
             }
         }
