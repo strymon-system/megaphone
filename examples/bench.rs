@@ -4,7 +4,7 @@ extern crate dynamic_scaling_mechanism;
 use std::time::Instant;
 
 use timely::dataflow::*;
-use timely::dataflow::operators::{Broadcast, Input, Probe, Inspect};
+use timely::dataflow::operators::{Broadcast, Input, Probe};
 // use timely::dataflow::operators::aggregation::StateMachine;
 // use timely::progress::timestamp::RootTimestamp;
 
@@ -25,16 +25,19 @@ use dynamic_scaling_mechanism::distribution::{BIN_SHIFT, ControlInst, Control, C
 // }
 
 fn main() {
-    timely::execute_from_args(std::env::args().skip(4), |worker| {
+    let mut args = std::env::args();
+    let _cmd = args.next();
 
-        // How many rounds at each key distribution strategy.
-        let rounds: usize = std::env::args().nth(1).unwrap().parse().unwrap();
-        // How many updates to perform in each round.
-        let batch: usize = std::env::args().nth(2).unwrap().parse().unwrap();
-        // No clue.
-        let behind: usize = std::env::args().nth(3).unwrap().parse().unwrap();
-        // Number of distinct keys.
-        let keys: usize = std::env::args().nth(4).unwrap().parse().unwrap();
+    // How many rounds at each key distribution strategy.
+    let rounds: usize = args.next().unwrap().parse().unwrap();
+    // How many updates to perform in each round.
+    let batch: usize = args.next().unwrap().parse().unwrap();
+    // No clue.
+    let _behind: usize = args.next().unwrap().parse().unwrap();
+    // Number of distinct keys.
+    let keys: usize = args.next().unwrap().parse().unwrap();
+
+    timely::execute_from_args(args, move |worker| {
 
         let index = worker.index();
         let peers = worker.peers();

@@ -6,12 +6,10 @@ extern crate dynamic_scaling_mechanism;
 
 use std::time::Instant;
 use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
-
 use rand::{Rng, SeedableRng, StdRng};
 
 use timely::dataflow::*;
-use timely::dataflow::operators::{Broadcast, Input, Map, Probe, Inspect};
+use timely::dataflow::operators::{Broadcast, Input, Map, Probe};
 
 use dynamic_scaling_mechanism::distribution::{BIN_SHIFT, ControlInst, Control, ControlStateMachine};
 
@@ -45,29 +43,33 @@ impl SentenceGenerator {
         WORDS[index].to_string()
     }
 
-    pub fn generate(&mut self) -> String {
-        let sentence_length = 10;
-        let mut sentence = String::with_capacity(sentence_length + sentence_length / 10);
-        while sentence.len() < sentence_length {
-            let index = self.rng.gen_range(0, WORDS.len());
-            sentence.push_str(WORDS[index]);
-        }
-        sentence
-    }
+    // pub fn generate(&mut self) -> String {
+    //     let sentence_length = 10;
+    //     let mut sentence = String::with_capacity(sentence_length + sentence_length / 10);
+    //     while sentence.len() < sentence_length {
+    //         let index = self.rng.gen_range(0, WORDS.len());
+    //         sentence.push_str(WORDS[index]);
+    //     }
+    //     sentence
+    // }
 }
 
 fn main() {
-    timely::execute_from_args(std::env::args().skip(4), |worker| {
+    let mut args = std::env::args();
+    let _cmd = args.next();
+
+    // How many rounds at each key distribution strategy.
+    let rounds: usize = args.next().unwrap().parse().unwrap();
+    // How many updates to perform in each round.
+    let batch: usize = args.next().unwrap().parse().unwrap();
+    // Number of distinct keys.
+    let keys: usize = args.next().unwrap().parse().unwrap();
+    // Open-loop?
+    let open_loop = args.next().unwrap() == "open-loop";
+
+    timely::execute_from_args(args, move |worker| {
 
         let mut text_gen = SentenceGenerator::new(worker.index());
-
-        // How many rounds at each key distribution strategy.
-        let rounds: usize = std::env::args().nth(1).unwrap().parse().unwrap();
-        // How many updates to perform in each round.
-        let batch: usize = std::env::args().nth(2).unwrap().parse().unwrap();
-        // Number of distinct keys.
-        let keys: usize = std::env::args().nth(3).unwrap().parse().unwrap();
-        let open_loop = std::env::args().any(|x| x == "open-loop");
 
         let index = worker.index();
         let peers = worker.peers();
@@ -119,6 +121,7 @@ fn main() {
         println!("data loaded");
 
         if !open_loop {
+            // TODO may be stale
 
             if index == 0 {
                 // Redistribute bins to all workers at once.
