@@ -14,7 +14,7 @@ use timely::dataflow::operators::{Broadcast, Input, Map, Probe};
 use dynamic_scaling_mechanism::distribution::{BIN_SHIFT, ControlInst, Control, ControlStateMachine};
 
 
-include!(concat!(env!("OUT_DIR"), "/words.rs"));
+// include!(concat!(env!("OUT_DIR"), "/words.rs"));
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     // let mut s = DefaultHasher::new();
@@ -39,8 +39,9 @@ impl SentenceGenerator {
     }
 
     pub fn word(&mut self) -> String {
-        let index = self.rng.gen_range(0, WORDS.len());
-        WORDS[index].to_string()
+        let index = self.rng.gen_range(0, 1_000_000_000);
+        // WORDS[index].to_string()
+        format!("{}", index)
     }
 
     // pub fn generate(&mut self) -> String {
@@ -67,6 +68,8 @@ enum ExperimentMapMode {
 }
 
 fn main() {
+    println!("args: {:?}", std::env::args());
+
     let mut args = std::env::args();
     let _cmd = args.next();
 
@@ -87,6 +90,9 @@ fn main() {
         "half-all-half-all" => ExperimentMapMode::HalfAllHalfAll,
         _ => panic!("invalid mode"),
     };
+
+    println!("rounds: {}, batch: {}, keys: {}, open_loop: {}",
+             rounds, batch, keys, open_loop);
 
     timely::execute_from_args(args, move |worker| {
 
