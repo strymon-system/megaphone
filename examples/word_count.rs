@@ -38,8 +38,8 @@ impl SentenceGenerator {
         }
     }
 
-    pub fn word(&mut self) -> String {
-        let index = self.rng.gen_range(0, 1_000_000_000);
+    pub fn word(&mut self, keys: usize) -> String {
+        let index = self.rng.gen_range(0, keys as u64);
         // WORDS[index].to_string()
         format!("{}", index)
     }
@@ -150,7 +150,7 @@ fn main() {
 
         // introduce data and watch!
         for _ in 0 .. keys / worker.peers() {
-            input.send(text_gen.word());
+            input.send(text_gen.word(keys));
         }
         input.advance_to(1);
         while probe.less_than(input.time()) {
