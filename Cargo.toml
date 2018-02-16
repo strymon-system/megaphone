@@ -17,4 +17,5 @@ opt-level = 3
 debug = true
 rpath = false
 lto = false
+codegen-units = 16
 debug-assertions = false
