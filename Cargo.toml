@@ -12,10 +12,10 @@ abomonation_derive = "^0.3"
 rand = "^0.3.18"
 fnv="1.0"
 
-[profile.release]
-opt-level = 3
-debug = true
-rpath = false
-lto = false
-codegen-units = 16
-debug-assertions = false
+# [profile.release]
+# opt-level = 3
+# debug = true
+# rpath = false
+# lto = false
+# codegen-units = 16
+# debug-assertions = false
