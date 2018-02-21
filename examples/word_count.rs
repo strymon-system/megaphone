@@ -91,8 +91,8 @@ fn main() {
         _ => panic!("invalid mode"),
     };
 
-    println!("rounds: {}, batch: {}, keys: {}, open_loop: {}",
-             rounds, batch, keys, open_loop);
+    println!("parameters: rounds: {}, batch: {}, keys: {}, mode: {:?}, map_mode: {:?}",
+             rounds, batch, keys, mode, map_mode);
 
     timely::execute_from_args(args, move |worker| {
 
@@ -268,7 +268,7 @@ fn main() {
                     // Request i "arrives" at `index + ns_per_request * (i + 1)`.
                     while ((request_counter * ns_per_request) as u64) < elapsed_ns {
                         // input.send(text_gen.generate());
-                        input.send(text_gen.word());
+                        input.send(text_gen.word(keys));
                         request_counter += peers;
                     }
                     input.advance_to(elapsed_ns as usize);
@@ -302,7 +302,7 @@ fn main() {
                     let time_base = |counter| counter / ns_times_in_period.len() * SQUARE_PERIOD;
 
                     while time_base(request_counter + peers) + ns_times_in_period[ns_times_in_period_index(request_counter + peers)] < (elapsed_ns as usize) {
-                        input.send(text_gen.word());
+                        input.send(text_gen.word(keys));
                         request_counter += peers;
                     }
                     input.advance_to(elapsed_ns as usize);
