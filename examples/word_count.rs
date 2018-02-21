@@ -54,6 +54,7 @@ impl SentenceGenerator {
     // }
 }
 
+#[derive(Debug)]
 enum ExperimentMode {
     OpenLoopConstant,
     OpenLoopSquare,
@@ -131,7 +132,7 @@ fn main() {
 
         // rounds: number of seconds until reconfiguration.
         // batch: target number of records per second.
-        eprintln!("debug: open-loop");
+        eprintln!("debug: mode: {:?}", mode);
 
         let requests_per_sec = batch;
         let ns_per_request = 1_000_000_000 / requests_per_sec;
@@ -180,8 +181,6 @@ fn main() {
             assert_eq!(ns_times_in_period.len(), SQUARE_PERIOD / ns_per_request);
             ns_times_in_period
         };
-        eprintln!("{:?}", ns_times_in_period);
-        std::process::exit(-1);
         // ------------
 
         while measurements.len() < measurements.capacity() {
@@ -267,28 +266,28 @@ fn main() {
                     }
                 },
             }
+        }
 
-            measurements.sort();
+        measurements.sort();
 
-            let min = measurements[0];
-            let med = measurements[measurements.len() / 2];
-            let p99 = measurements[99 * measurements.len() / 100];
-            let max = measurements[measurements.len() - 1];
+        let min = measurements[0];
+        let med = measurements[measurements.len() / 2];
+        let p99 = measurements[99 * measurements.len() / 100];
+        let max = measurements[measurements.len() - 1];
 
-            if index == 0 {
-                println!("worker {:02}:\t{}\t{}\t{}\t{}\t(of {} measurements)", index, min, med, p99, max, measurements.len());
+        if index == 0 {
+            println!("worker {:02}:\t{}\t{}\t{}\t{}\t(of {} measurements)", index, min, med, p99, max, measurements.len());
 
-                let thing = to_print.len() / 1000;
-                for i in 0 .. to_print.len() {
-                    if i % thing == 0 {
-                        println!("{:02}\tlatency\t{:?}\t{:?}", index, to_print[i].0, to_print[i].1);
-                    }
+            let thing = to_print.len() / 1000;
+            for i in 0 .. to_print.len() {
+                if i % thing == 0 {
+                    println!("{:02}\tlatency\t{:?}\t{:?}", index, to_print[i].0, to_print[i].1);
                 }
+            }
 
-                println!();
-                for elt in redistributions.iter() {
-                    println!("{:02}\tredistr\t{:?}\t10000000", index, elt);
-                }
+            println!();
+            for elt in redistributions.iter() {
+                println!("{:02}\tredistr\t{:?}\t10000000", index, elt);
             }
         }
 
