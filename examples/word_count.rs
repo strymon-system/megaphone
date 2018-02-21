@@ -60,6 +60,12 @@ enum ExperimentMode {
     OpenLoopSquare,
 }
 
+#[derive(Debug)]
+enum ExperimentMapMode {
+    OneAllOne,
+    HalfAllHalfAll,
+}
+
 fn main() {
     let mut args = std::env::args();
     let _cmd = args.next();
@@ -74,6 +80,11 @@ fn main() {
     let mode = match args.next().unwrap().as_str() {
         "open-loop" => ExperimentMode::OpenLoopConstant,
         "open-loop-square" => ExperimentMode::OpenLoopSquare,
+        _ => panic!("invalid mode"),
+    };
+    let map_mode = match args.next().unwrap().as_str() {
+        "one-all-one" => ExperimentMapMode::OneAllOne,
+        "half-all-half-all" => ExperimentMapMode::HalfAllHalfAll,
         _ => panic!("invalid mode"),
     };
 
@@ -113,9 +124,20 @@ fn main() {
         let mut control_counter = 0;
         let mut map = vec![0; 1 << BIN_SHIFT];
 
-        // Start with an initial distribution of data to worker zero.
         if index == 0 {
-            control_input.send(Control::new(control_counter,  1, ControlInst::Map(map.clone())));
+            match map_mode {
+                ExperimentMapMode::OneAllOne => {
+                    // Start with an initial distribution of data to worker zero.
+                    control_input.send(Control::new(control_counter,  1, ControlInst::Map(map.clone())));
+                },
+                ExperimentMapMode::HalfAllHalfAll => {
+                    for (i, v) in map.iter_mut().enumerate() {
+                        *v = (((i / 2) * 2) % worker.peers());
+                    }
+                    // eprintln!("debug: half map {:?}", map);
+                    control_input.send(Control::new(control_counter,  1, ControlInst::Map(map.clone())));
+                },
+            }
             control_counter += 1;
         }
         control_input.advance_to(1);
@@ -132,31 +154,63 @@ fn main() {
 
         // rounds: number of seconds until reconfiguration.
         // batch: target number of records per second.
-        eprintln!("debug: mode: {:?}", mode);
+        eprintln!("debug: mode: {:?}, map mode: {:?}", mode, map_mode);
 
         let requests_per_sec = batch;
         let ns_per_request = 1_000_000_000 / requests_per_sec;
         let mut request_counter = peers + index;    // skip first request for each.
 
-        // we will run for 3 * rounds seconds, with two reconfigurations.
-        let mut measurements = Vec::with_capacity(3 * rounds * requests_per_sec / peers);
-        let mut to_print = Vec::with_capacity(3 * rounds * requests_per_sec / peers);
+        // we will run for k * rounds seconds, with r reconfigurations.
+        let reconfigs = match map_mode {
+            ExperimentMapMode::OneAllOne => 2,
+            ExperimentMapMode::HalfAllHalfAll => 3,
+        };
+        let mut measurements = Vec::with_capacity((reconfigs + 1) * rounds * requests_per_sec / peers);
+        let mut to_print = Vec::with_capacity((reconfigs + 1) * rounds * requests_per_sec / peers);
 
         let timer = ::std::time::Instant::now();
 
         let mut control_plan = Vec::new();
 
         if index == 0 {
-            for i in 0 .. map.len() {
-                map[i] = i % worker.peers();
+            for (i, v) in map.iter_mut().enumerate() {
+                *v = i % worker.peers();
             }
+            let first_round_map = map.clone();
             control_plan.push((rounds * 1_000_000_000, Control::new(control_counter,  1, ControlInst::Map(map.clone()))));
             control_counter += 1;
 
-            for i in 0 .. map.len() {
-                map[i] = 0;//i % peers;
-                control_plan.push((2 * rounds * 1_000_000_000, Control::new(control_counter,  1, ControlInst::Map(map.clone()))));
-                control_counter += 1;
+            match map_mode {
+                ExperimentMapMode::OneAllOne => {
+                    for i in 0 .. map.len() {
+                        map[i] = 0;
+                        control_plan.push((2 * rounds * 1_000_000_000, Control::new(control_counter,  1, ControlInst::Map(map.clone()))));
+                        control_counter += 1;
+                    }
+                },
+                ExperimentMapMode::HalfAllHalfAll => {
+                    // all to half, one-by-one
+                    map = first_round_map;
+                    //eprintln!("debug: second migration plan");
+
+                    for i in 0 .. map.len() {
+                        map[i] = (((i / 2) * 2) % worker.peers());
+                        //eprintln!("debug: all to half {:?}", map);
+                       control_plan.push((2 * rounds * 1_000_000_000, Control::new(control_counter,  1, ControlInst::Map(map.clone()))));
+                       control_counter += 1;
+                    }
+
+                    // half to all, two-by-two
+                    for i in 0 .. worker.peers() {
+                        for b in 0 .. (map.len() / worker.peers() - 1) {
+                            let cur = (i * worker.peers()) + b + 1;
+                            map[cur] = cur % worker.peers();
+                        }
+                        //eprintln!("debug: half to all {:?}", map);
+                        control_plan.push((3 * rounds * 1_000_000_000, Control::new(control_counter,  1, ControlInst::Map(map.clone()))));
+                        control_counter += 1;
+                    }
+                },
             }
         }
 
