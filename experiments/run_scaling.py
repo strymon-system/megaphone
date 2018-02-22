@@ -27,17 +27,19 @@ def word_count_open_loop_one_all_one():
     eprint(experlib.experdir(experiment_name))
     experlib.ensuredir(experiment_name)
 
-    for keys in (40000 * (2 ** x) for x in range(0, 9)):
-        n = 2
-        w = 1
-        rounds=10
-        batch=100000
-        open_loop="open-loop"
-        map_mode="one-all-one"
+    for batch in (1000000 + 100000 * x for x in range(0, 5)):
+        for keys in (40000 * (2 ** y) for y in range(7, 9)):
+            n = 2
+            w = 1
+            rounds=10
+            # batch=1000000
+            # keys=10240000
+            open_loop="open-loop"
+            map_mode="one-all-one"
 
-        filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, n, w)
-        eprint("keys: {} in {}".format(keys, filename))
-        experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, n, p, w, filename) for p in range(0, 2)])
+            filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, n, w)
+            eprint("keys: {} in {}".format(keys, filename))
+            experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, n, p, w, filename) for p in range(0, 2)])
 
 
 def word_count_open_loop_half_all_half_all():
@@ -50,7 +52,7 @@ def word_count_open_loop_half_all_half_all():
     keys = 40000 * (2 ** 4)
     n = 2
     w = 8
-    rounds=10
+    rounds=2
     batch=1000000
     open_loop="open-loop"
     map_mode="half-all-half-all"

@@ -3,7 +3,6 @@ extern crate rand;
 
 extern crate timely;
 extern crate dynamic_scaling_mechanism;
-
 use std::time::Instant;
 use std::hash::{Hash, Hasher};
 use rand::{Rng, SeedableRng, StdRng};
@@ -12,7 +11,6 @@ use timely::dataflow::*;
 use timely::dataflow::operators::{Broadcast, Input, Map, Probe};
 
 use dynamic_scaling_mechanism::distribution::{BIN_SHIFT, ControlInst, Control, ControlStateMachine};
-
 
 // include!(concat!(env!("OUT_DIR"), "/words.rs"));
 
@@ -38,10 +36,15 @@ impl SentenceGenerator {
         }
     }
 
-    pub fn word(&mut self, keys: usize) -> String {
-        let index = self.rng.gen_range(0, keys as u64);
-        // WORDS[index].to_string()
-        format!("{}", index)
+    #[inline(always)]
+    pub fn word_rand(&mut self, keys: usize) -> String {
+        let index = self.rng.gen_range(0, keys);
+        self.word_at(index)
+    }
+
+    #[inline(always)]
+    pub fn word_at(&mut self, k: usize) -> String {
+        format!("{}", k)
     }
 
     // pub fn generate(&mut self) -> String {
@@ -149,8 +152,8 @@ fn main() {
         control_input.advance_to(1);
 
         // introduce data and watch!
-        for _ in 0 .. keys / worker.peers() {
-            input.send(text_gen.word(keys));
+        for i in 0 .. keys / peers {
+            input.send(text_gen.word_at(i * peers + index));
         }
         input.advance_to(1);
         while probe.less_than(input.time()) {
@@ -173,6 +176,7 @@ fn main() {
         };
         let mut measurements = Vec::with_capacity((reconfigs + 1) * rounds * requests_per_sec / peers);
         let mut to_print = Vec::with_capacity((reconfigs + 1) * rounds * requests_per_sec / peers);
+        let mut redistribution_end = Vec::with_capacity(5);
 
         let timer = ::std::time::Instant::now();
 
@@ -249,16 +253,12 @@ fn main() {
             let elapsed = timer.elapsed();
             let elapsed_ns = elapsed.as_secs() * 1_000_000_000 + (elapsed.subsec_nanos() as u64);
 
+            just_redistributed = false;
             // If the next planned migration can now be effected, ...
             if control_plan.get(0).map(|&(time, _)| time < elapsed_ns as usize).unwrap_or(false) {
-                if just_redistributed {
-                    just_redistributed = false;
-                }
-                else {
-                    redistributions.push(elapsed_ns);
-                    control_input.send(control_plan.remove(0).1);
-                    just_redistributed = true;
-                }
+                redistributions.push(elapsed_ns);
+                control_input.send(control_plan.remove(0).1);
+                just_redistributed = true;
             }
 
             match mode {
@@ -268,7 +268,7 @@ fn main() {
                     // Request i "arrives" at `index + ns_per_request * (i + 1)`.
                     while ((request_counter * ns_per_request) as u64) < elapsed_ns {
                         // input.send(text_gen.generate());
-                        input.send(text_gen.word(keys));
+                        input.send(text_gen.word_rand(keys));
                         request_counter += peers;
                     }
                     input.advance_to(elapsed_ns as usize);
@@ -283,6 +283,10 @@ fn main() {
 
                     let elapsed = timer.elapsed();
                     let elapsed_ns = elapsed.as_secs() * 1_000_000_000 + (elapsed.subsec_nanos() as u64);
+
+                    if just_redistributed {
+                        redistribution_end.push(elapsed_ns);
+                    }
 
                     // any un-recorded measurements that are complete should be recorded.
                     while (((index + peers * (measurements.len() + 1)) * ns_per_request) as u64) < acknowledged_ns && measurements.len() < measurements.capacity() {
@@ -302,7 +306,7 @@ fn main() {
                     let time_base = |counter| counter / ns_times_in_period.len() * SQUARE_PERIOD;
 
                     while time_base(request_counter + peers) + ns_times_in_period[ns_times_in_period_index(request_counter + peers)] < (elapsed_ns as usize) {
-                        input.send(text_gen.word(keys));
+                        input.send(text_gen.word_rand(keys));
                         request_counter += peers;
                     }
                     input.advance_to(elapsed_ns as usize);
@@ -317,6 +321,10 @@ fn main() {
 
                     let elapsed = timer.elapsed();
                     let elapsed_ns = elapsed.as_secs() * 1_000_000_000 + (elapsed.subsec_nanos() as u64);
+
+                    if just_redistributed {
+                        redistribution_end.push(elapsed_ns);
+                    }
 
                     // any un-recorded measurements that are complete should be recorded.
                     while (time_base(index + peers * (measurements.len() + 1)) + ns_times_in_period[ns_times_in_period_index(index + peers * (measurements.len() + 1))]) < acknowledged_ns as usize && measurements.len() < measurements.capacity() {
@@ -348,6 +356,11 @@ fn main() {
             println!();
             for elt in redistributions.iter() {
                 println!("{:02}\tredistr\t{:?}\t10000000", index, elt);
+            }
+
+            println!();
+            for rede in redistribution_end.iter() {
+                println!("{:02}\tred_end\t{:?}", index, rede);
             }
         }
 
