@@ -58,13 +58,13 @@ impl SentenceGenerator {
     // }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum ExperimentMode {
     OpenLoopConstant,
     OpenLoopSquare,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum ExperimentMapMode {
     OneAllOne,
     HalfAllHalfAll,
@@ -141,9 +141,9 @@ fn main() {
                 },
                 ExperimentMapMode::HalfAllHalfAll => {
                     for (i, v) in map.iter_mut().enumerate() {
-                        *v = (((i / 2) * 2) % worker.peers());
+                        *v = (((i / 2) * 2 + (i % 2) * worker.peers() / 2) % worker.peers());
                     }
-                    // eprintln!("debug: half map {:?}", map);
+                    //eprintln!("debug: half map {:?}", map);
                     control_input.send(Control::new(control_counter,  1, ControlInst::Map(map.clone())));
                 },
             }
@@ -204,16 +204,16 @@ fn main() {
                     //eprintln!("debug: second migration plan");
 
                     for i in 0 .. map.len() {
-                        map[i] = (((i / 2) * 2) % worker.peers());
+                        map[i] = (((i / 2) * 2 + (i % 2) * worker.peers() / 2) % worker.peers());
                         //eprintln!("debug: all to half {:?}", map);
                        control_plan.push((2 * rounds * 1_000_000_000, Control::new(control_counter,  1, ControlInst::Map(map.clone()))));
                        control_counter += 1;
                     }
 
                     // half to all, two-by-two
-                    for i in 0 .. worker.peers() {
-                        for b in 0 .. (map.len() / worker.peers() - 1) {
-                            let cur = (i * worker.peers()) + b + 1;
+                    for b in 0 .. (map.len() / worker.peers()) {
+                        for i in 0 .. worker.peers() {
+                            let cur = (b * worker.peers()) + i;
                             map[cur] = cur % worker.peers();
                         }
                         //eprintln!("debug: half to all {:?}", map);
@@ -237,12 +237,14 @@ fn main() {
 
         let ns_times_in_period = {
             let mut ns_times_in_period = Vec::with_capacity(SQUARE_PERIOD / ns_per_request);
-            let mut cur_ns = 0;
-            while cur_ns < SQUARE_PERIOD && ns_times_in_period.len() < ns_times_in_period.capacity() {
-                ns_times_in_period.push(cur_ns);
-                cur_ns += if cur_ns < half_period { hi_ns_per_request } else { lo_ns_per_request };
+            if mode == ExperimentMode::OpenLoopSquare {
+                let mut cur_ns = 0;
+                while cur_ns < SQUARE_PERIOD && ns_times_in_period.len() < ns_times_in_period.capacity() {
+                    ns_times_in_period.push(cur_ns);
+                    cur_ns += if cur_ns < half_period { hi_ns_per_request } else { lo_ns_per_request };
+                }
+                assert_eq!(ns_times_in_period.len(), SQUARE_PERIOD / ns_per_request);
             }
-            assert_eq!(ns_times_in_period.len(), SQUARE_PERIOD / ns_per_request);
             ns_times_in_period
         };
         // ------------
@@ -253,12 +255,15 @@ fn main() {
             let elapsed = timer.elapsed();
             let elapsed_ns = elapsed.as_secs() * 1_000_000_000 + (elapsed.subsec_nanos() as u64);
 
+            let skip_redistribution = just_redistributed;
             just_redistributed = false;
             // If the next planned migration can now be effected, ...
             if control_plan.get(0).map(|&(time, _)| time < elapsed_ns as usize).unwrap_or(false) {
-                redistributions.push(elapsed_ns);
-                control_input.send(control_plan.remove(0).1);
-                just_redistributed = true;
+                if !skip_redistribution {
+                    redistributions.push(elapsed_ns);
+                    control_input.send(control_plan.remove(0).1);
+                    just_redistributed = true;
+                }
             }
 
             match mode {

@@ -420,6 +420,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                     let mut states = states.borrow_mut();
                     for (_target, bin, internal) in state_update {
                         // println!("states[{}].len(): {:?}", *bin, internal.len());
+                        // TODO(moritzho) this is weird
                         assert!(states[*bin].is_empty());
                         states[*bin].extend(internal.into_iter());
                     }
