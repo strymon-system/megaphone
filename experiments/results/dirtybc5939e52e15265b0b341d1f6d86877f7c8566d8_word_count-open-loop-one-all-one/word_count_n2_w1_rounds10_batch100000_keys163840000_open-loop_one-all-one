@@ -1,4 +1,0 @@
-[m[m[32m[1m    Finished[m release [optimized] target(s) in 0.0 secs[m[m[32m[1m     Running[m `target/release/examples/word_count 10 100000 163840000 open-loop one-all-one -n 2 -p 0 -w 1`
-args: Args { inner: ["target/release/examples/word_count", "10", "100000", "163840000", "open-loop", "one-all-one", "-n", "2", "-p", "0", "-w", "1"] }
-parameters: rounds: 10, batch: 100000, keys: 163840000, mode: OpenLoopConstant, map_mode: OneAllOne
-bash: line 1:  6085 Terminated              hwloc-bind socket:0 -- cargo run --release --example word_count --bash: line 1:  6073 Terminated              hwloc-bind socket:1 -- cargo run --release --example word_count -- 10 100000 163840000 open-loop one-all-one -n 2 -p 1 -w 1

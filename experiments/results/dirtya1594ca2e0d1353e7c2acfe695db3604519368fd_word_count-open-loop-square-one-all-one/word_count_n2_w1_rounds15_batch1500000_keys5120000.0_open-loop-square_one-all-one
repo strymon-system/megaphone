@@ -1,6 +1,0 @@
-[m[m[32m[1m    Finished[m release [optimized] target(s) in 0.0 secs
-[m[m[32m[1m     Running[m `target/release/examples/word_count 15 1500000 5120000.0 open-loop-square one-all-one -n 2 -p 1 -w 1`
-args: Args { inner: ["target/release/examples/word_count", "15", "1500000", "5120000.0", "open-loop-square", "one-all-one", "-n", "2", "-p", "1", "-w", "1"] }
-thread 'main' panicked at 'called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }', /checkout/src/libcore/result.rs:916:5
-note: Run with `RUST_BACKTRACE=1` for a backtrace.
-ce.
