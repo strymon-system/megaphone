@@ -1,0 +1,13 @@
+[m[m[32m[1m    Finished[m release [optimized] target(s) in 0.0 secs
+[m[m[32m[1m     Running[m `target/release/examples/word_count 15 2600000 40960000 open-loop-square half-all-halfsudden-all -n 2 -p 0 -w 4`
+args: Args { inner: ["target/release/examples/word_count", "15", "2600000", "40960000", "open-loop-square", "half-all-halfsudden-all", "-n", "2", "-p", "1", "-w", "4"] }
+parameters: rounds: 15, batch: 2600000, keys: 40960000, mode: OpenLoopSquare, map_mode: HalfAllHalfSuddenAll
+debug: data loaded
+debug: data loaded
+debug: mode: OpenLoopSquare, map mode: HalfAllHalfSuddenAll
+debug: debug: data loaded
+debug: mode: OpenLoopSquare, map mode: HalfAllHalfSuddenAll
+debug: data loaded
+debug: mode: OpenLoopSquare, map mode: HalfAllHalfSuddenAll
+debug: data loaded
+debug: mode: OpenLoopSquare, map mbash: line 1: 20784 Terminated              hwloc-bind socket:0 -- cargo run --release --example word_coubash: line 1: 20772 Terminated              hwloc-bind socket:1 -- cargo run --release --example word_count -- 15 2600000 40960000 open-loop-square half-all-halfsudden-all -n 2 -p 1 -w 4

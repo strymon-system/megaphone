@@ -2,7 +2,7 @@
 
 COMMIT=`git rev-parse HEAD`
 
-experiment=results/dirty57c117fd5fa1cf0438ff32f94dbd8d7baf3b9cdd_word_count-open-loop-half-all-half-all
+experiment=results/dirtya1594ca2e0d1353e7c2acfe695db3604519368fd_word_count-open-loop-half-all-half-all
 (
   cd $experiment;
   for f in `ls word_count*`; do

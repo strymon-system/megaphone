@@ -27,8 +27,8 @@ def word_count_open_loop_one_all_one():
     eprint(experlib.experdir(experiment_name))
     experlib.ensuredir(experiment_name)
 
-    for batch in (1000000 + 100000 * x for x in range(5, 10)):
-        for keys in (40000 * (2 ** y) for y in range(9, 11)):
+    for batch in [1000000]: # (1000000 + 100000 * x for x in range(5, 10)):
+        for keys in [10240000]: # (40000 * (2 ** y) for y in range(9, 11)):
             n = 2
             w = 1
             rounds=10
@@ -49,8 +49,8 @@ def word_count_open_loop_half_all_half_all():
     eprint(experlib.experdir(experiment_name))
     experlib.ensuredir(experiment_name)
 
-    for batch in (500000 + 100000 * x for x in [5, 7, 9]):
-        for keys in (40000 * (2 ** y) for y in range(10, 12)):
+    for batch in [2000000]: #(500000 + 100000 * x for x in [5, 7, 9]):
+        for keys in (40000 * (2 ** y) for y in range(10, 11)):
         # keys = 40000 * (2 ** 4)
             n = 2
             w = 4
@@ -58,6 +58,46 @@ def word_count_open_loop_half_all_half_all():
             #batch=1000000
             open_loop="open-loop"
             map_mode="half-all-half-all"
+
+            filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, n, w)
+            eprint("keys: {} in {}".format(keys, filename))
+            experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, n, p, w, filename) for p in range(0, 2)])
+
+def word_count_open_loop_square_wave_one_all_one():
+    experiment_name = "word_count-open-loop-square-one-all-one"
+
+    eprint("### {} ###".format(experiment_name))
+    eprint(experlib.experdir(experiment_name))
+    experlib.ensuredir(experiment_name)
+
+    for batch in (1000000 + 100000 * x for x in range(5, 8)):
+        for keys in [10240000]: # (40000 * (2 ** y) for y in range(9, 11)):
+            n = 2
+            w = 1
+            rounds=15
+            open_loop="open-loop-square"
+            map_mode="one-all-one"
+
+            filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, n, w)
+            eprint("keys: {} in {}".format(keys, filename))
+            experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, n, p, w, filename) for p in range(0, 2)])
+
+def word_count_open_loop_square_half_all_half_all():
+    experiment_name = "word_count-open-loop-square-half-all-half-all"
+
+    eprint("### {} ###".format(experiment_name))
+    eprint(experlib.experdir(experiment_name))
+    experlib.ensuredir(experiment_name)
+
+    for batch in (2000000 + 1000000 * x for x in range(0, 2)):
+        for keys in (40000 * (2 ** y) for y in range(8, 9)):
+        # keys = 40000 * (2 ** 4)
+            n = 2
+            w = 4
+            rounds=30
+            #batch=1000000
+            open_loop="open-loop-square"
+            map_mode="half-all-halfsudden-all"
 
             filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, n, w)
             eprint("keys: {} in {}".format(keys, filename))

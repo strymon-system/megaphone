@@ -1,0 +1,29 @@
+[m[m[32m[1m    Finished[m release [optimized] target(s) in 0.0 secs
+[m[m[32m[1m     Running[m `target/release/examples/word_count 10 400000 40000 open-loop half-all-half-all -n 2 -p 1 -w 8`
+args: Args { inner: ["target/release/examples/word_count", "10", "400000", "40000", "open-loop", "half-all-half-all", "-n", "2", "-p", "1", "-w", "8"] }
+parameters: rounds: 10, batch: 400000, keys: 40000, mode: OpenLoopConstant, map_mode: HalfAllHalfAll
+debug: data loaded
+debug: data loaded
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+debug: data loaded
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+debug: data loaded
+debug: mode: OpenLoopConstant, map mode: HalfAldebug: data loaded
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+debug: data loaded
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+debug: data loaded
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+debug: data loaded
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+debug: data loaded
+debug: mode: OpenLoopConstant, map mobash: line 1: 11494 Terminated              hwloc-bind socket:1 -- cargo run --release --example word_count -- 10 400000 40000 open-loop half-all-half-all -n 2 -p 1 -w 8
+96 - remaining migrations: 271
+20079283324 - remaining migrations: 270
+20103928692 - remaining migrations: 269
+20128729584 - remaining migrations: 268
+20169830184 - remaining migrations: 267
+20219381507 - remaining migrations: 266
+20226146068 - remaining migrations: 265
+20230443188 - remaining migrations: 264
+bash: line 1: 11491 Terminated              hwloc-bind socket:0 -- cargo run --release --example word_count -- 10 400000 40000 open-loop half-all-half-all -n 2 -p 0 -w 8

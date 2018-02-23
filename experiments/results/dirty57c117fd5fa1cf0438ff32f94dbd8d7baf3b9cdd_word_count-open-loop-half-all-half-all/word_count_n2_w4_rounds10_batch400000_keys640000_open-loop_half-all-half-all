@@ -1,0 +1,11 @@
+[m[m[32m[1m    Finished[m release [optimized] target(s) in 0.0 secs[m[m[32m[1m     Running[m `target/release/examples/word_count 10 400000 640000 open-loop half-all-half-all -n 2 -p 0 -w 4`
+arargs: Args { inner: ["target/release/examples/word_count", "10", "400000", "640000", "open-loop", "half-all-half-all", "-n", "2", "-p", "1", "-w", "4"] }
+parameters: rounds: 10, batch: 400000, keys: 640000, mode: OpenLoopConstant, map_mode: HalfAllHalfAdebudebug: data loaded
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+debug: data loaded
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+debug: data loaded
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+debug: data loaded
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+^C

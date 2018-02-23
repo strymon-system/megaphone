@@ -1,0 +1,5 @@
+[m[m[32m[1m    Finished[m release [optimized] target(s) in 0.0 secs
+[m[m[32m[1m     Running[m `target/release/examples/word_count 10 1700000 10240000 open-loop-square one-all-one -n 2 -p 0 -w 1`
+args: Args { inner: ["target/release/examples/word_count", "10", "1700000", "10240000", "open-loop-square", "one-all-one", "-n", "2", "-p", "0", "-w", "1"] }
+parameters: rounds: 10, batch: 1700000, keys: 10240000, mode: OpenLoopSquare, map_mode: OneAllOne
+bash: line 1: 17379 Terminated              hwloc-bind socket:1 -- cargo run --release --example word_count -- 10 1700000 10240000 open-loop-square one-all-one -n 2 -p 1 -w 1

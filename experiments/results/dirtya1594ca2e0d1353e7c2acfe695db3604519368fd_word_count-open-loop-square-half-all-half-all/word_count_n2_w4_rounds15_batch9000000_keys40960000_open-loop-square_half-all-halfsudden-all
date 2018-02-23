@@ -1,0 +1,5 @@
+[m[m[32m[1m    Finished[m release [optimized] target(s) in 0.2 secs
+[m[m[32m[1m     Running[m `target/release/examples/word_count 15 9000000 40960000 open-loop-square half-all-halfsudden-all -n 2 -p 1 -w 4`
+args: Args { inner: ["target/release/examples/word_count", "15", "9000000", "40960000", "open-loop-square", "half-all-halfsudden-all", "-n", "2", "-p", "1", "-w", "4"] }
+parameters: rounds: 15, batch: 9000000, keys: 40960000, mode: OpenLoopSquare, map_mode: HalfAllHalfSuddenAll
+bashbash: line 1: 19924 Terminated              hwloc-bind socket:0 -- cargo run --release --example word_count -- 15 9000000 40960000 open-loop-square half-all-halfsudden-all -n 2 -p 0 -w 4

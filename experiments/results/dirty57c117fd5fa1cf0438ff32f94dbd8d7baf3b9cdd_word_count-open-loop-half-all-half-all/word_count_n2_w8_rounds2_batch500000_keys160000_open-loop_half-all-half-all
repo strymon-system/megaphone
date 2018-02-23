@@ -1,0 +1,22 @@
+[m[m[32m[1m    Finished[m release [optimized] target(s) in 0.0 secs
+[m[m[32m[1m     Running[m `target/release/examples/word_count 2 500000 160000 open-loop half-all-half-all -n 2 -p 1 -w 8`
+args: Args { inner: ["target/release/examples/word_count", "2", "500000", "160000", "open-loop", "half-all-half-all", "-n", "2", "-p", "1", "-w", "8"] }
+parameters: rounds: 2, batch: 500000, keys: 160000, mode: OpenLoopConstant, map_mode: HalfAllHalfAll
+debug: data loaded
+debug: data loaded
+debug: data loaded
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+debug: data loaded
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+debug: data loaded
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+debug: data loaded
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+debug: data loaddebdebug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+debug: data loaded
+debug: mode: OpenLoopConstant, map mode: HalfAllHalfAll
+bash: line 1:  9563 Terminated              hwloc-bind socket:1 -- cargo run --release --example word_count -- 2 500000 160000 open-loop half-all-half-all -n 2 -p 1 -w 8
+backtrace.
+^C
