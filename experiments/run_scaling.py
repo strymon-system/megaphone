@@ -4,10 +4,14 @@ from experlib import eprint
 
 eprint("commit: {}".format(experlib.current_commit))
 
+# assumes the scaling code is at this path on the cluster machine(s)
+cluster_src_path = "/home/andreal/Src/dynamic-scaling-mechanism"
+cluster_server = "andreal@sgs-r820-01"
+
 def run_cmd(cmd, redirect=None, background=False):
-    full_cmd = "cd /home/andreal/Src/dynamic-scaling-mechanism; {}".format(cmd)
+    full_cmd = "cd {}; {}".format(cluster_src_path, cmd)
     eprint("running: {}".format(full_cmd))
-    return execute("ssh -t andreal@sgs-r820-01 \"{}\"".format(full_cmd) + 
+    return execute("ssh -t {} \"{}\"".format(cluster_server, full_cmd) + 
                     (" > {}".format(redirect) if redirect else ""), async=background)
 
 run_cmd("cargo build --release --example word_count")
@@ -28,8 +32,8 @@ def word_count_constant_one_two():
     eprint(experlib.experdir(experiment_name))
     experlib.ensuredir(experiment_name)
 
-    for batch in [1000000]: # (1000000 + 100000 * x for x in range(5, 10)):
-        for keys in [10240000]: # (40000 * (2 ** y) for y in range(9, 11)):
+    for batch in [1000000]:
+        for keys in [10240000]:
             for map_mode in all_map_modes:
                 n = 2
                 w = 1
@@ -48,8 +52,8 @@ def word_count_constant_half_all():
     eprint(experlib.experdir(experiment_name))
     experlib.ensuredir(experiment_name)
 
-    for batch in [1000000]: #(500000 + 100000 * x for x in [5, 7, 9]):
-        for keys in [40960000]: # (40000 * (2 ** y) for y in range(10, 11)):
+    for batch in [1000000]:
+        for keys in [40960000]:
             for map_mode in all_map_modes:
                 n = 2
                 w = 4
@@ -67,8 +71,8 @@ def word_count_square_half_all():
     eprint(experlib.experdir(experiment_name))
     experlib.ensuredir(experiment_name)
 
-    for batch in [2900000]: #(2000000 + 100000 * x for x in range(5, 10)):
-        for keys in [20480000 // 2]: #(40000 * (2 ** y) for y in range(7, 11)):
+    for batch in [2900000]:
+        for keys in [20480000 // 2]:
             for map_mode in all_map_modes:
                 n = 2
                 w = 4
@@ -79,6 +83,6 @@ def word_count_square_half_all():
                 eprint("RUNNING keys: {} in {}".format(keys, filename))
                 experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, n, p, w, filename) for p in range(0, 2)])
 
-# word_count_constant_one_two()
-# word_count_constant_half_all()
+word_count_constant_one_two()
+word_count_constant_half_all()
 word_count_square_half_all()
