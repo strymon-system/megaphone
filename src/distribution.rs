@@ -207,6 +207,8 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
         let hash = Rc::new(hash);
         let hash2 = Rc::clone(&hash);
 
+        let index = self.scope().index();
+
         // bin -> keys -> state
         let states: Rc<RefCell<Vec<HashMap<K, D, >>>> = Rc::new(RefCell::new(vec![Default::default(); 1 << BIN_SHIFT]));
         let states_f = Rc::clone(&states);
@@ -419,9 +421,10 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                 if let Some(state_update) = pending_states.remove(time.time()) {
                     let mut states = states.borrow_mut();
                     for (_target, bin, internal) in state_update {
+                        assert_eq!(_target, index);
                         // println!("states[{}].len(): {:?}", *bin, internal.len());
                         // TODO(moritzho) this is weird
-                        assert!(states[*bin].is_empty());
+                        assert!(states[*bin].is_empty(), "state is non-empty, bin: {}", *bin);
                         states[*bin].extend(internal.into_iter());
                     }
                 }
