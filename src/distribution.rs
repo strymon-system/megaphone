@@ -384,29 +384,29 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
             input.for_each(|time, data| {
 
                 // stash if not time yet
-                if notificator.frontier(0).iter().any(|x| x.less_than(time.time()))
-                    && notificator.frontier(1).iter().any(|x| x.less_than(time.time())){
-                    pending.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                    notificator.notify_at(time);
-                }
-                    else {
-                        // else we can process immediately
-                        let mut session = output.session(&time);
-                        let mut states = states.borrow_mut();
+                // if notificator.frontier(0).iter().any(|x| x.less_than(time.time()))
+                //     && notificator.frontier(1).iter().any(|x| x.less_than(time.time())){
+                pending.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                notificator.notify_at(time);
+                // }
+                //     else {
+                //         // else we can process immediately
+                //         let mut session = output.session(&time);
+                //         let mut states = states.borrow_mut();
 
-                        // let sum = states.iter().map(|x| x.len()).sum::<usize>();
-                        // println!("at {:?}, current sum: {:?}; about to add: {:?}", time.time(), sum, data.len());
+                //         // let sum = states.iter().map(|x| x.len()).sum::<usize>();
+                //         // println!("at {:?}, current sum: {:?}; about to add: {:?}", time.time(), sum, data.len());
 
-                        for (_, (key, val)) in data.drain(..) {
-                            let bin = (hash(&key) >> bin_shift) as usize;
-                            let (remove, output) = {
-                                let state = states[bin].entry(key.clone()).or_insert_with(Default::default);
-                                fold(&key, val, state)
-                            };
-                            if remove { states[bin].remove(&key); }
-                            session.give_iterator(output.into_iter());
-                        }
-                    }
+                //         for (_, (key, val)) in data.drain(..) {
+                //             let bin = (hash(&key) >> bin_shift) as usize;
+                //             let (remove, output) = {
+                //                 let state = states[bin].entry(key.clone()).or_insert_with(Default::default);
+                //                 fold(&key, val, state)
+                //             };
+                //             if remove { states[bin].remove(&key); }
+                //             session.give_iterator(output.into_iter());
+                //         }
+                //     }
             });
 
             state.for_each(|time, data| {
