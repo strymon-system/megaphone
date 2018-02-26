@@ -67,18 +67,18 @@ def word_count_square_half_all():
     eprint(experlib.experdir(experiment_name))
     experlib.ensuredir(experiment_name)
 
-    for batch in (2000000 + 1000000 * x for x in range(0, 2)):
-        for keys in (40000 * (2 ** y) for y in range(7, 11)):
+    for batch in [2900000]: #(2000000 + 100000 * x for x in range(5, 10)):
+        for keys in [20480000 // 2]: #(40000 * (2 ** y) for y in range(7, 11)):
             for map_mode in all_map_modes:
                 n = 2
                 w = 4
-                rounds=10
+                rounds=20
                 open_loop="square"
 
                 filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, n, w)
                 eprint("RUNNING keys: {} in {}".format(keys, filename))
                 experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, n, p, w, filename) for p in range(0, 2)])
 
-word_count_constant_one_two()
-word_count_constant_half_all()
+# word_count_constant_one_two()
+# word_count_constant_half_all()
 word_count_square_half_all()
