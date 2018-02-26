@@ -5,8 +5,8 @@ from experlib import eprint
 eprint("commit: {}".format(experlib.current_commit))
 
 # assumes the scaling code is at this path on the cluster machine(s)
-cluster_src_path = "/home/andreal/Src/dynamic-scaling-mechanism"
-cluster_server = "andreal@sgs-r820-01"
+cluster_src_path = "/home/moritzho/Src/dynamic-scaling-mechanism"
+cluster_server = "moritzho@sgs-r820-01"
 
 def run_cmd(cmd, redirect=None, background=False):
     full_cmd = "cd {}; {}".format(cluster_src_path, cmd)
