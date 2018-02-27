@@ -208,6 +208,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
         let hash2 = Rc::clone(&hash);
 
         let index = self.scope().index();
+        let peers = self.scope().peers();
 
         // bin -> keys -> state
         let states: Rc<RefCell<Vec<HashMap<K, D, >>>> = Rc::new(RefCell::new(vec![Default::default(); 1 << BIN_SHIFT]));
@@ -339,10 +340,12 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                                 let mut session = state_out.session(&time);
                                 for (bin, (old, new)) in old_map.iter().zip(new_map.iter()).enumerate() {
                                     // Migration is needed if a bin is to be moved (`old != new`) and the state
-                                    // actually contains data.
-                                    if (*old == index) && (old != new) && !states[bin].is_empty() {
+                                    // actually contains data. Also, we must be the current owner of the bin.
+                                    if (*old % peers == index) && (old != new) && !states[bin].is_empty() {
                                         // Capture bin's values as a `Vec` of (key, state) pairs
                                         let state = states[bin].drain().collect::<Vec<_>>();
+                                        // Release the local state memory
+                                        states[bin].shrink_to_fit();
                                         session.give((*new, Bin(bin), state));
                                     }
                                 }
@@ -380,7 +383,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                 if let Some(state_update) = pending_states.remove(time.time()) {
                     let mut states = states.borrow_mut();
                     for (_target, bin, internal) in state_update {
-                        assert_eq!(_target, index);
+                        assert_eq!(_target % peers, index);
                         // println!("states[{}].len(): {:?}", *bin, internal.len());
                         // TODO(moritzho) this is weird
                         assert!(states[*bin].is_empty(), "state is non-empty, bin: {}", *bin);
