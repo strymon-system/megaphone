@@ -71,12 +71,12 @@ def word_count_square_half_all():
     eprint(experlib.experdir(experiment_name))
     experlib.ensuredir(experiment_name)
 
-    for batch in [2900000]:
+    for batch in [2600000]:
         for keys in [20480000 // 2]:
             for map_mode in all_map_modes:
                 n = 2
                 w = 4
-                rounds=20
+                rounds=10
                 open_loop="square"
 
                 filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, n, w)

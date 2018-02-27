@@ -92,7 +92,7 @@ experiment=results/${COMMIT}_word_count-square-half-all
 )
 
 keys=10240000
-batch=2700000
+batch=2600000
 rounds=10
 
 for mode in ${modes[@]}; do
