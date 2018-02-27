@@ -67,7 +67,7 @@ struct ControlSet<T> {
 
 impl<T> ControlSet<T> {
 
-    ///
+    /// Obtain the current bin to destination mapping
     fn map(&self) -> &Vec<usize> {
         &self.map
     }
@@ -121,11 +121,7 @@ impl<T: PartialOrder> ControlSetBuilder<T> {
         let mut frontier = Antichain::new();
         for f in self.frontier {frontier.insert(f);}
 
-        let mut map = //if let Some(ref previous) = previous {
-            previous.map().clone();
-        // } else {
-        //     vec![0; 1 << BIN_SHIFT]
-        // };
+        let mut map = previous.map().clone();
 
         for inst in self.instructions {
             match inst {
@@ -223,9 +219,6 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
         // Number of bits to use as container number
         let bin_shift = ::std::mem::size_of::<usize>() * 8 - BIN_SHIFT;
-
-        // let data_frontier = Rc::new(RefCell::new(Antichain::new()));
-        // let data_frontier_f = Rc::clone(&data_frontier);
 
         let mut probe1 = ProbeHandle::new();
         let probe2 = probe1.clone();
@@ -361,7 +354,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
             }
         });
 
-        let mut pending: HashMap<_,_> = Default::default();   // times -> (keys -> state)
+        let mut pending: HashMap<_,_> = Default::default();   // times -> Vec<Vec<(keys -> state)>>
         let mut pending_states: HashMap<_,_> = Default::default();
 
         stream.binary_notify(&state, Exchange::new(move |&(target, _)| target as u64), Exchange::new(move |&(target, _, _)| target as u64), "StateMachine", vec![], move |input, state, output, notificator| {
@@ -392,7 +385,6 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                 }
 
                 if let Some(pend) = pending.remove(time.time()) {
-
                     // let sum = states.borrow().iter().map(|x| x.len()).sum::<usize>();
                     // println!("at {:?}, current sum: {:?}; about to add: {:?}", time.time(), sum, pend.len());
 
