@@ -256,30 +256,8 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
                 // Read data from the main data channel
                 data_in.for_each(|time, data| {
-
-                    // Test if we're permitted to send out data at `time`
-                    if frontiers[0].less_than(time.time()) && frontiers[1].less_than(time.time()) {
-                        // Control is behind, stash data
-                        data_stash.entry(time.clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                        notificator.notify_at(time)
-                    } 
-                    else {
-                        // Control input is ahead of `time`, pass data
-                        
-                        // Determine bin: Find the last one that is `less_than`
-                        // If no pending configuration was valid, active configuration is *always* valid
-                        let map = 
-                        pending_configurations
-                            .iter()
-                            .rev()
-                            .find(|&c| c.frontier.less_equal(time.time()))
-                            .unwrap_or(&active_configuration)
-                            .map();
-
-                        data_out
-                            .session(&time)
-                            .give_iterator(data.drain(..).map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d)));
-                    }
+                    data_stash.entry(time.clone()).or_insert_with(Vec::new).push(data.replace_with(Vec::new()));
+                    notificator.notify_at(time)
                 });
 
                 // Read control input
@@ -317,7 +295,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                     }
 
                     // Check for stashed data - now control input has to have advanced
-                    if let Some(mut vec) = data_stash.remove(&time) {
+                    if let Some(vec) = data_stash.remove(&time) {
 
                         let map = 
                         pending_configurations
@@ -327,9 +305,12 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                             .unwrap_or(&active_configuration)
                             .map();
 
-                        data_out
-                            .session(&time)
-                            .give_iterator(vec.drain(..).map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d)));
+                        for data in vec {
+                            let data_iter = data.into_iter().map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d));
+                            data_out
+                                .session(&time)
+                                .give_iterator(data_iter);
+                        }
                     }
 
                     // Did we cross a frontier?
@@ -384,31 +365,9 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
             // stash each input and request a notification when ready
             input.for_each(|time, data| {
-
-                // stash if not time yet
-                // if notificator.frontier(0).iter().any(|x| x.less_than(time.time()))
-                //     && notificator.frontier(1).iter().any(|x| x.less_than(time.time())){
-                pending.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                let value = data.replace_with(Vec::new());
+                pending.entry(time.time().clone()).or_insert_with(Vec::new).push(value);
                 notificator.notify_at(time);
-                // }
-                //     else {
-                //         // else we can process immediately
-                //         let mut session = output.session(&time);
-                //         let mut states = states.borrow_mut();
-
-                //         // let sum = states.iter().map(|x| x.len()).sum::<usize>();
-                //         // println!("at {:?}, current sum: {:?}; about to add: {:?}", time.time(), sum, data.len());
-
-                //         for (_, (key, val)) in data.drain(..) {
-                //             let bin = (hash(&key) >> bin_shift) as usize;
-                //             let (remove, output) = {
-                //                 let state = states[bin].entry(key.clone()).or_insert_with(Default::default);
-                //                 fold(&key, val, state)
-                //             };
-                //             if remove { states[bin].remove(&key); }
-                //             session.give_iterator(output.into_iter());
-                //         }
-                //     }
             });
 
             state.for_each(|time, data| {
@@ -436,14 +395,20 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
                     let mut session = output.session(&time);
                     let mut states = states.borrow_mut();
-                    for (_, (key, val)) in pend {
-                        let bin = (hash(&key) >> bin_shift) as usize;
-                        let (remove, output) = {
-                            let state = states[bin].entry(key.clone()).or_insert_with(Default::default);
-                            fold(&key, val, state)
-                        };
-                        if remove { states[bin].remove(&key); }
-                        session.give_iterator(output.into_iter());
+                    for chunk in pend {
+                        for (_, (key, val)) in chunk {
+                            let bin = (hash(&key) >> bin_shift) as usize;
+                            let (remove, output) = {
+                                let state = if states[bin].contains_key(&key) {
+                                    states[bin].get_mut(&key).unwrap()
+                                } else {
+                                    states[bin].entry(key.clone()).or_insert_with(Default::default)
+                                };
+                                fold(&key, val, state)
+                            };
+                            if remove { states[bin].remove(&key); }
+                            session.give_iterator(output.into_iter());
+                        }
                     }
                 }
             });
