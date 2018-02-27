@@ -359,7 +359,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                                 for (bin, (old, new)) in old_map.iter().zip(new_map.iter()).enumerate() {
                                     // Migration is needed if a bin is to be moved (`old != new`) and the state
                                     // actually contains data.
-                                    if (old != new) && !states[bin].is_empty() {
+                                    if (*old == index) && (old != new) && !states[bin].is_empty() {
                                         // Capture bin's values as a `Vec` of (key, state) pairs
                                         let state = states[bin].drain().collect::<Vec<_>>();
                                         session.give((*new, Bin(bin), state));
