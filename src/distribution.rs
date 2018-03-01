@@ -321,11 +321,10 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                             .unwrap_or(&active_configuration)
                             .map();
 
+                        let mut session = data_out.session(&time);
                         for data in vec {
                             let data_iter = data.into_iter().map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d));
-                            data_out
-                                .session(&time)
-                                .give_iterator(data_iter);
+                            session.give_iterator(data_iter);
                         }
                     }
 
