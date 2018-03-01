@@ -398,9 +398,29 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
             // stash each input and request a notification when ready
             input.for_each(|time, data| {
-                let value = data.replace_with(Vec::new());
-                pending.entry(time.time().clone()).or_insert_with(Vec::new).push(value);
-                notificator.notify_at(time);
+                if notificator.frontier(0).iter().any(|x| x.less_than(time.time()))
+                    || notificator.frontier(1).iter().any(|x| x.less_than(time.time())) {
+                    let value = data.replace_with(Vec::new());
+                    pending.entry(time.time().clone()).or_insert_with(Vec::new).push(value);
+                    notificator.notify_at(time);
+                } else {
+                    let mut session = output.session(&time);
+                    let mut states = states.borrow_mut();
+
+                    for (_target, (key, val)) in data.drain(..) {
+                        let bin = (hash(&key) >> bin_shift) as usize;
+                        let (remove, output) = {
+                            let state = if states[bin].contains_key(&key) {
+                                states[bin].get_mut(&key).unwrap()
+                            } else {
+                                states[bin].entry(key.clone()).or_insert_with(Default::default)
+                            };
+                            fold(time.time(), &key, val, state)
+                        };
+                        if remove { states[bin].remove(&key); }
+                        session.give_iterator(output.into_iter());
+                    }
+                }
             });
 
             state.for_each(|time, data| {
