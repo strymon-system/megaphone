@@ -247,7 +247,8 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
         builder.build(move |_capability| {
 
-            let mut notificator = FrontierNotificator::new();
+            let mut data_notificator = FrontierNotificator::new();
+            let mut control_notificator = FrontierNotificator::new();
 
             // Data input stash, time -> Vec<D>
             let mut data_stash: HashMap<_,_> = Default::default();
@@ -270,20 +271,15 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                 let mut data_out = data_out.activate();
                 let mut state_out = state_out.activate();
 
-                // Read data from the main data channel
-                data_in.for_each(|time, data| {
-                    data_stash.entry(time.clone()).or_insert_with(Vec::new).push(data.replace_with(Vec::new()));
-                    notificator.notify_at(time)
-                });
-
                 // Read control input
                 control_in.for_each(|time, data| {
                     pending_control.entry(time.clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                    notificator.notify_at(time)
+                    control_notificator.notify_at(time.clone());
+                    data_notificator.notify_at(time);
                 });
 
                 // Analyze control frontier
-                notificator.for_each(&[&frontiers[0], &frontiers[1]], |time, not| {
+                control_notificator.for_each(&[&frontiers[1]], |time, _not| {
                     // Check if there are pending control instructions
                     if let Some(mut vec) = pending_control.remove(&time) {
                         // Extend the configurations with (T, ControlInst) tuples
@@ -307,9 +303,30 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                         if let Some(ref config) = pending_configurations.first() {
                             debug_assert!(active_configuration.frontier.dominates(&config.frontier));
                         }
-
                     }
+                });
 
+                // Read data from the main data channel
+                data_in.for_each(|time, data| {
+                    if frontiers[1].less_than(time.time()) {
+                        data_stash.entry(time.clone()).or_insert_with(Vec::new).push(data.replace_with(Vec::new()));
+                    } else {
+                        let map =
+                            pending_configurations
+                                .iter()
+                                .rev()
+                                .find(|&c| c.frontier.less_equal(time.time()))
+                                .unwrap_or(&active_configuration)
+                                .map();
+
+                        let mut session = data_out.session(&time);
+                        let data_iter = data.drain(..).into_iter().map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d));
+                        session.give_iterator(data_iter);
+                    }
+                    data_notificator.notify_at(time);
+                });
+
+                data_notificator.for_each(&[&frontiers[0], &frontiers[1]], |time, not| {
                     // Check for stashed data - now control input has to have advanced
                     if let Some(vec) = data_stash.remove(&time) {
 
@@ -368,8 +385,6 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
                             // Promote the pending config to active
                             active_configuration = to_install;
-                        } else {
-                            not.notify_at(time);
                         }
                     }
                 });
