@@ -189,6 +189,14 @@ pub trait ControlStateMachine<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData
         F: Fn(&K, V, &mut D)->(bool, I)+'static,    // state update logic
         H: Fn(&K)->u64+'static,                     // "hash" function for keys
     >(&self, fold: F, hash: H, control: &Stream<S, Control>) -> Stream<S, R> where S::Timestamp : Hash+Eq ;
+
+    fn control_timed_state_machine<
+        R: Data,                                    // output type
+        D: ExchangeData+Default+'static,            // per-key state (data)
+        I: IntoIterator<Item=R>,                    // type of output iterator
+        F: Fn(&S::Timestamp, &K, V, &mut D)->(bool, I)+'static,    // state update logic
+        H: Fn(&K)->u64+'static,                     // "hash" function for keys
+    >(&self, fold: F, hash: H, control: &Stream<S, Control>) -> Stream<S, R> where S::Timestamp : Hash+Eq ;
 }
 
 impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, K, V> for Stream<S, (K, V)> {
@@ -197,6 +205,20 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
         D: ExchangeData+Default+'static,            // per-key state (data)
         I: IntoIterator<Item=R>,                    // type of output iterator
         F: Fn(&K, V, &mut D)->(bool, I)+'static,    // state update logic
+        H: Fn(&K)->u64+'static,                     // "hash" function for keys
+    >(&self, fold: F, hash: H, control: &Stream<S, Control>) -> Stream<S, R> where S::Timestamp : Hash+Eq {
+        self.control_timed_state_machine(
+            move |_time, key, val, agg| fold(key, val, agg),
+            hash,
+            control
+        )
+    }
+
+    fn control_timed_state_machine<
+        R: Data,                                    // output type
+        D: ExchangeData+Default+'static,            // per-key state (data)
+        I: IntoIterator<Item=R>,                    // type of output iterator
+        F: Fn(&S::Timestamp, &K, V, &mut D)->(bool, I)+'static,    // state update logic
         H: Fn(&K)->u64+'static,                     // "hash" function for keys
     >(&self, fold: F, hash: H, control: &Stream<S, Control>) -> Stream<S, R> where S::Timestamp : Hash+Eq {
 
@@ -399,7 +421,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                                 } else {
                                     states[bin].entry(key.clone()).or_insert_with(Default::default)
                                 };
-                                fold(&key, val, state)
+                                fold(time.time(), &key, val, state)
                             };
                             if remove { states[bin].remove(&key); }
                             session.give_iterator(output.into_iter());
