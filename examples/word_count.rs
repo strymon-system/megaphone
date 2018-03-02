@@ -308,9 +308,13 @@ fn main() {
             println!("worker {:02}:\t{}\t{}\t{}\t{}\t(of {} measurements)", index, min, med, p99, max, measurements.len());
 
             let thing = to_print.len() / 1000;
+            let mut values = vec![];
             for i in 0 .. to_print.len() {
+                values.push(to_print[i].1);
                 if i % thing == 0 {
-                    println!("{:02}\tlatency\t{:?}\t{:?}", index, to_print[i].0, to_print[i].1);
+                    values.sort();
+                    println!("{:02}\tlatency\t{:?}\t{:?}", index, to_print[i].0, values[(values.len() as u64 * 0.95 as u64) as usize]);
+                    values.clear();
                 }
             }
 
