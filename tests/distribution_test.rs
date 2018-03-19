@@ -1,12 +1,11 @@
 
 extern crate timely;
-extern crate timely_communication;
 extern crate dynamic_scaling_mechanism;
 
 use timely::dataflow::*;
 use timely::dataflow::operators::{Input, Probe, Map, Inspect};
 
-use timely_communication::Configuration;
+use timely::Configuration;
 
 use dynamic_scaling_mechanism::distribution::{BIN_SHIFT, ControlInst, Control, ControlStateMachine};
 
@@ -89,7 +88,7 @@ fn custom_configuration() {
                     &control
                 )
                 .inspect(move |x| {
-                    assert!(result.contains(x));
+                    assert!(result.contains(x), "Got {:?}, expected one of {:?}", x, result);
                     result.retain(|e| e != x);
                 })
                 .probe_with(&mut probe);
