@@ -319,12 +319,12 @@ fn main() {
             }
 
             println!();
-            for elt in redistributions.iter() {
+            for elt in &redistributions {
                 println!("{:02}\tredistr\t{:?}\t10000000", index, elt);
             }
 
             println!();
-            for rede in redistribution_end.iter() {
+            for rede in &redistribution_end {
                 println!("{:02}\tred_end\t{:?}", index, rede);
             }
         }

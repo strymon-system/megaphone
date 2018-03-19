@@ -150,9 +150,9 @@ impl<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: ExchangeData> ControlStat
                 // Analyze control frontier
                 control_notificator.for_each(&[&frontiers[1]], |time, _not| {
                     // Check if there are pending control instructions
-                    if let Some(mut vec) = pending_control.remove(&time.time()) {
+                    if let Some(mut vec) = pending_control.remove(time.time()) {
                         // Extend the configurations with (T, ControlInst) tuples
-                        let mut builder: ControlSetBuilder<S::Timestamp> = ControlSetBuilder::new();
+                        let mut builder: ControlSetBuilder<S::Timestamp> = Default::default();
                         for update in vec.drain(..) {
                             builder.apply(update);
                         }
@@ -169,7 +169,7 @@ impl<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: ExchangeData> ControlStat
                             debug_assert!(cs[0].frontier.dominates(&cs[1].frontier));
                         }
                         // Assert that the currently active configuration dominates the first pending
-                        if let Some(ref config) = pending_configurations.first() {
+                        if let Some(config) = pending_configurations.first() {
                             debug_assert!(active_configuration.frontier.dominates(&config.frontier));
                         }
                     }
@@ -226,15 +226,13 @@ impl<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: ExchangeData> ControlStat
 
                     // If the next configuration to install is no longer at all ahead of the state machine output,
                     // then there can be no more records or state updates for any configuration prior to the next.
-                    if let Some(_) = pending_configurations.get(0) {
-                        if pending_configurations.get(0).unwrap().frontier.elements().iter().all(|t| !probe2.less_than(t)) {
+                    if pending_configurations.get(0).is_some() && pending_configurations[0].frontier.elements().iter().all(|t| !probe2.less_than(t)) {
 
-                            // We should now install `pending_configurations[0]` into `active_configuration`!
-                            let to_install = pending_configurations.remove(0);
+                        // We should now install `pending_configurations[0]` into `active_configuration`!
+                        let to_install = pending_configurations.remove(0);
 
-                            // Promote the pending config to active
-                            active_configuration = to_install;
-                        }
+                        // Promote the pending config to active
+                        active_configuration = to_install;
                     }
 
                 });
@@ -257,7 +255,7 @@ impl<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: ExchangeData> ControlStat
                 } else {
                     let mut session = output.session(&time);
                     for (_target, (key, val)) in data.drain(..) {
-                        let mut state = con.get(key.clone()).unwrap_or(Default::default());
+                        let mut state = con.get(key.clone()).unwrap_or_default();
                         let (remove, output) = {
                             fold(time.time(), &key, val, &mut state)
                         };
@@ -282,7 +280,7 @@ impl<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: ExchangeData> ControlStat
                     let mut session = output.session(&time);
                     for chunk in pend {
                         for (_, (key, val)) in chunk {
-                            let mut state = con.get(key.clone()).unwrap_or(Default::default());
+                            let mut state = con.get(key.clone()).unwrap_or_default();
                             let (remove, output) = {
                                 fold(time.time(), &key, val, &mut state)
                             };
