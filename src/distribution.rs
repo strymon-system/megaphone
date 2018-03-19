@@ -388,8 +388,8 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
             // stash each input and request a notification when ready
             input.for_each(|time, data| {
-                if notificator.frontier(0).iter().any(|x| x.less_than(time.time()))
-                    || notificator.frontier(1).iter().any(|x| x.less_than(time.time())) {
+                if notificator.frontier(0).iter().any(|x| x.less_equal(time.time()))
+                    || notificator.frontier(1).iter().any(|x| x.less_equal(time.time())) {
                     let value = data.replace_with(Vec::new());
                     pending.entry(time.time().clone()).or_insert_with(Vec::new).push(value);
                     notificator.notify_at(time);
