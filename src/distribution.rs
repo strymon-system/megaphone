@@ -56,25 +56,25 @@ impl Control {
 
 /// A compiled set of control instructions
 #[derive(Debug)]
-struct ControlSet<T> {
+pub struct ControlSet<T> {
     /// Its sequence number
-    sequence: u64,
+    pub sequence: u64,
     /// The frontier at which to apply the instructions
-    frontier: Antichain<T>,
+    pub frontier: Antichain<T>,
     /// Collection of instructions
-    map: Vec<usize>,
+    pub map: Vec<usize>,
 }
 
 impl<T> ControlSet<T> {
 
     /// Obtain the current bin to destination mapping
-    fn map(&self) -> &Vec<usize> {
+    pub fn map(&self) -> &Vec<usize> {
         &self.map
     }
 
 }
 
-struct ControlSetBuilder<T> {
+pub struct ControlSetBuilder<T> {
     sequence: Option<u64>,
     frontier: Vec<T>,
     instructions: Vec<ControlInst>,
@@ -83,7 +83,7 @@ struct ControlSetBuilder<T> {
 }
 
 impl<T: PartialOrder> ControlSetBuilder<T> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             sequence: None,
             frontier: Vec::new(),
@@ -92,7 +92,7 @@ impl<T: PartialOrder> ControlSetBuilder<T> {
         }
     }
 
-    fn apply(&mut self, control: Control) {
+    pub fn apply(&mut self, control: Control) {
         if self.count.is_none() {
             self.count = Some(control.count);
         }
@@ -112,11 +112,11 @@ impl<T: PartialOrder> ControlSetBuilder<T> {
 
     }
 
-    fn frontier<I: IntoIterator<Item=T>>(&mut self, caps: I) {
+    pub fn frontier<I: IntoIterator<Item=T>>(&mut self, caps: I) {
         self.frontier.extend(caps);
     }
 
-    fn build(self, previous: &ControlSet<T>) -> ControlSet<T> {
+    pub fn build(self, previous: &ControlSet<T>) -> ControlSet<T> {
         assert_eq!(0, self.count.unwrap_or(0));
         let mut frontier = Antichain::new();
         for f in self.frontier {frontier.insert(f);}
