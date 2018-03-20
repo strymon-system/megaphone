@@ -8,7 +8,8 @@ use timely::dataflow::operators::{Broadcast, Input, Probe};
 // use timely::dataflow::operators::aggregation::StateMachine;
 // use timely::progress::timestamp::RootTimestamp;
 
-use dynamic_scaling_mechanism::distribution::{BIN_SHIFT, ControlInst, Control, ControlStateMachine};
+use dynamic_scaling_mechanism::distribution::ControlStateMachine;
+use dynamic_scaling_mechanism::{BIN_SHIFT, ControlInst, Control};
 
 // fn factor(mut n: u64) -> u64 {
 //     let mut factor = 2;

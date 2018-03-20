@@ -6,7 +6,8 @@ use timely::dataflow::*;
 use timely::dataflow::operators::{Input, Probe, Map, Inspect};
 use timely::dataflow::operators::aggregation::StateMachine;
 
-use dynamic_scaling_mechanism::distribution::{ControlInst, Control, ControlStateMachine};
+use dynamic_scaling_mechanism::{ControlInst, Control};
+use dynamic_scaling_mechanism::distribution::ControlStateMachine;
 
 fn main() {
     timely::execute_from_args(std::env::args(), |worker| {

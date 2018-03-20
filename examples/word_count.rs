@@ -10,7 +10,8 @@ use rand::{Rng, SeedableRng, StdRng};
 use timely::dataflow::*;
 use timely::dataflow::operators::{Broadcast, Input, Map, Probe};
 
-use dynamic_scaling_mechanism::distribution::{BIN_SHIFT, ControlInst, Control, ControlStateMachine};
+use dynamic_scaling_mechanism::{BIN_SHIFT, ControlInst, Control};
+use dynamic_scaling_mechanism::distribution::ControlStateMachine;
 
 // include!(concat!(env!("OUT_DIR"), "/words.rs"));
 

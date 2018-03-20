@@ -16,7 +16,7 @@ use timely::progress::frontier::Antichain;
 
 use redis::{Commands, FromRedisValue, ToRedisArgs};
 
-use ::distribution::{BIN_SHIFT, Control, ControlSetBuilder, ControlSet};
+use ::{BIN_SHIFT, Control, ControlSetBuilder, ControlSet};
 
 /// Generic state-transition machinery: each key has a state, and receives a sequence of events.
 /// Events are applied in time-order, but no other promises are made. Each state transition can

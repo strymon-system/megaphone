@@ -7,7 +7,8 @@ use timely::dataflow::operators::{Input, Probe, Map, Inspect};
 
 use timely::Configuration;
 
-use dynamic_scaling_mechanism::distribution::{BIN_SHIFT, ControlInst, Control, ControlStateMachine};
+use dynamic_scaling_mechanism::{BIN_SHIFT, ControlInst, Control};
+use dynamic_scaling_mechanism::distribution::ControlStateMachine;
 
 #[test]
 fn default_configuration() {
