@@ -97,7 +97,7 @@ fn main() {
         "native" => Backend::Native,
         "scaling" => Backend::Scaling,
         "redis" => Backend::Redis,
-        _ => panic!("invlaid backend"),
+        _ => panic!("invalid backend"),
     };
 
     println!("parameters: rounds: {}, batch: {}, keys: {}, mode: {:?}, map_mode: {:?}, backend: {:?}",
