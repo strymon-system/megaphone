@@ -96,7 +96,7 @@ impl<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: ExchangeData> RedisContro
         H: Fn(&K)->u64+'static,                     // "hash" function for keys
     >(&self, fold: F, hash: H, control: &Stream<S, Control>) -> Stream<S, R> where S::Timestamp : Hash+Eq {
 
-        let client = ::redis::Client::open("redis://127.0.0.1/").unwrap();
+        let client = ::redis::Client::open(::std::env::var("REDIS").unwrap_or("redis://127.0.0.1/".into()).as_str()).unwrap();
         let con = client.get_connection().unwrap();
 
         let hash = Rc::new(hash);
