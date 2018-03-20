@@ -12,6 +12,7 @@ use timely::dataflow::operators::{Broadcast, Input, Map, Probe};
 
 use dynamic_scaling_mechanism::{BIN_SHIFT, ControlInst, Control};
 use dynamic_scaling_mechanism::distribution::ControlStateMachine;
+use dynamic_scaling_mechanism::redis_distribution::RedisControlStateMachine;
 
 // include!(concat!(env!("OUT_DIR"), "/words.rs"));
 
@@ -59,6 +60,12 @@ enum ExperimentMapMode {
     Fluid,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum Backend {
+    Native,
+    Redis,
+}
+
 fn main() {
     println!("args: {:?}", std::env::args());
 
@@ -84,8 +91,14 @@ fn main() {
         _ => panic!("invalid mode"),
     };
 
-    println!("parameters: rounds: {}, batch: {}, keys: {}, mode: {:?}, map_mode: {:?}",
-             rounds, batch, keys, mode, map_mode);
+    let backend = match args.next().unwrap().as_str() {
+        "native" => Backend::Native,
+        "redis" => Backend::Redis,
+        _ => panic!("invlaid backend"),
+    };
+
+    println!("parameters: rounds: {}, batch: {}, keys: {}, mode: {:?}, map_mode: {:?}, backend: {:?}",
+             rounds, batch, keys, mode, map_mode, backend);
 
     timely::execute_from_args(args, move |worker| {
 
@@ -102,18 +115,28 @@ fn main() {
             let control = scope.input_from(&mut control_input).broadcast();
             let input = scope.input_from(&mut input);
 
-            input
-                .map(|x| (x, 1))
-                .control_state_machine(
-                    |_key: &_, val, agg: &mut u64| {
-                        *agg += val;
-                        (false, Some(*agg))
-                    },
-                    |key| calculate_hash(key)
-                    ,
-                    &control
-                )
-                .probe_with(&mut probe);
+            let fold = |_key: &_, val, agg: &mut u64| {
+                *agg += val;
+                (false, Some(*agg))
+            };
+
+            let input = input
+                .map(|x| (x, 1));
+            let output = match backend {
+                Backend::Native => input
+                    .control_state_machine(
+                        fold,
+                        |key| calculate_hash(key),
+                        &control
+                    ),
+                Backend::Redis => input
+                    .redis_control_state_machine(
+                        fold,
+                        |key| calculate_hash(key),
+                        &control
+                    ),
+            };
+            output.probe_with(&mut probe);
         });
 
         let mut control_counter = 0;
