@@ -28,7 +28,7 @@ use ::{BIN_SHIFT, Control, ControlSetBuilder, ControlSet};
 /// is some total order on times respecting the total order (updates may be interleaved).
 
 /// Provides the `control_state_machine` method.
-pub trait ControlStateMachine<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: ExchangeData> {
+pub trait RedisControlStateMachine<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: ExchangeData> {
     /// Tracks a state for each presented key, using user-supplied state transition logic.
     ///
     /// The transition logic `fold` may mutate the state, and produce both output records and
@@ -56,7 +56,7 @@ pub trait ControlStateMachine<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: 
     ///                .inspect(move |x| assert!(result.contains(x)));
     /// });
     /// ```
-    fn control_state_machine<
+    fn redis_control_state_machine<
         R: Data,                                    // output type
         D: ExchangeData+Default+ToRedisArgs+FromRedisValue+'static,            // per-key state (data)
         I: IntoIterator<Item=R>,                    // type of output iterator
@@ -64,7 +64,7 @@ pub trait ControlStateMachine<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: 
         H: Fn(&K)->u64+'static,                     // "hash" function for keys
     >(&self, fold: F, hash: H, control: &Stream<S, Control>) -> Stream<S, R> where S::Timestamp : Hash+Eq ;
 
-    fn control_timed_state_machine<
+    fn redis_control_timed_state_machine<
         R: Data,                                    // output type
         D: ExchangeData+Default+ToRedisArgs+FromRedisValue+'static,            // per-key state (data)
         I: IntoIterator<Item=R>,                    // type of output iterator
@@ -73,22 +73,22 @@ pub trait ControlStateMachine<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: 
     >(&self, fold: F, hash: H, control: &Stream<S, Control>) -> Stream<S, R> where S::Timestamp : Hash+Eq ;
 }
 
-impl<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: ExchangeData> ControlStateMachine<S, K, V> for Stream<S, (K, V)> {
-    fn control_state_machine<
+impl<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: ExchangeData> RedisControlStateMachine<S, K, V> for Stream<S, (K, V)> {
+    fn redis_control_state_machine<
         R: Data,                                    // output type
         D: ExchangeData+Default+ToRedisArgs+FromRedisValue+'static,            // per-key state (data)
         I: IntoIterator<Item=R>,                    // type of output iterator
         F: Fn(&K, V, &mut D)->(bool, I)+'static,    // state update logic
         H: Fn(&K)->u64+'static,                     // "hash" function for keys
     >(&self, fold: F, hash: H, control: &Stream<S, Control>) -> Stream<S, R> where S::Timestamp : Hash+Eq {
-        self.control_timed_state_machine(
+        self.redis_control_timed_state_machine(
             move |_time, key, val, agg| fold(key, val, agg),
             hash,
             control
         )
     }
 
-    fn control_timed_state_machine<
+    fn redis_control_timed_state_machine<
         R: Data,                                    // output type
         D: ExchangeData+Default+ToRedisArgs+FromRedisValue+'static,            // per-key state (data)
         I: IntoIterator<Item=R>,                    // type of output iterator
