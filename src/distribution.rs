@@ -244,12 +244,11 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                             for (bin, (old, new)) in old_map.iter().zip(new_map.iter()).enumerate() {
                                 // Migration is needed if a bin is to be moved (`old != new`) and the state
                                 // actually contains data. Also, we must be the current owner of the bin.
-                                if (*old % peers == index) && (old != new) && !states[bin].is_empty() {
+                                if (*old % peers == index) && (old != new) {
                                     // Capture bin's values as a `Vec` of (key, state) pairs
-                                    let state = states[bin].drain().collect::<Vec<_>>();
+                                    session.give_iterator(states[bin].drain().map(|d| (*new, Bin(bin), d)));
                                     // Release the local state memory
                                     states[bin].shrink_to_fit();
-                                    session.give((*new, Bin(bin), state));
                                 }
                             }
                         }
@@ -302,12 +301,9 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
             notificator.for_each(|time,_,_| {
                 if let Some(state_update) = pending_states.remove(time.time()) {
                     let mut states = states.borrow_mut();
-                    for (_target, bin, internal) in state_update {
-                        assert_eq!(_target % peers, index);
-                        // println!("states[{}].len(): {:?}", *bin, internal.len());
-                        // TODO(moritzho) this is weird
-                        assert!(states[*bin].is_empty(), "state is non-empty, bin: {}", *bin);
-                        states[*bin].extend(internal.into_iter());
+
+                    for (_target, bin, (key, state)) in state_update {
+                        states[*bin].insert(key, state);
                     }
                 }
 
