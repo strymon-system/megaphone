@@ -181,7 +181,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
                 // Read data from the main data channel
                 data_in.for_each(|time, data| {
-                    if frontiers[1].less_than(time.time()) {
+                    if frontiers[1].less_equal(time.time()) {
                         data_stash.entry(time.clone()).or_insert_with(Vec::new).push(data.replace_with(Vec::new()));
                     } else {
                         let map =
