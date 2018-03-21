@@ -401,14 +401,22 @@ fn main() {
         measurements.sort();
 
         let min = measurements[0];
+        let p01 = measurements[measurements.len() / 100];
         let med = measurements[measurements.len() / 2];
         let p99 = measurements[99 * measurements.len() / 100];
         let max = measurements[measurements.len() - 1];
 
         if index == 0 {
-            println!("worker {:02}:\t{}\t{}\t{}\t{}\t(of {} measurements)", index, min, med, p99, max, measurements.len());
+            println!("#worker id:\tmin\tp01\tmed\tp99\tmax");
+            println!("worker {:02}:\t{}\t{}\t{}\t{}\t{}\t(of {} measurements)", index, min, p01, med, p99, max, measurements.len());
+            if mode == ExperimentMode::ClosedLoop {
+                let l2tp = |latency: u64| {
+                    batch as f64 / latency as f64 * 1_000_000_000 as f64
+                };
+                println!("worker {:02} throughput:\t{}\t{}\t{}\t{}\t{}\t(of {} measurements)", index, l2tp(min), l2tp(p01), l2tp(med), l2tp(p99), max, measurements.len());
+            }
 
-            let thing = to_print.len() / 1000;
+            let thing = to_print.len() / ::std::cmp::min(1000, to_print.len());
             let mut values = vec![];
             for i in 0 .. to_print.len() {
                 values.push(to_print[i].1);
