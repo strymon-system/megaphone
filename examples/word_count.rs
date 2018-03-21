@@ -3,7 +3,6 @@ extern crate rand;
 
 extern crate timely;
 extern crate dynamic_scaling_mechanism;
-use std::time::Instant;
 use std::hash::{Hash, Hasher};
 use rand::{Rng, SeedableRng, StdRng};
 
@@ -189,7 +188,7 @@ fn main() {
         // TODO(moritzo) HAAAACCCCKKK
         if peers != 2 {
             for (i, v) in map.iter_mut().enumerate() {
-                *v = (((i / 2) * 2 + (i % 2) * peers / 2) % peers);
+                *v = ((i / 2) * 2 + (i % 2) * peers / 2) % peers;
             }
         }
         if index == 0 {
@@ -206,22 +205,22 @@ fn main() {
         let ns_per_request = 1_000_000_000 / requests_per_sec;
 
         // -- square --
-        let SQUARE_PERIOD = 2_000_000_000; // 2 sec
+        let square_period = 2_000_000_000; // 2 sec
 
-        let SQUARE_HEIGHT = 100000;
-        let half_period = SQUARE_PERIOD / 2;
-        let hi_ns_per_request = 1_000_000_000 / (requests_per_sec + SQUARE_HEIGHT);
-        let lo_ns_per_request = 1_000_000_000 / (requests_per_sec - SQUARE_HEIGHT);
+        let square_height = 100000;
+        let half_period = square_period / 2;
+        let hi_ns_per_request = 1_000_000_000 / (requests_per_sec + square_height);
+        let lo_ns_per_request = 1_000_000_000 / (requests_per_sec - square_height);
 
         let ns_times_in_period = {
-            let mut ns_times_in_period = Vec::with_capacity(SQUARE_PERIOD / ns_per_request);
+            let mut ns_times_in_period = Vec::with_capacity(square_period / ns_per_request);
             if mode == ExperimentMode::OpenLoopSquare {
                 let mut cur_ns = 0;
-                while cur_ns < SQUARE_PERIOD && ns_times_in_period.len() < ns_times_in_period.capacity() {
+                while cur_ns < square_period && ns_times_in_period.len() < ns_times_in_period.capacity() {
                     ns_times_in_period.push(cur_ns);
                     cur_ns += if cur_ns < half_period { lo_ns_per_request } else { hi_ns_per_request };
                 }
-                eprintln!("debug: period length: {} {}", ns_times_in_period.len(), SQUARE_PERIOD / ns_per_request);
+                eprintln!("debug: period length: {} {}", ns_times_in_period.len(), square_period / ns_per_request);
             }
             ns_times_in_period
         };
@@ -365,7 +364,7 @@ fn main() {
                     //  period
 
                     let ns_times_in_period_index = |counter| counter % ns_times_in_period.len();
-                    let time_base = |counter| counter / ns_times_in_period.len() * SQUARE_PERIOD;
+                    let time_base = |counter| counter / ns_times_in_period.len() * square_period;
 
                     while time_base(request_counter + peers) + ns_times_in_period[ns_times_in_period_index(request_counter + peers)] < (elapsed_ns as usize) {
                         input.send(text_gen.word_rand(keys));
