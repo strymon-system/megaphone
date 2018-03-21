@@ -50,6 +50,7 @@ impl SentenceGenerator {
 
 #[derive(Debug, PartialEq, Eq)]
 enum ExperimentMode {
+    ClosedLoop,
     OpenLoopConstant,
     OpenLoopSquare,
 }
@@ -82,6 +83,7 @@ fn main() {
     let keys: usize = args.next().unwrap().parse().unwrap();
     // Open-loop?
     let mode = match args.next().unwrap().as_str() {
+        "closed" => ExperimentMode::ClosedLoop,
         "constant" => ExperimentMode::OpenLoopConstant,
         "square" => ExperimentMode::OpenLoopSquare,
         _ => panic!("invalid mode"),
@@ -253,8 +255,12 @@ fn main() {
         let mut request_counter = peers + index;    // skip first request for each.
 
         // we will run for 2 * rounds seconds, with 1 reconfiguration.
-        let mut measurements = Vec::with_capacity(2 * rounds * requests_per_sec / peers);
-        let mut to_print = Vec::with_capacity(2 * rounds * requests_per_sec / peers);
+        let mut measurements = if mode == ExperimentMode::ClosedLoop {
+            Vec::with_capacity(2 * rounds)
+        } else {
+            Vec::with_capacity(2 * rounds * requests_per_sec / peers)
+        };
+        let mut to_print = Vec::with_capacity(measurements.capacity());
         let mut redistribution_end = Vec::with_capacity(1024);
 
         // introduce data and watch!
@@ -290,6 +296,34 @@ fn main() {
             }
 
             match mode {
+                ExperimentMode::ClosedLoop => {
+                    let requested = timer.elapsed();
+                    let requested_at = requested.as_secs() * 1_000_000_000 + (requested.subsec_nanos() as u64);
+
+                    for i in 0..batch/peers {
+                        input.send(text_gen.word_rand(keys));
+                        if i & 0xffff == 0xffff {
+                            worker.step();
+                        }
+                    }
+                    input.advance_to(elapsed_ns as usize);
+                    control_input.advance_to(elapsed_ns as usize);
+
+                    while probe.less_than(input.time()) {
+                        worker.step();
+                    }
+
+                    let elapsed = timer.elapsed();
+                    let elapsed_ns = elapsed.as_secs() * 1_000_000_000 + (elapsed.subsec_nanos() as u64);
+
+                    if just_redistributed {
+                        redistribution_end.push(elapsed_ns);
+                    }
+
+                    // any un-recorded measurements that are complete should be recorded.
+                    measurements.push(elapsed_ns - requested_at);
+                    to_print.push((requested_at, elapsed_ns - requested_at))
+                },
                 ExperimentMode::OpenLoopConstant => {
 
                     // Introduce any requests that have "arrived" since last we were here.
