@@ -141,6 +141,44 @@ fn main() {
                         &control
                     ),
             };
+            let validate = false;
+            if validate {
+                use timely::dataflow::operators::Binary;
+                use timely::dataflow::channels::pact::Exchange;
+                use std::collections::HashMap;
+                let correct = input
+                    .state_machine(|_key: &_, val, agg: &mut u64| {
+                        *agg += val;
+                        (false, Some(*agg))
+                    }, |key| calculate_hash(key));
+                let mut in1_pending: HashMap<_, Vec<_>> = Default::default();
+                let mut in2_pending: HashMap<_, Vec<_>> = Default::default();
+                correct.binary_notify::<_, (), _, _, _>(&output, Exchange::new(|_| 0), Exchange::new(|_| 0), "Verify", vec![],
+                    move |in1, in2, _out, not| {
+                        in1.for_each(|time, data| {
+                            in1_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data.drain(..));
+                            not.notify_at(time);
+                        });
+                        in2.for_each(|time, data| {
+                            in2_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data.drain(..));
+                            not.notify_at(time);
+                        });
+                        not.for_each(|time, _, _| {
+                            let mut v1 = in1_pending.remove(time.time()).unwrap_or_default();
+                            let mut v2 = in2_pending.remove(time.time()).unwrap_or_default();
+                            v1.sort();
+                            v2.sort();
+                            assert_eq!(v1.len(), v2.len());
+                            let i1 = v1.iter();
+                            let i2 = v2.iter();
+                            for (a, b) in i1.zip(i2) {
+//                                println!("a: {:?}, b: {:?}", a, b);
+                                assert_eq!(a, b);
+                            }
+                        })
+                    }
+                );
+            }
             output.probe_with(&mut probe);
         });
 
