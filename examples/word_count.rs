@@ -305,8 +305,8 @@ fn main() {
                             worker.step();
                         }
                     }
-                    input.advance_to(elapsed_ns as usize);
-                    control_input.advance_to(elapsed_ns as usize);
+                    input.advance_to(measurements.len() + 2);
+                    control_input.advance_to(measurements.len() + 2);
 
                     while probe.less_than(input.time()) {
                         worker.step();
