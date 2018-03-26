@@ -443,6 +443,22 @@ fn main() {
             for rede in &redistribution_end {
                 println!("{:02}\tred_end\t{:?}", index, rede);
             }
+
+            let mut counts = vec![0usize; 64];
+            for measurement in measurements.iter().skip(10) {
+                let count_index = measurement.next_power_of_two().trailing_zeros() as usize;
+                counts[count_index] += 1;
+            }
+
+            println!("latencies:");
+            let mut sum = 0;
+            for index in 1 .. counts.len() {
+                if counts[index] > 0 {
+                    println!("\tcount[{}]:\t{}", index, counts[index]);
+                    sum += counts[index] * (1 << (index - 1));
+                }
+            }
+            println!("\t total floor log 2: {}", sum);
         }
 
     }).unwrap();
