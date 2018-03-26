@@ -68,6 +68,10 @@ enum Backend {
     Redis,
 }
 
+fn duration_to_nanos(duration: ::std::time::Duration) -> u64 {
+    (duration.as_secs() * 1_000_000_000).checked_add(duration.subsec_nanos() as u64).unwrap()
+}
+
 fn main() {
     println!("args: {:?}", std::env::args());
 
@@ -281,7 +285,7 @@ fn main() {
 
             // Open-loop latency-throughput test, parameterized by offered rate `ns_per_request`.
             let elapsed = timer.elapsed();
-            let elapsed_ns = elapsed.as_secs() * 1_000_000_000 + (elapsed.subsec_nanos() as u64);
+            let elapsed_ns = duration_to_nanos(elapsed);
 
             let skip_redistribution = just_redistributed;
             just_redistributed = false;
@@ -313,7 +317,7 @@ fn main() {
                     }
 
                     let elapsed = timer.elapsed();
-                    let elapsed_ns = elapsed.as_secs() * 1_000_000_000 + (elapsed.subsec_nanos() as u64);
+                    let elapsed_ns = duration_to_nanos(elapsed);
 
                     if just_redistributed {
                         redistribution_end.push(elapsed_ns);
@@ -343,7 +347,7 @@ fn main() {
                     let acknowledged_ns: u64 = probe.with_frontier(|frontier| frontier[0].inner as u64);
 
                     let elapsed = timer.elapsed();
-                    let elapsed_ns = elapsed.as_secs() * 1_000_000_000 + (elapsed.subsec_nanos() as u64);
+                    let elapsed_ns = duration_to_nanos(elapsed);
 
                     if just_redistributed {
                         redistribution_end.push(elapsed_ns);
@@ -381,7 +385,7 @@ fn main() {
                     let acknowledged_ns: u64 = probe.with_frontier(|frontier| frontier[0].inner as u64);
 
                     let elapsed = timer.elapsed();
-                    let elapsed_ns = elapsed.as_secs() * 1_000_000_000 + (elapsed.subsec_nanos() as u64);
+                    let elapsed_ns = duration_to_nanos(elapsed);
 
                     if just_redistributed {
                         redistribution_end.push(elapsed_ns);
