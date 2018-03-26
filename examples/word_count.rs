@@ -59,6 +59,7 @@ enum ExperimentMapMode {
     Sudden,
     OneByOne,
     Fluid,
+    StateThroughput,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -95,6 +96,7 @@ fn main() {
         "sudden" => ExperimentMapMode::Sudden,
         "one-by-one" => ExperimentMapMode::OneByOne,
         "fluid" => ExperimentMapMode::Fluid,
+        "tp" => ExperimentMapMode::StateThroughput,
         _ => panic!("invalid mode"),
     };
 
@@ -162,11 +164,11 @@ fn main() {
                     move |in1, in2, _out, not| {
                         in1.for_each(|time, data| {
                             in1_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data.drain(..));
-                            not.notify_at(time);
+                            not.notify_at(time.retain());
                         });
                         in2.for_each(|time, data| {
                             in2_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data.drain(..));
-                            not.notify_at(time);
+                            not.notify_at(time.retain());
                         });
                         not.for_each(|time, _, _| {
                             let mut v1 = in1_pending.remove(time.time()).unwrap_or_default();
@@ -236,17 +238,38 @@ fn main() {
             ExperimentMapMode::Sudden => 1,
             ExperimentMapMode::OneByOne => map.len(),
             ExperimentMapMode::Fluid => map.len() / peers,
+            ExperimentMapMode::StateThroughput => rounds - 2,
         };
         let batches_per_migration = map.len() / num_migrations;
 
         if index == 0 {
-            for i in 0 .. map.len() {
-                map[i] = i % peers;
-
-                if i % batches_per_migration == batches_per_migration - 1 {
+            match map_mode {
+                ExperimentMapMode::StateThroughput => {
+                    assert_eq!(mode, ExperimentMode::ClosedLoop, "ExperimentMapMode::StateThroughput only works with closed loop.");
+                    let initial_map = map.clone();
+                    for i in 0..map.len() {
+                        map[i] = i % peers;
+                    }
                     eprintln!("debug: setting up reconfiguration: {:?}", map);
-                    control_plan.push((rounds * 1_000_000_000, Control::new(control_counter,  1, ControlInst::Map(map.clone()))));
-                    control_counter += 1;
+
+                    for round in 1..rounds/2 {
+                        control_plan.push((round * 2, Control::new(control_counter, 1, ControlInst::Map(map.clone()))));
+                        control_counter += 1;
+                        control_plan.push((round * 2 + 1, Control::new(control_counter, 1, ControlInst::Map(initial_map.clone()))));
+                        control_counter += 1;
+                    }
+
+                },
+                _ => {
+                    for i in 0..map.len() {
+                        map[i] = i % peers;
+
+                        if i % batches_per_migration == batches_per_migration - 1 {
+                            eprintln!("debug: setting up reconfiguration: {:?}", map);
+                            control_plan.push((rounds * 1_000_000_000, Control::new(control_counter, 1, ControlInst::Map(map.clone()))));
+                            control_counter += 1;
+                        }
+                    }
                 }
             }
             assert_eq!(control_counter as usize, num_migrations + 1);
@@ -290,12 +313,15 @@ fn main() {
             let skip_redistribution = just_redistributed;
             just_redistributed = false;
             // If the next planned migration can now be effected, ...
-            if control_plan.get(0).map(|&(time, _)| time < elapsed_ns as usize).unwrap_or(false) {
-                if !skip_redistribution {
-                    redistributions.push(elapsed_ns);
-                    control_input.send(control_plan.remove(0).1);
-                    just_redistributed = true;
-                }
+            if !skip_redistribution && match mode {
+                ExperimentMode::ClosedLoop =>
+                    control_plan.get(0).map(|&(time, _)| time < measurements.len()).unwrap_or(false),
+                _ =>
+                    control_plan.get(0).map(|&(time, _)| time < elapsed_ns as usize).unwrap_or(false),
+            } {
+                redistributions.push(elapsed_ns);
+                control_input.send(control_plan.remove(0).1);
+                just_redistributed = true;
             }
 
             match mode {
