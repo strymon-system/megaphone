@@ -146,15 +146,16 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
                 // Read control input
                 control_in.for_each(|time, data| {
-                    pending_control.entry(time.clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                    control_notificator.notify_at(time.clone());
-                    data_notificator.notify_at(time);
+                    pending_control.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                    let cap = time.retain();
+                    control_notificator.notify_at(cap.clone());
+                    data_notificator.notify_at(cap);
                 });
 
                 // Analyze control frontier
                 control_notificator.for_each(&[&frontiers[1]], |time, _not| {
                     // Check if there are pending control instructions
-                    if let Some(mut vec) = pending_control.remove(&time) {
+                    if let Some(mut vec) = pending_control.remove(time.time()) {
                         // Extend the configurations with (T, ControlInst) tuples
                         let mut builder: ControlSetBuilder<S::Timestamp> = Default::default();
                         for update in vec.drain(..) {
@@ -182,7 +183,10 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                 // Read data from the main data channel
                 data_in.for_each(|time, data| {
                     if frontiers[1].less_equal(time.time()) {
-                        data_stash.entry(time.clone()).or_insert_with(Vec::new).push(data.replace_with(Vec::new()));
+                        if !data_stash.contains_key(time.time()) {
+                            data_stash.insert(time.time().clone(), Vec::new());
+                        }
+                        data_stash.get_mut(time.time()).unwrap().push(data.replace_with(Vec::new()));
                     } else {
                         let map =
                             pending_configurations
@@ -196,12 +200,12 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                         let data_iter = data.drain(..).into_iter().map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d));
                         session.give_iterator(data_iter);
                     }
-                    data_notificator.notify_at(time);
+                    data_notificator.notify_at(time.retain());
                 });
 
                 data_notificator.for_each(&[&frontiers[0], &frontiers[1]], |time, _not| {
                     // Check for stashed data - now control input has to have advanced
-                    if let Some(vec) = data_stash.remove(&time) {
+                    if let Some(vec) = data_stash.remove(time.time()) {
 
                         let map = 
                         pending_configurations
@@ -269,9 +273,11 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
             input.for_each(|time, data| {
                 if notificator.frontier(0).iter().any(|x| x.less_equal(time.time()))
                     || notificator.frontier(1).iter().any(|x| x.less_equal(time.time())) {
-                    let value = data.replace_with(Vec::new());
-                    pending.entry(time.time().clone()).or_insert_with(Vec::new).push(value);
-                    notificator.notify_at(time);
+                    if !pending.contains_key(time.time()) {
+                        pending.insert(time.time().clone(), Vec::new());
+                    }
+                    pending.get_mut(time.time()).unwrap().push(data.replace_with(Vec::new()));
+                    notificator.notify_at(time.retain());
                 } else {
                     let mut session = output.session(&time);
                     let mut states = states.borrow_mut();
@@ -279,11 +285,10 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                     for (_target, (key, val)) in data.drain(..) {
                         let bin = (hash(&key) >> bin_shift) as usize;
                         let (remove, output) = {
-                            let state = if states[bin].contains_key(&key) {
-                                states[bin].get_mut(&key).unwrap()
-                            } else {
-                                states[bin].entry(key.clone()).or_insert_with(Default::default)
-                            };
+                            if !states[bin].contains_key(&key) {
+                                states[bin].insert(key.clone(), Default::default());
+                            }
+                            let state =  states[bin].get_mut(&key).unwrap();
                             fold(time.time(), &key, val, state)
                         };
                         if remove { states[bin].remove(&key); }
@@ -293,17 +298,22 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
             });
 
             state.for_each(|time, data| {
-                pending_states.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                notificator.notify_at(time);
+                if !pending_states.contains_key(time.time()) {
+                    pending_states.insert(time.time().clone(), Vec::new());
+                }
+                pending_states.get_mut(time.time()).unwrap().push(data.replace_with(Vec::new()));
+                notificator.notify_at(time.retain());
             });
 
             // go through each time with data, process each (key, val) pair.
             notificator.for_each(|time,_,_| {
-                if let Some(state_update) = pending_states.remove(time.time()) {
+                if let Some(state_updates) = pending_states.remove(time.time()) {
                     let mut states = states.borrow_mut();
 
-                    for (_target, bin, (key, state)) in state_update {
-                        states[*bin].insert(key, state);
+                    for state_update in state_updates {
+                        for (_target, bin, (key, state)) in state_update {
+                            states[*bin].insert(key, state);
+                        }
                     }
                 }
 
@@ -317,11 +327,10 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                         for (_, (key, val)) in chunk {
                             let bin = (hash(&key) >> bin_shift) as usize;
                             let (remove, output) = {
-                                let state = if states[bin].contains_key(&key) {
-                                    states[bin].get_mut(&key).unwrap()
-                                } else {
-                                    states[bin].entry(key.clone()).or_insert_with(Default::default)
-                                };
+                                if !states[bin].contains_key(&key) {
+                                    states[bin].insert(key.clone(), Default::default());
+                                }
+                                let state =  states[bin].get_mut(&key).unwrap();
                                 fold(time.time(), &key, val, state)
                             };
                             if remove { states[bin].remove(&key); }

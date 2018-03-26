@@ -142,7 +142,7 @@ impl<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: ExchangeData> RedisContro
                 // Read control input
                 control_in.for_each(|time, data| {
                     pending_control.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                    let cap = time;
+                    let cap = time.retain();
                     control_notificator.notify_at(cap.clone());
                     data_notificator.notify_at(cap);
                 });
@@ -178,7 +178,7 @@ impl<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: ExchangeData> RedisContro
                 // Read data from the main data channel
                 data_in.for_each(|time, data| {
                     if frontiers[1].less_than(time.time()) {
-                        data_stash.entry(time.clone()).or_insert_with(Vec::new).push(data.replace_with(Vec::new()));
+                        data_stash.entry(time.time().clone()).or_insert_with(Vec::new).push(data.replace_with(Vec::new()));
                     } else {
                         let map =
                             pending_configurations
@@ -192,12 +192,12 @@ impl<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: ExchangeData> RedisContro
                         let data_iter = data.drain(..).into_iter().map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d));
                         session.give_iterator(data_iter);
                     }
-                    data_notificator.notify_at(time);
+                    data_notificator.notify_at(time.retain());
                 });
 
                 data_notificator.for_each(&[&frontiers[0], &frontiers[1]], |time, _not| {
                     // Check for stashed data - now control input has to have advanced
-                    if let Some(vec) = data_stash.remove(&time) {
+                    if let Some(vec) = data_stash.remove(time.time()) {
 
                         let map = 
                         pending_configurations
@@ -249,7 +249,7 @@ impl<S: Scope, K: ExchangeData+ToRedisArgs+Hash+Eq, V: ExchangeData> RedisContro
                 if notificator.frontier(0).iter().any(|x| x.less_equal(time.time())) {
                     let value = data.replace_with(Vec::new());
                     pending.entry(time.time().clone()).or_insert_with(Vec::new).push(value);
-                    notificator.notify_at(time);
+                    notificator.notify_at(time.retain());
                 } else {
                     let mut session = output.session(&time);
                     for (_target, (key, val)) in data.drain(..) {

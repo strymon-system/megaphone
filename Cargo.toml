@@ -5,8 +5,7 @@ version = "0.0.1"
 build = "build.rs"
 
 [dependencies]
-timely = "0.5.0"
-timely_communication = "0.5.0"
+timely = { git = "https://github.com/frankmcsherry/timely-dataflow.git" }
 abomonation = "^0.5"
 abomonation_derive = "^0.3"
 rand = "^0.3.18"

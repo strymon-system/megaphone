@@ -100,21 +100,20 @@ fn main() {
             let outputs = inputs
                     .unary_frontier::<(String, u64), _, _, _>(Exchange::new(|k| calculate_hash(k)),
                                     "word_count",
-                                    |_cap| {
+                                    |_cap, _| {
                         let mut notificator = FrontierNotificator::new();
                         let mut counts = HashMap::new();
-                        let mut stash: HashMap<Capability<_>, Vec<Vec<(String, u64)>>> = HashMap::new();
+                        let mut stash: HashMap<_, Vec<Vec<(String, u64)>>> = HashMap::new();
 
                         move |input, output| {
                             input.for_each(|time, data| {
-                                let time = time.clone();
-                                stash.entry(time.clone()).or_insert_with(Vec::new).push(data.replace_with(Vec::new()));
-                                notificator.notify_at(time);
+                                stash.entry(time.time().clone()).or_insert_with(Vec::new).push(data.replace_with(Vec::new()));
+                                notificator.notify_at(time.retain());
                             });
 
                             notificator.for_each(&[input.frontier()], |time, _| {
                                 let mut affected = HashMap::with_capacity(2048);
-                                let mut data = stash.remove(&time).unwrap();
+                                let mut data = stash.remove(time.time()).unwrap();
                                 for d in data.drain(..) {
                                     for (k, c) in d.into_iter() {
                                         let mut new_count = c;
