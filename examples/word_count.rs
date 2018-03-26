@@ -305,9 +305,7 @@ fn main() {
 
                     for i in 0..batch/peers {
                         input.send(text_gen.word_rand(keys));
-                        if i & 0xffff == 0xffff {
-                            worker.step();
-                        }
+                        request_counter += peers;
                     }
                     input.advance_to(measurements.len() + 2);
                     control_input.advance_to(measurements.len() + 2);
@@ -401,22 +399,28 @@ fn main() {
             }
         }
 
+        let total_duration_ns = duration_to_nanos(timer.elapsed());
+
         measurements.sort();
 
         let min = measurements[0];
         let p01 = measurements[measurements.len() / 100];
+        let p25 = measurements[25*measurements.len() / 100];
         let med = measurements[measurements.len() / 2];
+        let p75 = measurements[75*measurements.len() / 100];
         let p99 = measurements[99 * measurements.len() / 100];
         let max = measurements[measurements.len() - 1];
 
         if index == 0 {
-            println!("#worker id:\tmin\tp01\tmed\tp99\tmax");
-            println!("worker {:02}:\t{}\t{}\t{}\t{}\t{}\t(of {} measurements)", index, min, p01, med, p99, max, measurements.len());
+            let l2tp = |count: usize, latency: u64| {
+                count as f64 / latency as f64 * 1_000_000_000f64 / 1_000_000f64
+            };
+
+            println!("#worker id:\tmin\tp01\tp25\tmed\tp75\tp99\tmax");
+            println!("worker {:02}:\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t(of {} measurements)", index, min, p01, p25, med, p75, p99, max, measurements.len());
+            println!("worker {:02} overall tp: {:.3}", index, l2tp(request_counter, total_duration_ns));
             if mode == ExperimentMode::ClosedLoop {
-                let l2tp = |latency: u64| {
-                    batch as f64 / latency as f64 * 1_000_000_000 as f64
-                };
-                println!("worker {:02} throughput:\t{}\t{}\t{}\t{}\t{}\t(of {} measurements)", index, l2tp(min), l2tp(p01), l2tp(med), l2tp(p99), max, measurements.len());
+                println!("worker {:02} tp:\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t(of {} measurements)", index, l2tp(batch, min), l2tp(batch, p01), l2tp(batch, p25), l2tp(batch, med), l2tp(batch, p75), l2tp(batch, p99), l2tp(batch, max), measurements.len());
             }
 
             let thing = to_print.len() / ::std::cmp::min(1000, to_print.len());
