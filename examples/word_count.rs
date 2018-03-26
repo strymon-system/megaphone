@@ -214,7 +214,7 @@ fn main() {
         let square_height = 100000;
         let half_period = square_period / 2;
         let hi_ns_per_request = 1_000_000_000 / (requests_per_sec + square_height);
-        let lo_ns_per_request = 1_000_000_000 / (requests_per_sec - square_height);
+        let lo_ns_per_request = 1_000_000_000 / (requests_per_sec.checked_sub(square_height).unwrap_or(1));
 
         let ns_times_in_period = {
             let mut ns_times_in_period = Vec::with_capacity(square_period / ns_per_request);
