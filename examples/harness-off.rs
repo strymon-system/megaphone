@@ -77,11 +77,15 @@ fn main() {
     let global_counts = Arc::new(Mutex::new(vec![0; 64]));
     let global_counts2 = global_counts.clone();
 
+    let throughputs = Arc::new(Mutex::new(Vec::new()));
+    let throughputs2 = throughputs.clone();
+
     println!("parameters: secs: {}, tps: {}, keys: {}, contestant: {:?}", secs, tps, keys, contestant);
 
     timely::execute_from_args(args, move |worker| {
 
         let global = global_counts.clone();
+        let throughputs = throughputs2.clone();
 
         let mut text_gen = SentenceGenerator::new(worker.index());
 
@@ -152,6 +156,9 @@ fn main() {
         let mut ack_counter = peers + index;
         let mut counts = vec![0usize; 64];
 
+        // true if input fell back more than one second
+        let mut fell_back = false;
+
         // tracks the ns through which input has been inserted.
         let mut inserted_ns: usize = 2;
 
@@ -163,6 +170,10 @@ fn main() {
 
             // Determine completed ns.
             let acknowledged_ns: usize = probe.with_frontier(|frontier| frontier[0].inner);
+
+            if elapsed_ns - inserted_ns > 1_000_000_000 {
+                fell_back = true;
+            }
 
             while ((ack_counter * ns_per_request)) < acknowledged_ns {
                 let requested_at = ack_counter * ns_per_request;
@@ -201,6 +212,12 @@ fn main() {
 
         // Determine completed ns.
         let mut acknowledged_ns: usize = probe.with_frontier(|frontier| frontier[0].inner);
+        while ((ack_counter * ns_per_request)) < acknowledged_ns {
+            ack_counter += peers;
+        }
+
+        let total_time = timer.elapsed();
+
         while acknowledged_ns < inserted_ns {
             acknowledged_ns = probe.with_frontier(|frontier| frontier[0].inner);
             worker.step();
@@ -213,7 +230,23 @@ fn main() {
             }
         }
 
+        fn duration_to_nanos(duration: ::std::time::Duration) -> u64 {
+            (duration.as_secs() * 1_000_000_000).checked_add(duration.subsec_nanos() as u64).unwrap()
+        }
+
+        let tps_guard = throughputs.lock();
+        if let Ok(mut tps) = tps_guard {
+            tps.push((ack_counter / peers, duration_to_nanos(total_time), fell_back));
+        }
+
     }).expect("failed to exit cleanly");
+
+    if let Ok(tps) = throughputs.lock() {
+        let time: u64 = tps.iter().map(|&(_, b, _)| b).max().unwrap();
+        let min_tp: f64 = tps.iter().map(|&(count, time, _)| count as f64 / (time as f64 / 1_000_000_000f64)).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+        let fell_back: bool = tps.iter().map(|&(_, _, c)| c).any(|c| c);
+        println!("throughput: {}\tfell back: {}\tduration: {}", min_tp, fell_back, time);
+    }
 
     let guard = global_counts2.lock();
     if let Ok(counts) = guard {
