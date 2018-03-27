@@ -62,7 +62,7 @@ def word_count_closed_one_two_state():
                 for backend in all_backends:
                     n = 2
                     w = 1
-                    rounds=20
+                    rounds=100
                     open_loop="closed"
 
                     filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, n, w)
