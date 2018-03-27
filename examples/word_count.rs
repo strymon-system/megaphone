@@ -461,8 +461,8 @@ fn main() {
             }
 
             println!();
-            for elt in &redistributions {
-                println!("{:02}\tredistr\t{:?}\t10000000", index, elt);
+            for (elt, end) in redistributions.iter().zip(redistribution_end.iter()) {
+                println!("{:02}\tredistr\t{:?}\t{:?}", index, elt, end - elt);
             }
 
             println!();
