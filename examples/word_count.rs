@@ -238,7 +238,7 @@ fn main() {
             ExperimentMapMode::Sudden => 1,
             ExperimentMapMode::OneByOne => map.len(),
             ExperimentMapMode::Fluid => map.len() / peers,
-            ExperimentMapMode::StateThroughput => rounds - 2,
+            ExperimentMapMode::StateThroughput => 2 * (rounds / 2 - 1),
         };
         let batches_per_migration = map.len() / num_migrations;
 
