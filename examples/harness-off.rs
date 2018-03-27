@@ -199,7 +199,10 @@ fn main() {
                         inserted_ns
                     }
                 },
-                Contestants::Frank => { unimplemented!() },
+                Contestants::Frank => {
+                    let scale = (inserted_ns - acknowledged_ns).next_power_of_two();
+                    elapsed_ns & !(scale - 1)
+                },
                 Contestants::Moritz => { unimplemented!() },
                 Contestants::Baseline => {
                     if acknowledged_ns >= inserted_ns {
