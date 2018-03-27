@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import experlib, sys
+import experlib, sys, os
 from executor import execute
 from experlib import eprint
 
@@ -12,8 +12,11 @@ cluster_server = "moritzho@sgs-r820-01"
 def run_cmd(cmd, redirect=None, background=False):
     full_cmd = "cd {}; {}".format(cluster_src_path, cmd)
     eprint("running: {}".format(full_cmd))
-    return execute("ssh -t {} \"{}\"".format(cluster_server, full_cmd) + 
-                    (" > {}".format(redirect) if redirect else ""), async=background)
+    if redirect is not None and os.path.exists(redirect):
+        return execute("echo \"skipping {}\"".format(redirect), async=background)
+    else:
+        return execute("ssh -t {} \"{}\"".format(cluster_server, full_cmd) +
+                        (" > {}".format(redirect) if redirect else ""), async=background)
 
 run_cmd("cargo build --release --example word_count")
 
