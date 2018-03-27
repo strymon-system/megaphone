@@ -290,8 +290,8 @@ fn main() {
         let mut redistribution_end = Vec::with_capacity(1024);
 
         // introduce data and watch!
-        for i in 0 .. keys / peers {
-            input.send(text_gen.word_at(i * peers + index));
+        for i in 0 .. keys {
+            input.send(text_gen.word_at(i));
         }
         input.advance_to(1);
         while probe.less_than(input.time()) {
