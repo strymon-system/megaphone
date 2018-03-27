@@ -449,13 +449,13 @@ fn main() {
                 println!("worker {:02} tp:\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t(of {} measurements)", index, l2tp(batch, min), l2tp(batch, p01), l2tp(batch, p25), l2tp(batch, med), l2tp(batch, p75), l2tp(batch, p99), l2tp(batch, max), measurements.len());
             }
 
-            let thing = to_print.len() / ::std::cmp::min(1000, to_print.len());
+            let thing = to_print.len() / ::std::cmp::min(200, to_print.len());
             let mut values = vec![];
             for i in 0 .. to_print.len() {
                 values.push(to_print[i].1);
                 if i % thing == 0 {
                     values.sort();
-                    println!("{:02}\tlatency\t{:?}\t{:?}", index, to_print[i].0, values[(values.len() as u64 * 0.95 as u64) as usize]);
+                    println!("{:02}\tlatency\t{:?}\t{:?}", index, to_print[i].0, values[(values.len() as u64 * 0.99 as u64) as usize]);
                     values.clear();
                 }
             }
