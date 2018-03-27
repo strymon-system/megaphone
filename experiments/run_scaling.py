@@ -42,7 +42,27 @@ def word_count_closed_one_two():
                 for backend in all_backends:
                     n = 2
                     w = 1
-                    rounds=10
+                    rounds=100
+                    open_loop="closed"
+
+                    filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, n, w)
+                    eprint("RUNNING keys: {} in {}".format(keys, filename))
+                    experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, backend, n, p, w, filename) for p in range(0, 2)])
+
+def word_count_closed_one_two_state():
+    experiment_name = "word_count-closed-one-two-state"
+
+    eprint("### {} ###".format(experiment_name))
+    eprint(experlib.experdir(experiment_name))
+    experlib.ensuredir(experiment_name)
+
+    for batch in [1]:
+        for keys in [10 ** x for x in range(8)]:
+            for map_mode in ["tp"]:
+                for backend in all_backends:
+                    n = 2
+                    w = 1
+                    rounds=20
                     open_loop="closed"
 
                     filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, n, w)
@@ -111,6 +131,7 @@ def word_count_square_half_all():
                     experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, backend, n, p, w, filename) for p in range(0, 2)])
 
 word_count_closed_one_two()
+word_count_closed_one_two_state()
 word_count_constant_one_two()
 word_count_constant_half_all()
 word_count_square_half_all()
