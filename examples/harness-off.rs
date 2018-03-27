@@ -164,6 +164,9 @@ fn main() {
 
         let mut elapsed = timer.elapsed();
 
+        let mut andrea_wait_ms = inserted_ns / 1_000_000;
+        let mut andrea_last_ms = inserted_ns / 1_000_000;
+
         while (elapsed.as_secs() as usize) < secs {
 
             let elapsed_ns = (elapsed.as_secs() as usize) * 1_000_000_000 + (elapsed.subsec_nanos() as usize);
@@ -183,7 +186,19 @@ fn main() {
             }
 
             let target_ns: usize = match contestant {
-                Contestants::Andrea => { unimplemented!() },
+                Contestants::Andrea => {
+                    let cur_ms = elapsed_ns / 1_000_000;
+                    if cur_ms < andrea_wait_ms {
+                        inserted_ns
+                    } else if cur_ms > andrea_last_ms {
+                        andrea_wait_ms = andrea_last_ms;
+                        let target_ns = cur_ms * 1_000_000;
+                        andrea_last_ms = cur_ms;
+                        target_ns
+                    } else {
+                        inserted_ns
+                    }
+                },
                 Contestants::Frank => { unimplemented!() },
                 Contestants::Moritz => { unimplemented!() },
                 Contestants::Baseline => {
@@ -236,7 +251,7 @@ fn main() {
 
         let tps_guard = throughputs.lock();
         if let Ok(mut tps) = tps_guard {
-            tps.push((ack_counter / peers, duration_to_nanos(total_time), fell_back));
+            tps.push((ack_counter, duration_to_nanos(total_time), fell_back));
         }
 
     }).expect("failed to exit cleanly");
