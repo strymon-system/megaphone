@@ -8,7 +8,7 @@ def eprint(*args):
     print(*args, file=sys.stderr)
 
 def experdir(name):
-    return "results/{}_{}".format(current_commit, name)
+    return "results/{}/{}".format(current_commit, name)
 
 def ensuredir(name):
     eprint("making directory: {}".format(experdir(name)))

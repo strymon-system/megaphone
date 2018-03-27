@@ -10,7 +10,7 @@ backends=("native" "scaling")
 common="set terminal pdf font \", 8\""
 
 # === closed one-two ===
-experiment=results/${COMMIT}_word_count-closed-one-two
+experiment=results/${COMMIT}/word_count-closed-one-two
 (
   cd $experiment;
   for f in `ls word_count*`; do
@@ -50,7 +50,7 @@ for backend in ${backends[@]}; do
     gnuplot -p -e "$common; set terminal pdf size 3.5,1.1; $multiplot" > plots/word_count_scaling_n02_w01_closed_multiplot_batch${batch}_keys${keys}_${backend}_$COMMIT.pdf
 done
 # === one-two ===
-experiment=results/${COMMIT}_word_count-constant-one-two
+experiment=results/${COMMIT}/word_count-constant-one-two
 (
   cd $experiment;
   for f in `ls word_count*`; do
@@ -89,7 +89,7 @@ for backend in ${backends[@]}; do
     gnuplot -p -e "$common; set terminal pdf size 3.5,1.1; $multiplot" > plots/word_count_scaling_n02_w01_constant_multiplot_batch${batch}_keys${keys}_${backend}_$COMMIT.pdf
 done
 # === half-all constant ===
-experiment=results/${COMMIT}_word_count-constant-half-all
+experiment=results/${COMMIT}/word_count-constant-half-all
 (
   cd $experiment;
   for f in `ls word_count*`; do
@@ -129,7 +129,7 @@ for backend in ${backends[@]}; do
 done
 
 # === half-all square ===
-experiment=results/${COMMIT}_word_count-square-half-all
+experiment=results/${COMMIT}/word_count-square-half-all
 (
   cd $experiment;
   for f in `ls word_count*`; do
