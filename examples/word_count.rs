@@ -7,7 +7,7 @@ use std::hash::{Hash, Hasher};
 use rand::{Rng, SeedableRng, StdRng};
 
 use timely::dataflow::*;
-use timely::dataflow::operators::{Broadcast, Input, Map, Probe};
+use timely::dataflow::operators::{Broadcast, Filter, Input, Map, Probe};
 use timely::dataflow::operators::aggregation::StateMachine;
 
 use dynamic_scaling_mechanism::{BIN_SHIFT, ControlInst, Control};
@@ -65,6 +65,7 @@ enum ExperimentMapMode {
 #[derive(Debug, PartialEq, Eq)]
 enum Backend {
     Native,
+    Noop,
     Scaling,
     Redis,
 }
@@ -102,6 +103,7 @@ fn main() {
 
     let backend = match args.next().unwrap().as_str() {
         "native" => Backend::Native,
+        "noop" => Backend::Noop,
         "scaling" => Backend::Scaling,
         "redis" => Backend::Redis,
         _ => panic!("invalid backend"),
@@ -135,6 +137,7 @@ fn main() {
             let output = match backend {
                 Backend::Native => input
                     .state_machine( fold, |key| calculate_hash(key)),
+                Backend::Noop => input.filter(|_| false).map(|x| x.1),
                 Backend::Scaling => input
                     .control_state_machine(
                         fold,
