@@ -256,9 +256,9 @@ fn main() {
                     eprintln!("debug: setting up reconfiguration: {:?}", map);
 
                     for round in 1..rounds/2 {
-                        control_plan.push((round * 2, Control::new(control_counter, 1, ControlInst::Map(map.clone()))));
+                        control_plan.push((round * 1_000_000_000, Control::new(control_counter, 1, ControlInst::Map(map.clone()))));
                         control_counter += 1;
-                        control_plan.push((round * 2 + 1, Control::new(control_counter, 1, ControlInst::Map(initial_map.clone()))));
+                        control_plan.push((round * 1_000_000_000, Control::new(control_counter, 1, ControlInst::Map(initial_map.clone()))));
                         control_counter += 1;
                     }
 
@@ -318,7 +318,7 @@ fn main() {
             // If the next planned migration can now be effected, ...
             if !skip_redistribution && match mode {
                 ExperimentMode::ClosedLoop =>
-                    control_plan.get(0).map(|&(time, _)| time < measurements.len()).unwrap_or(false),
+                    control_plan.get(0).is_some() && measurements.len() * 2 >= measurements.capacity(),
                 _ =>
                     control_plan.get(0).map(|&(time, _)| time < elapsed_ns as usize).unwrap_or(false),
             } {
