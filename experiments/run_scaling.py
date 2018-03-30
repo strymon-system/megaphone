@@ -59,7 +59,7 @@ def word_count_closed_one_two_state():
     eprint(experlib.experdir(experiment_name))
     experlib.ensuredir(experiment_name)
 
-    for batch in [1]:
+    for batch in [1024]:
         for keys in [10 ** x for x in range(8)]:
             for map_mode in ["tp"]:
                 for backend in all_backends:

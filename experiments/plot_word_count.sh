@@ -62,12 +62,12 @@ experiment=results/${COMMIT}/word_count-closed-one-two-state
 (
   cd $experiment;
   for f in `ls word_count*`; do
-    cat $f | grep latency | cut -f3- | tee latency-$f | tee >(grep A > latency-$f-A) | tee >(grep B > latency-$f-B) | (grep C > latency-$f-C)
+    cat $f | grep redistr | cut -f3- > latency-$f
   done
 )
 
 keys=(1 10 100 1000 10000 100000 1000000 10000000)
-batch=1
+batch=1024
 rounds=100
 
 for backend in "scaling"; do
