@@ -260,7 +260,7 @@ experiment=results/${COMMIT}/word_count-square-half-all
 )
 
 keys=10240000
-batch=2600000
+batch=2300000
 rounds=10
 
 for backend in ${backends[@]}; do
