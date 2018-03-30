@@ -177,6 +177,7 @@ EOFMarker
         set output "plots/$COMMIT/word_count_scaling_n02_w01_constant_multiplot_batch${batch}_keys${keys}_${backend}-cdf.${out_ext}"
         set logscale x
         set multiplot layout 3, 1 title "Constant ${batch}/s, ${keys} keys, ${backend}"
+        set xrange [100:*]
         ${multi_cdf}
         set xlabel "Latency [ns]"
         unset multiplot
@@ -241,6 +242,7 @@ EOFMarker
         set output "plots/$COMMIT/word_count_scaling_n02_w04_constant_multiplot_batch${batch}_keys${keys}_${backend}-cdf.${out_ext}"
         set logscale x
         set multiplot layout 3, 1 title "Constant ${batch}/s, ${keys} keys, ${backend}"
+        set xrange [1000:*]
         ${multi_cdf}
         set xlabel "Latency [ns]"
         unset multiplot
@@ -307,6 +309,7 @@ EOFMarker
         set output "plots/$COMMIT/word_count_scaling_n02_w04_square_multiplot_batch${batch}_keys${keys}_${backend}-cdf.${out_ext}"
         set logscale x
         set multiplot layout 3, 1 title "Constant ${batch}/s, ${keys} keys, ${backend}"
+        set xrange [5000:1000000]
         ${multi_cdf}
         set xlabel "Latency [ns]"
         unset multiplot
