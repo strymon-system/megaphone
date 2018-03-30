@@ -17,6 +17,8 @@ use timely::progress::frontier::Antichain;
 
 use ::{BIN_SHIFT, Bin, Control, ControlSetBuilder, ControlSet};
 
+const BUFFER_CAP: usize = 16;
+
 /// Generic state-transition machinery: each key has a state, and receives a sequence of events.
 /// Events are applied in time-order, but no other promises are made. Each state transition can
 /// produce output, which is sent.
@@ -139,6 +141,8 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                 map: vec![0; 1 << BIN_SHIFT],
             };
 
+            let mut data_return_buffer = vec![];
+
             // Handle input data
             move |frontiers| {
                 let mut data_out = data_out.activate();
@@ -186,7 +190,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                         if !data_stash.contains_key(time.time()) {
                             data_stash.insert(time.time().clone(), Vec::new());
                         }
-                        data_stash.get_mut(time.time()).unwrap().push(data.replace_with(Vec::new()));
+                        data_stash.get_mut(time.time()).unwrap().push(data.replace_with(data_return_buffer.pop().unwrap_or_else(Vec::new)));
                     } else {
                         let map =
                             pending_configurations
@@ -216,9 +220,14 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                             .map();
 
                         let mut session = data_out.session(&time);
-                        for data in vec {
-                            let data_iter = data.into_iter().map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d));
-                            session.give_iterator(data_iter);
+                        for mut data in vec {
+                            {
+                                let data_iter = data.drain(..).map(|d| (map[(hash2(&d.0) >> bin_shift) as usize], d));
+                                session.give_iterator(data_iter);
+                            }
+                            if data_return_buffer.len() < BUFFER_CAP {
+                                data_return_buffer.push(data);
+                            }
                         }
                     }
 
@@ -266,6 +275,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
         let mut pending: HashMap<_,_> = Default::default();   // times -> Vec<Vec<(keys -> state)>>
         let mut pending_states: HashMap<_,_> = Default::default();
+        let mut data_return_buffer = vec![];
 
         stream.binary_notify(&state, Exchange::new(move |&(target, _)| target as u64), Exchange::new(move |&(target, _, _)| target as u64), "StateMachine", vec![], move |input, state, output, notificator| {
 
@@ -276,7 +286,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                     if !pending.contains_key(time.time()) {
                         pending.insert(time.time().clone(), Vec::new());
                     }
-                    pending.get_mut(time.time()).unwrap().push(data.replace_with(Vec::new()));
+                    pending.get_mut(time.time()).unwrap().push(data.replace_with(data_return_buffer.pop().unwrap_or_else(Vec::new)));
                     notificator.notify_at(time.retain());
                 } else {
                     let mut session = output.session(&time);
@@ -323,8 +333,8 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
 
                     let mut session = output.session(&time);
                     let mut states = states.borrow_mut();
-                    for chunk in pend {
-                        for (_, (key, val)) in chunk {
+                    for mut chunk in pend {
+                        for (_, (key, val)) in chunk.drain(..) {
                             let bin = (hash(&key) >> bin_shift) as usize;
                             let (remove, output) = {
                                 if !states[bin].contains_key(&key) {
@@ -335,6 +345,9 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                             };
                             if remove { states[bin].remove(&key); }
                             session.give_iterator(output.into_iter());
+                        }
+                        if data_return_buffer.len() < BUFFER_CAP {
+                            data_return_buffer.push(chunk);
                         }
                     }
                 }
