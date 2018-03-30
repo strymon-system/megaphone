@@ -2,7 +2,7 @@
 
 COMMIT=`git rev-parse HEAD`
 
-mkdir -p plots
+mkdir -p plots/$COMMIT
 
 modes=("sudden" "one-by-one" "fluid")
 backends=("native" "scaling")
@@ -14,7 +14,7 @@ experiment=results/${COMMIT}/word_count-closed-one-two
 (
   cd $experiment;
   for f in `ls word_count*`; do
-    cat $f | grep latency | cut -f3- > latency-$f
+    cat $f | grep latency | cut -f3- | tee latency-$f | tee >(grep A > latency-$f-A) | tee >(grep B > latency-$f-B) | (grep C > latency-$f-C)
   done
 )
 
@@ -25,7 +25,7 @@ rounds=100
 for backend in ${backends[@]}; do
     for mode in "sudden"; do
       plot="set logscale y; set xlabel \"sec (wall clock)\"; set ylabel \"latency (µsec)\"; set key off; plot \"$experiment/latency-word_count_n2_w1_rounds${rounds}_batch${batch}_keys${keys}_closed_${mode}_${backend}\" using (\$1/1000000000):(\$2/1000) with lines lt rgb \"black\","
-      gnuplot -p -e "$common; set terminal pdf size 2.3,1.1; $plot" > plots/word_count_scaling_n02_w01_closed_${mode}_batch${batch}_keys${keys}_${backend}_$COMMIT.pdf
+      gnuplot -p -e "$common; set terminal pdf size 2.3,1.1; $plot" > plots/$COMMIT/word_count_scaling_n02_w01_closed_${mode}_batch${batch}_keys${keys}_${backend}.pdf
     done
 done
 
@@ -34,7 +34,7 @@ experiment=results/${COMMIT}/word_count-closed-one-two-state
 (
   cd $experiment;
   for f in `ls word_count*`; do
-    cat $f | grep redistr | cut -f3- > latency-$f
+    cat $f | grep latency | cut -f3- | tee latency-$f | tee >(grep A > latency-$f-A) | tee >(grep B > latency-$f-B) | (grep C > latency-$f-C)
   done
 )
 
@@ -63,7 +63,7 @@ for backend in "scaling"; do
             filename(n) = sprintf("$experiment/latency-word_count_n2_w1_rounds${rounds}_batch${batch}_keys%d_closed_${mode}_${backend}", n)
             # set terminal pdf size 2.3,1.1
             set terminal tikz size 8cm,5cm
-            set output "plots/word_count_scaling_n02_w01_state_throughput_${mode}_batch${batch}_keys${keys}_${backend}_$COMMIT.tex"
+            set output "plots/$COMMIT/word_count_scaling_n02_w01_state_throughput_${mode}_batch${batch}_keys${keys}_${backend}.tex"
             plot for [i=0:7] filename(10**i) using (i):(10**i/\$2*1000000000/2)
 EOFMarker
         gnuplot -persist <<-EOFMarker
@@ -84,8 +84,8 @@ EOFMarker
             set ylabel "Latency [ns/key]"
             filename(n) = sprintf("$experiment/latency-word_count_n2_w1_rounds${rounds}_batch${batch}_keys%d_closed_${mode}_${backend}", n)
             # set terminal pdf size 2.3,1.1
-#            set terminal tikz size 8cm,5cm
-#            set output "plots/word_count_scaling_n02_w01_state_latency_${mode}_batch${batch}_keys${keys}_${backend}_$COMMIT.tex"
+            set terminal tikz size 8cm,5cm
+            set output "plots/$COMMIT/word_count_scaling_n02_w01_state_latency_${mode}_batch${batch}_keys${keys}_${backend}.tex"
             plot for [i=0:7] filename(10**i) using (i):(\$2/10**i)
 EOFMarker
     done
@@ -96,7 +96,7 @@ experiment=results/${COMMIT}/word_count-constant-one-two
 (
   cd $experiment;
   for f in `ls word_count*`; do
-    cat $f | grep latency | cut -f3- > latency-$f
+    cat $f | grep latency | cut -f3- | tee latency-$f | tee >(grep A > latency-$f-A) | tee >(grep B > latency-$f-B) | (grep C > latency-$f-C)
   done
 )
 
@@ -106,7 +106,17 @@ batch=1000000
 for backend in ${backends[@]}; do
     for mode in ${modes[@]}; do
       plot="set logscale y; set xlabel \"sec (wall clock)\"; set ylabel \"latency (µsec)\"; set key off; plot \"$experiment/latency-word_count_n2_w1_rounds10_batch${batch}_keys${keys}_constant_${mode}_${backend}\" using (\$1/1000000000):(\$2/1000) with lines lt rgb \"black\","
-      gnuplot -p -e "$common; set terminal pdf size 2.3,1.1; $plot" > plots/word_count_scaling_n02_w01_constant_${mode}_batch${batch}_keys${keys}_${backend}_$COMMIT.pdf
+      gnuplot -p -e "$common; set terminal pdf size 2.3,1.1; $plot" > plots/$COMMIT/word_count_scaling_n02_w01_constant_${mode}_batch${batch}_keys${keys}_${backend}.pdf
+        gnuplot -persist <<-EOFMarker
+#            set logscale y
+#            set logscale x
+            plot "$experiment/latency-word_count_n2_w1_rounds10_batch${batch}_keys${keys}_constant_${mode}_${backend}-A" \
+                using 3:(\$0) smooth cumulative t "Before", \
+                "$experiment/latency-word_count_n2_w1_rounds10_batch${batch}_keys${keys}_constant_${mode}_${backend}-B" \
+                using 3:(\$0) smooth cumulative t "during", \
+                "$experiment/latency-word_count_n2_w1_rounds10_batch${batch}_keys${keys}_constant_${mode}_${backend}-C" \
+                using 3:(\$0) smooth cumulative t "After"
+EOFMarker
     done
 
     multiplot="set logscale y; set ylabel \"latency (µsec)\"; set key off; set yrange [10:10000000]; set multiplot; "
@@ -128,14 +138,14 @@ for backend in ${backends[@]}; do
 
     multiplot="$multiplot; set origin 0,0; set size 1,1; set ylabel; unset format y;  unset border; set tic scale 0; set xlabel \"sec (wall clock)\"; set format x \"\"; plot (1/0); "
 
-    gnuplot -p -e "$common; set terminal pdf size 3.5,1.1; $multiplot" > plots/word_count_scaling_n02_w01_constant_multiplot_batch${batch}_keys${keys}_${backend}_$COMMIT.pdf
+    gnuplot -p -e "$common; set terminal pdf size 3.5,1.1; $multiplot" > plots/$COMMIT/word_count_scaling_n02_w01_constant_multiplot_batch${batch}_keys${keys}_${backend}.pdf
 done
 # === half-all constant ===
 experiment=results/${COMMIT}/word_count-constant-half-all
 (
   cd $experiment;
   for f in `ls word_count*`; do
-    cat $f | grep latency | cut -f3- > latency-$f
+    cat $f | grep latency | cut -f3- | tee latency-$f | tee >(grep A > latency-$f-A) | tee >(grep B > latency-$f-B) | (grep C > latency-$f-C)
   done
 )
 
@@ -145,7 +155,7 @@ batch=1000000
 for backend in ${backends[@]}; do
     for mode in ${modes[@]}; do
       plot="set logscale y; set xlabel \"sec (wall clock)\"; set ylabel \"latency (µsec)\"; set key off; plot \"$experiment/latency-word_count_n2_w4_rounds10_batch${batch}_keys${keys}_constant_${mode}_${backend}\" using (\$1/1000000000):(\$2/1000) with lines lt rgb \"black\","
-      gnuplot -p -e "$common; set terminal pdf size 2.3,1.1; $plot" > plots/word_count_scaling_n02_w04_constant_${mode}_batch${batch}_keys${keys}_${backend}_$COMMIT.pdf
+      gnuplot -p -e "$common; set terminal pdf size 2.3,1.1; $plot" > plots/$COMMIT/word_count_scaling_n02_w04_constant_${mode}_batch${batch}_keys${keys}_${backend}.pdf
     done
 
     multiplot="set logscale y; set ylabel \"latency (µsec)\"; set key off; set yrange [10:10000000]; set multiplot; "
@@ -167,7 +177,7 @@ for backend in ${backends[@]}; do
 
     multiplot="$multiplot; set origin 0,0; set size 1,1; set ylabel; unset format y;  unset border; set tic scale 0; set xlabel \"sec (wall clock)\"; set format x \"\"; plot (1/0); "
 
-    gnuplot -p -e "$common; set terminal pdf size 3.5,1.1; $multiplot" > plots/word_count_scaling_n02_w04_constant_multiplot_batch${batch}_keys${keys}_${backend}_$COMMIT.pdf
+    gnuplot -p -e "$common; set terminal pdf size 3.5,1.1; $multiplot" > plots/$COMMIT/word_count_scaling_n02_w04_constant_multiplot_batch${batch}_keys${keys}_${backend}.pdf
 done
 
 # === half-all square ===
@@ -175,7 +185,7 @@ experiment=results/${COMMIT}/word_count-square-half-all
 (
   cd $experiment;
   for f in `ls word_count*`; do
-    cat $f | grep latency | cut -f3- > latency-$f
+    cat $f | grep latency | cut -f3- | tee latency-$f | tee >(grep A > latency-$f-A) | tee >(grep B > latency-$f-B) | (grep C > latency-$f-C)
   done
 )
 
@@ -186,7 +196,7 @@ rounds=10
 for backend in ${backends[@]}; do
     for mode in ${modes[@]}; do
       plot="set logscale y; set xlabel \"sec (wall clock)\"; set ylabel \"latency (µsec)\"; set key off; plot \"$experiment/latency-word_count_n2_w4_rounds${rounds}_batch${batch}_keys${keys}_square_${mode}_${backend}\" using (\$1/1000000000):(\$2/1000) with lines lt rgb \"black\","
-      gnuplot -p -e "$common; set terminal pdf size 2.3,1.1; $plot" > plots/word_count_scaling_n02_w04_square_${mode}_batch${batch}_keys${keys}_${backend}_$COMMIT.pdf
+      gnuplot -p -e "$common; set terminal pdf size 2.3,1.1; $plot" > plots/$COMMIT/word_count_scaling_n02_w04_square_${mode}_batch${batch}_keys${keys}_${backend}.pdf
     done
 
     multiplot="set logscale y; set ylabel \"latency (µsec)\"; set key off; set yrange [10:10000000]; set multiplot; "
@@ -208,5 +218,5 @@ for backend in ${backends[@]}; do
 
     multiplot="$multiplot; set origin 0,0; set size 1,1; set ylabel; unset format y;  unset border; set tic scale 0; set xlabel \"sec (wall clock)\"; set format x \"\"; plot (1/0); "
 
-    gnuplot -p -e "$common; set terminal pdf size 3.5,1.1; $multiplot" > plots/word_count_scaling_n02_w04_square_multiplot_batch${batch}_keys${keys}_${backend}_$COMMIT.pdf
+    gnuplot -p -e "$common; set terminal pdf size 3.5,1.1; $multiplot" > plots/$COMMIT/word_count_scaling_n02_w04_square_multiplot_batch${batch}_keys${keys}_${backend}.pdf
 done
