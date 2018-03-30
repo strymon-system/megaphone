@@ -291,6 +291,7 @@ fn main() {
         };
         let mut to_print = Vec::with_capacity(measurements.capacity());
         let mut redistribution_end = Vec::with_capacity(1024);
+        let mut requests_produced = Vec::with_capacity(measurements.capacity());
 
         // introduce data and watch!
         for i in 0 .. keys {
@@ -352,7 +353,8 @@ fn main() {
 
                     // any un-recorded measurements that are complete should be recorded.
                     measurements.push(elapsed_ns - requested_at);
-                    to_print.push((requested_at, elapsed_ns - requested_at))
+                    to_print.push((requested_at, elapsed_ns - requested_at));
+                    requests_produced.push(request_counter);
                 },
                 ExperimentMode::OpenLoopConstant => {
 
@@ -384,7 +386,8 @@ fn main() {
                     while (((index + peers * (measurements.len() + 1)) * ns_per_request) as u64) < acknowledged_ns && measurements.len() < measurements.capacity() {
                         let requested_at = ((index + peers * (measurements.len() + 1)) * ns_per_request) as u64;
                         measurements.push(elapsed_ns - requested_at);
-                        to_print.push((requested_at, elapsed_ns - requested_at))
+                        to_print.push((requested_at, elapsed_ns - requested_at));
+                        requests_produced.push(request_counter);
                     }
                 },
                 ExperimentMode::OpenLoopSquare => {
@@ -422,7 +425,8 @@ fn main() {
                     while (time_base(index + peers * (measurements.len() + 1)) + ns_times_in_period[ns_times_in_period_index(index + peers * (measurements.len() + 1))]) < acknowledged_ns as usize && measurements.len() < measurements.capacity() {
                         let requested_at = (time_base(index + peers * (measurements.len() + 1)) + ns_times_in_period[ns_times_in_period_index(index + peers * (measurements.len() + 1))]) as u64;
                         measurements.push(elapsed_ns - requested_at);
-                        to_print.push((requested_at, elapsed_ns - requested_at))
+                        to_print.push((requested_at, elapsed_ns - requested_at));
+                        requests_produced.push(request_counter);
                     }
                 },
             }
@@ -440,6 +444,12 @@ fn main() {
         let p99 = measurements[99 * measurements.len() / 100];
         let max = measurements[measurements.len() - 1];
 
+        let mut requests_sum = 0;
+        for i in 0..requests_produced.len() {
+            requests_produced[i] -= requests_sum;
+            requests_sum += requests_produced[i];
+        }
+
         if index == 0 {
             let l2tp = |count: usize, latency: u64| {
                 count as f64 / latency as f64 * 1_000_000_000f64 / 1_000_000f64
@@ -454,12 +464,28 @@ fn main() {
 
             let thing = to_print.len() / ::std::cmp::min(200, to_print.len());
             let mut values = vec![];
+            let mut requests = vec![];
             for i in 0 .. to_print.len() {
                 values.push(to_print[i].1);
+                requests.push(requests_produced[i]);
                 if i % thing == 0 {
+
+                    let phase = if redistributions.first().map(|end| to_print[i].0 < *end).unwrap_or(false) {
+                        'A'
+                    } else if redistribution_end.last().map(|end| to_print[i].0 > *end).unwrap_or(false) {
+                        'C'
+                    } else {
+                        'B'
+                    };
+
+
                     values.sort();
-                    println!("{:02}\tlatency\t{:?}\t{:?}", index, to_print[i].0, values[(values.len() as u64 * 0.99 as u64) as usize]);
+                    let r = requests[(requests.len() as u64 * 0.99999 as u64) as usize];
+                    if r > 0 {
+                        println!("{:02}\tlatency\t{:?}\t{:?}\t{:?}\t{:?}", index, to_print[i].0, values[(values.len() as u64 * 0.99 as u64) as usize], r, phase);
+                    }
                     values.clear();
+                    requests.clear();
                 }
             }
 
