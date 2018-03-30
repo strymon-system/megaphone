@@ -462,30 +462,19 @@ fn main() {
                 println!("worker {:02} tp:\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t(of {} measurements)", index, l2tp(batch, min), l2tp(batch, p01), l2tp(batch, p25), l2tp(batch, med), l2tp(batch, p75), l2tp(batch, p99), l2tp(batch, max), measurements.len());
             }
 
-            let thing = to_print.len() / ::std::cmp::min(200, to_print.len());
-            let mut values = vec![];
-            let mut requests = vec![];
             for i in 0 .. to_print.len() {
-                values.push(to_print[i].1);
-                requests.push(requests_produced[i]);
-                if i % thing == 0 {
 
-                    let phase = if redistributions.first().map(|end| to_print[i].0 < *end).unwrap_or(false) {
-                        'A'
-                    } else if redistribution_end.last().map(|end| to_print[i].0 > *end).unwrap_or(false) {
-                        'C'
-                    } else {
-                        'B'
-                    };
+                let phase = if redistributions.first().map(|end| to_print[i].0 < *end).unwrap_or(false) {
+                    'A'
+                } else if redistribution_end.last().map(|end| to_print[i].0 > *end).unwrap_or(false) {
+                    'C'
+                } else {
+                    'B'
+                };
 
-
-                    values.sort();
-                    let r = requests[(requests.len() as u64 * 0.99999 as u64) as usize];
-                    if r > 0 {
-                        println!("{:02}\tlatency\t{:?}\t{:?}\t{:?}\t{:?}", index, to_print[i].0, values[(values.len() as u64 * 0.99 as u64) as usize], r, phase);
-                    }
-                    values.clear();
-                    requests.clear();
+                let r = requests_produced[i];
+                if r > 0 {
+                    println!("{:02}\tlatency\t{:?}\t{:?}\t{:?}\t{:?}", index, to_print[i].0, to_print[i].1, r, phase);
                 }
             }
 
