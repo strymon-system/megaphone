@@ -137,6 +137,8 @@ fn main() {
         let mut redistributed = false;
         let mut previous_sec = elapsed.as_secs();
 
+        let mut latencies: Vec<(usize, usize, usize)> = Vec::with_capacity(8<<20);
+
         while (elapsed.as_secs() as usize) < 2 * rounds {
 
             // worker zero keeps working; others are lazy.
@@ -188,6 +190,9 @@ fn main() {
                 }
                 assert!(target_ns >= input.time().inner);
                 input.advance_to(target_ns);
+                if index == 0 {
+                    latencies.push((acknowledged_ns, elapsed_ns - acknowledged_ns, request_counter - ack_counter));
+                }
             }
 
             worker.step();
@@ -201,6 +206,24 @@ fn main() {
                     println!("\tcount[{}]:\t{}", index, counts[index]);
                 }
             }
+        }
+
+        let mut sum_latency = 0;
+
+        for (ts, latency, cnt) in latencies {
+            sum_latency += latency;
+
+            if sum_latency > 1_000_000 {
+                let phase = if ((ts/1_000_000_000) as usize) < rounds {
+                    'A'
+                } else {
+                    'C'
+                };
+
+                println!("00\tlatency\t{:?}\t{:?}\t{:?}\t{:?}", ts, latency, cnt, phase);
+                sum_latency = 0;
+            }
+
         }
 
     }).unwrap();
