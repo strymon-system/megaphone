@@ -12,7 +12,6 @@ use timely::dataflow::operators::aggregation::StateMachine;
 
 use dynamic_scaling_mechanism::{BIN_SHIFT, ControlInst, Control};
 use dynamic_scaling_mechanism::distribution::ControlStateMachine;
-use dynamic_scaling_mechanism::redis_distribution::RedisControlStateMachine;
 
 // include!(concat!(env!("OUT_DIR"), "/words.rs"));
 
@@ -67,7 +66,6 @@ enum Backend {
     Native,
     Noop,
     Scaling,
-    Redis,
 }
 
 fn duration_to_nanos(duration: ::std::time::Duration) -> u64 {
@@ -105,7 +103,6 @@ fn main() {
         "native" => Backend::Native,
         "noop" => Backend::Noop,
         "scaling" => Backend::Scaling,
-        "redis" => Backend::Redis,
         _ => panic!("invalid backend"),
     };
 
@@ -140,12 +137,6 @@ fn main() {
                 Backend::Noop => input.filter(|_| false).map(|x| x.1),
                 Backend::Scaling => input
                     .control_state_machine(
-                        fold,
-                        |key| calculate_hash(key),
-                        &control
-                    ),
-                Backend::Redis => input
-                    .redis_control_state_machine(
                         fold,
                         |key| calculate_hash(key),
                         &control
