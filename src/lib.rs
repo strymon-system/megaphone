@@ -3,10 +3,7 @@ extern crate timely;
 extern crate abomonation;
 #[macro_use] extern crate abomonation_derive;
 
-extern crate redis;
-
 pub mod distribution;
-pub mod redis_distribution;
 
 use timely::order::PartialOrder;
 use timely::progress::frontier::Antichain;

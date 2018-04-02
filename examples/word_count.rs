@@ -7,12 +7,11 @@ use std::hash::{Hash, Hasher};
 use rand::{Rng, SeedableRng, StdRng};
 
 use timely::dataflow::*;
-use timely::dataflow::operators::{Broadcast, Input, Map, Probe};
+use timely::dataflow::operators::{Broadcast, Filter, Input, Map, Probe};
 use timely::dataflow::operators::aggregation::StateMachine;
 
 use dynamic_scaling_mechanism::{BIN_SHIFT, ControlInst, Control};
 use dynamic_scaling_mechanism::distribution::ControlStateMachine;
-use dynamic_scaling_mechanism::redis_distribution::RedisControlStateMachine;
 
 // include!(concat!(env!("OUT_DIR"), "/words.rs"));
 
@@ -36,14 +35,19 @@ impl SentenceGenerator {
     }
 
     #[inline(always)]
-    pub fn word_rand(&mut self, keys: usize) -> String {
+    pub fn word_rand(&mut self, keys: usize) -> [u8; 24] {
         let index = self.rng.gen_range(0, keys);
         self.word_at(index)
     }
 
     #[inline(always)]
-    pub fn word_at(&mut self, k: usize) -> String {
-        format!("{}", k)
+    pub fn word_at(&mut self, k: usize) -> [u8; 24] {
+        let mut s = [0; 24];
+        let f = format!("{}", k);
+        for (&x, p) in f.as_bytes().iter().zip(s.iter_mut()) {
+            *p = x;
+        }
+        s
     }
 }
 
@@ -65,8 +69,8 @@ enum ExperimentMapMode {
 #[derive(Debug, PartialEq, Eq)]
 enum Backend {
     Native,
+    Noop,
     Scaling,
-    Redis,
 }
 
 fn duration_to_nanos(duration: ::std::time::Duration) -> u64 {
@@ -102,8 +106,8 @@ fn main() {
 
     let backend = match args.next().unwrap().as_str() {
         "native" => Backend::Native,
+        "noop" => Backend::Noop,
         "scaling" => Backend::Scaling,
-        "redis" => Backend::Redis,
         _ => panic!("invalid backend"),
     };
 
@@ -135,14 +139,9 @@ fn main() {
             let output = match backend {
                 Backend::Native => input
                     .state_machine( fold, |key| calculate_hash(key)),
+                Backend::Noop => input.filter(|_| false).map(|x| x.1),
                 Backend::Scaling => input
                     .control_state_machine(
-                        fold,
-                        |key| calculate_hash(key),
-                        &control
-                    ),
-                Backend::Redis => input
-                    .redis_control_state_machine(
                         fold,
                         |key| calculate_hash(key),
                         &control
@@ -253,9 +252,9 @@ fn main() {
                     eprintln!("debug: setting up reconfiguration: {:?}", map);
 
                     for round in 1..rounds/2 {
-                        control_plan.push((round * 2, Control::new(control_counter, 1, ControlInst::Map(map.clone()))));
+                        control_plan.push((round * 1_000_000_000, Control::new(control_counter, 1, ControlInst::Map(map.clone()))));
                         control_counter += 1;
-                        control_plan.push((round * 2 + 1, Control::new(control_counter, 1, ControlInst::Map(initial_map.clone()))));
+                        control_plan.push((round * 1_000_000_000, Control::new(control_counter, 1, ControlInst::Map(initial_map.clone()))));
                         control_counter += 1;
                     }
 
@@ -288,6 +287,7 @@ fn main() {
         };
         let mut to_print = Vec::with_capacity(measurements.capacity());
         let mut redistribution_end = Vec::with_capacity(1024);
+        let mut requests_produced = Vec::with_capacity(measurements.capacity());
 
         // introduce data and watch!
         for i in 0 .. keys {
@@ -315,7 +315,7 @@ fn main() {
             // If the next planned migration can now be effected, ...
             if !skip_redistribution && match mode {
                 ExperimentMode::ClosedLoop =>
-                    control_plan.get(0).map(|&(time, _)| time < measurements.len()).unwrap_or(false),
+                    control_plan.get(0).is_some() && measurements.len() * 2 >= measurements.capacity(),
                 _ =>
                     control_plan.get(0).map(|&(time, _)| time < elapsed_ns as usize).unwrap_or(false),
             } {
@@ -349,7 +349,8 @@ fn main() {
 
                     // any un-recorded measurements that are complete should be recorded.
                     measurements.push(elapsed_ns - requested_at);
-                    to_print.push((requested_at, elapsed_ns - requested_at))
+                    to_print.push((requested_at, elapsed_ns - requested_at));
+                    requests_produced.push(request_counter);
                 },
                 ExperimentMode::OpenLoopConstant => {
 
@@ -381,7 +382,8 @@ fn main() {
                     while (((index + peers * (measurements.len() + 1)) * ns_per_request) as u64) < acknowledged_ns && measurements.len() < measurements.capacity() {
                         let requested_at = ((index + peers * (measurements.len() + 1)) * ns_per_request) as u64;
                         measurements.push(elapsed_ns - requested_at);
-                        to_print.push((requested_at, elapsed_ns - requested_at))
+                        to_print.push((requested_at, elapsed_ns - requested_at));
+                        requests_produced.push(request_counter);
                     }
                 },
                 ExperimentMode::OpenLoopSquare => {
@@ -419,7 +421,8 @@ fn main() {
                     while (time_base(index + peers * (measurements.len() + 1)) + ns_times_in_period[ns_times_in_period_index(index + peers * (measurements.len() + 1))]) < acknowledged_ns as usize && measurements.len() < measurements.capacity() {
                         let requested_at = (time_base(index + peers * (measurements.len() + 1)) + ns_times_in_period[ns_times_in_period_index(index + peers * (measurements.len() + 1))]) as u64;
                         measurements.push(elapsed_ns - requested_at);
-                        to_print.push((requested_at, elapsed_ns - requested_at))
+                        to_print.push((requested_at, elapsed_ns - requested_at));
+                        requests_produced.push(request_counter);
                     }
                 },
             }
@@ -437,6 +440,12 @@ fn main() {
         let p99 = measurements[99 * measurements.len() / 100];
         let max = measurements[measurements.len() - 1];
 
+        let mut requests_sum = 0;
+        for i in 0..requests_produced.len() {
+            requests_produced[i] -= requests_sum;
+            requests_sum += requests_produced[i];
+        }
+
         if index == 0 {
             let l2tp = |count: usize, latency: u64| {
                 count as f64 / latency as f64 * 1_000_000_000f64 / 1_000_000f64
@@ -449,14 +458,19 @@ fn main() {
                 println!("worker {:02} tp:\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t(of {} measurements)", index, l2tp(batch, min), l2tp(batch, p01), l2tp(batch, p25), l2tp(batch, med), l2tp(batch, p75), l2tp(batch, p99), l2tp(batch, max), measurements.len());
             }
 
-            let thing = to_print.len() / ::std::cmp::min(200, to_print.len());
-            let mut values = vec![];
             for i in 0 .. to_print.len() {
-                values.push(to_print[i].1);
-                if i % thing == 0 {
-                    values.sort();
-                    println!("{:02}\tlatency\t{:?}\t{:?}", index, to_print[i].0, values[(values.len() as u64 * 0.99 as u64) as usize]);
-                    values.clear();
+
+                let phase = if redistributions.first().map(|end| to_print[i].0 < *end).unwrap_or(false) {
+                    'A'
+                } else if redistribution_end.last().map(|end| to_print[i].0 > *end).unwrap_or(false) {
+                    'C'
+                } else {
+                    'B'
+                };
+
+                let r = requests_produced[i];
+                if r > 0 {
+                    println!("{:02}\tlatency\t{:?}\t{:?}\t{:?}\t{:?}", index, to_print[i].0, to_print[i].1, r, phase);
                 }
             }
 
