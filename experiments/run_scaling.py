@@ -19,6 +19,7 @@ def run_cmd(cmd, redirect=None, background=False):
                         (" > {}".format(redirect) if redirect else ""), async=background)
 
 run_cmd("cargo build --release --example word_count")
+run_cmd("cargo build --release --example isolation")
 
 def word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, n, w):
     return "{}/word_count_n{}_w{}_rounds{}_batch{}_keys{}_{}_{}_{}".format(
@@ -26,6 +27,13 @@ def word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mod
 
 def run_word_count(socket, rounds, batch, keys, open_loop, map_mode, backend, n, p, w, outfile):
     return run_cmd("hwloc-bind socket:{} -- cargo run --release --example word_count -- {} {} {} {} {} {} -n {} -p {} -w {}".format(socket, rounds, batch, keys, open_loop, map_mode, backend, n, p, w), outfile, True)
+
+def isolation_filename(experiment_name, rounds, batch, keys, backend, n, w):
+    return "{}/isolation_n{}_w{}_rounds{}_batch{}_keys{}_{}".format(
+        experlib.experdir(experiment_name), n, w, rounds, batch, keys, backend)
+
+def run_isolation(socket, rounds, batch, keys, backend, n, p, w, outfile):
+    return run_cmd("cargo run --release --example isolation -- {} {} {} {} -n {} -p {} -w {}".format(rounds, batch, keys, backend, n, p, w), outfile, True)
 
 all_map_modes = ["sudden", "one-by-one", "fluid"]
 
@@ -133,8 +141,28 @@ def word_count_square_half_all():
                     eprint("RUNNING keys: {} in {}".format(keys, filename))
                     experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, backend, n, p, w, filename) for p in range(0, 2)])
 
+def isolation_one_two():
+    experiment_name = "isolation-one-two"
+
+    eprint("### {} ###".format(experiment_name))
+    eprint(experlib.experdir(experiment_name))
+    experlib.ensuredir(experiment_name)
+
+    for batch in [1000000]:
+        for keys in [10240000]:
+            for map_mode in all_map_modes:
+                for backend in all_backends:
+                    n = 2
+                    w = 1
+                    rounds=10
+
+                    filename = isolation_filename(experiment_name, rounds, batch, keys, backend, n, w)
+                    eprint("RUNNING keys: {} in {}".format(keys, filename))
+                    experlib.waitall([run_isolation(p, rounds, batch, keys, backend, n, p, w, filename) for p in range(0, 2)])
+
 word_count_closed_one_two()
 word_count_closed_one_two_state()
 word_count_constant_one_two()
 word_count_constant_half_all()
 word_count_square_half_all()
+isolation_one_two()

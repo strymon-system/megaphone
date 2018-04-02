@@ -2,6 +2,7 @@
 
 plot:
 	./plot_word_count.sh
+	./plot_isolation.sh
 
 experiments:
 	reset
