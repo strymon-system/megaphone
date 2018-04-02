@@ -35,14 +35,19 @@ impl SentenceGenerator {
     }
 
     #[inline(always)]
-    pub fn word_rand(&mut self, keys: usize) -> String {
+    pub fn word_rand(&mut self, keys: usize) -> [u8; 24] {
         let index = self.rng.gen_range(0, keys);
         self.word_at(index)
     }
 
     #[inline(always)]
-    pub fn word_at(&mut self, k: usize) -> String {
-        format!("{}", k)
+    pub fn word_at(&mut self, k: usize) -> [u8; 24] {
+        let mut s = [0; 24];
+        let f = format!("{}", k);
+        for (&x, p) in f.as_bytes().iter().zip(s.iter_mut()) {
+            *p = x;
+        }
+        s
     }
 }
 
