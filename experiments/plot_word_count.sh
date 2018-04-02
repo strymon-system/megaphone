@@ -16,25 +16,22 @@ out_ext=pdf
 common="set terminal ${out_format} font \", 8\""
 
 function cdf() {
-    mode=${mode//-/_}
+    mode=""
     cat <<-EOF
-#    set logscale y
-#    set logscale x
-    lat_${mode}_a = "${file}-A"
-    lat_${mode}_b = "${file}-B"
-    lat_${mode}_c = "${file}-C"
-    unset yrange # Otherwise stat is very confused the next time around
-    stats lat_${mode}_a using 3 name 'stats_${mode}_a' nooutput
-    stats lat_${mode}_b using 3 name 'stats_${mode}_b' nooutput
-    stats lat_${mode}_c using 3 name 'stats_${mode}_c' nooutput
-#    set title "Constant ${batch}/s, ${keys} keys, ${backend}, ${mode}"
-#    set xlabel "Latency [ns]"
-#    set ylabel "CDF"
-    set yrange [0:1]
+    set grid xtics ytics
     plot \
-        lat_${mode}_a using 3:(1./stats_${mode}_a_records) smooth cumulative t "Before", \
-        lat_${mode}_b using 3:(1./stats_${mode}_b_records) smooth cumulative t "During", \
-        lat_${mode}_c using 3:(1./stats_${mode}_c_records) smooth cumulative t "After"
+        "${file}-A" using 3:(1) smooth cnorm t "Before", \
+        "${file}-B" using 3:(1) smooth cnorm t "During", \
+        "${file}-C" using 3:(1) smooth cnorm t "After"
+EOF
+}
+
+function cdf99() {
+    mode=""
+    cat <<-EOF
+    set yrange [0.00:.99999]
+    set nonlinear y via -log10(1-y) inverse 1-10**(-y)
+    $(cdf)
 EOF
 }
 # === closed one-two ===
@@ -140,9 +137,12 @@ for backend in ${backends[@]}; do
             set title "Constant ${batch}/s, ${keys} keys, ${backend}, ${mode}"
             set xlabel "Latency [ns]"
             set ylabel "CDF"
-            set terminal ${out_format} size 5cm,8cm
-            set output "${file}-cdf.${out_ext}"
+            set logscale x
+            set terminal ${out_format} size 9cm,5cm
+            set output "plots/$COMMIT/word_count_scaling_n02_w01_constant_${mode}_batch${batch}_keys${keys}_${backend}-cdf.${out_ext}"
             $(cdf)
+            set output "plots/$COMMIT/word_count_scaling_n02_w01_constant_${mode}_batch${batch}_keys${keys}_${backend}-cdf99.${out_ext}"
+            $(cdf99)
 EOFMarker
     done
 
@@ -205,9 +205,12 @@ for backend in ${backends[@]}; do
             set title "Constant ${batch}/s, ${keys} keys, ${backend}, ${mode}"
             set xlabel "Latency [ns]"
             set ylabel "CDF"
-            set terminal ${out_format} size 5cm,8cm
-            set output "${file}-cdf.${out_ext}"
+            set logscale x
+            set terminal ${out_format} size 9cm,5cm
+            set output "plots/$COMMIT/word_count_scaling_n02_w04_constant_${mode}_batch${batch}_keys${keys}_${backend}-cdf.${out_ext}"
             $(cdf)
+            set output "plots/$COMMIT/word_count_scaling_n02_w04_constant_${mode}_batch${batch}_keys${keys}_${backend}-cdf99.${out_ext}"
+            $(cdf99)
 EOFMarker
     done
 
@@ -272,9 +275,12 @@ for backend in ${backends[@]}; do
             set title "Constant ${batch}/s, ${keys} keys, ${backend}, ${mode}"
             set xlabel "Latency [ns]"
             set ylabel "CDF"
-            set terminal ${out_format} size 8cm,5cm
-            set output "${file}-cdf.${out_ext}"
+            set logscale x
+            set terminal ${out_format} size 9cm,5cm
+            set output "plots/$COMMIT/word_count_scaling_n02_w04_square_${mode}_batch${batch}_keys${keys}_${backend}-cdf.${out_ext}"
             $(cdf)
+            set output "plots/$COMMIT/word_count_scaling_n02_w04_square_${mode}_batch${batch}_keys${keys}_${backend}-cdf99.${out_ext}"
+            $(cdf99)
 EOFMarker
     done
 
