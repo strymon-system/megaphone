@@ -11,6 +11,7 @@ use abomonation::Abomonation;
 use fnv::FnvHashMap as HashMap;
 
 use timely::ExchangeData;
+use timely::PartialOrder;
 use timely::dataflow::{Stream, Scope, ProbeHandle};
 use timely::dataflow::channels::pact::{Exchange, Pipeline};
 use timely::dataflow::operators::FrontierNotificator;
@@ -33,7 +34,7 @@ const BUFFER_CAP: usize = 16;
 
 
 pub struct State<I: Abomonation, S: IntoIterator<Item=I>> {
-    bins: Rc<RefCell<Vec<Option<S>>>>,
+    bins: Rc<RefCell<Vec<S>>>,
 }
 
 impl<I: Abomonation, S: IntoIterator<Item=I>> Clone for State<I, S> {
@@ -45,7 +46,7 @@ impl<I: Abomonation, S: IntoIterator<Item=I>> Clone for State<I, S> {
 }
 
 impl<I: Abomonation, S: IntoIterator<Item=I>> State<I, S> {
-    fn new(bins: Rc<RefCell<Vec<Option<S>>>>) -> Self {
+    fn new(bins: Rc<RefCell<Vec<S>>>) -> Self {
         Self { bins }
     }
 }
@@ -53,14 +54,14 @@ impl<I: Abomonation, S: IntoIterator<Item=I>> State<I, S> {
 pub trait StateHandle<S> {
     fn with_state<
         R,
-        F: Fn(&mut Option<S>) -> R
+        F: Fn(&mut S) -> R
     >(&mut self, bin: usize, f: F) -> R;
 }
 
 impl<I: Abomonation, S: IntoIterator<Item=I>> StateHandle<S> for State<I, S> {
     fn with_state<
         R,
-        F: Fn(&mut Option<S>) -> R
+        F: Fn(&mut S) -> R
     >(&mut self, bin: usize, f: F) -> R {
         f(&mut self.bins.borrow_mut()[bin & (( 1 << BIN_SHIFT) - 1)])
     }
@@ -120,7 +121,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         let peers = self.scope().peers();
 
         // bin -> keys -> state
-        let states: Rc<RefCell<Vec<Option<D>>>> = Rc::new(RefCell::new(vec![None; 1 << BIN_SHIFT]));
+        let states: Rc<RefCell<Vec<D>>> = Rc::new(RefCell::new(vec![Default::default(); 1 << BIN_SHIFT]));
         let states_f = Rc::clone(&states);
         let states_op = Rc::clone(&states);
 
@@ -275,9 +276,8 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                 // actually contains data. Also, we must be the current owner of the bin.
                                 if (*old % peers == index) && (old != new) {
                                     // Capture bin's values as a `Vec` of (key, state) pairs
-                                    if let Some(state) = states[bin].take() {
-                                        session.give((*new, Bin(bin), state.into_iter().collect::<Vec<W>>()));
-                                    }
+                                    let state = ::std::mem::replace(&mut states[bin], Default::default());
+                                    session.give((*new, Bin(bin), state.into_iter().collect::<Vec<W>>()));
                                 }
                             }
                         }
@@ -297,30 +297,21 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
             // stash each input and request a notification when ready
             input.for_each(|time, data| {
-//                if notificator.frontier(0).iter().any(|x| x.less_equal(time.time()))
-//                    || notificator.frontier(1).iter().any(|x| x.less_equal(time.time())) {
+                if notificator.frontier(0).iter().any(|x| x.less_equal(time.time()))
+                    || notificator.frontier(1).iter().any(|x| x.less_equal(time.time())) {
                     if !pending.contains_key(time.time()) {
                         pending.insert(time.time().clone(), Vec::new());
                     }
                     pending.get_mut(time.time()).unwrap().push(data.replace_with(data_return_buffer.pop().unwrap_or_else(Vec::new)));
                     notificator.notify_at(time.retain());
-//                } else {
-//                    let mut session = output.session(&time);
-//                    let mut states = states.borrow_mut();
-//
-//                    for (_target, (key, val)) in data.drain(..) {
-//                        let bin = (hash(&key) >> bin_shift) as usize;
-//                        let (remove, output) = {
-//                            if !states[bin].contains_key(&key) {
-//                                states[bin].insert(key.clone(), Default::default());
-//                            }
-//                            let state =  states[bin].get_mut(&key).unwrap();
-//                            fold(time.time(), &key, val, state)
-//                        };
-//                        if remove { states[bin].remove(&key); }
-//                        session.give_iterator(output.into_iter());
-//                    }
-//                }
+                } else {
+                    let mut session = output.session(&time);
+                    let mut data = data.replace_with(data_return_buffer.pop().unwrap_or_else(Vec::new));
+                    session.give_iterator(data.drain(..).map(|d| d.1));
+                    if data_return_buffer.len() < BUFFER_CAP {
+                        data_return_buffer.push(data);
+                    }
+                }
             });
 
             state.for_each(|time, data| {
@@ -338,7 +329,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
                     for state_update in state_updates {
                         for (_target, bin, state) in state_update {
-                            states[*bin] = Some(<D as FromIterator<W>>::from_iter(state.into_iter()));
+                            states[*bin] = <D as FromIterator<W>>::from_iter(state.into_iter());
                         }
                     }
                 }

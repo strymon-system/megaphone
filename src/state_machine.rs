@@ -84,16 +84,11 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: Abomonation + Defaul
                         let mut session = output.session(&time);
                         for (key, val) in data.drain(..) {
                             let output = {
-                                bin_states1.with_state(hash(&key) as usize, |states_bin| {
-                                    if states_bin.is_none() {
-                                        *states_bin = Some(Default::default());
-                                    }
-                                    let mut states = states_bin.take().unwrap();
+                                bin_states1.with_state(hash(&key) as usize, |states| {
                                     let (remove, output) = {
                                         let state = states.entry(key.clone()).or_insert_with(Default::default);
                                         fold(&key, val.clone(), state)};
                                     if remove { states.remove(&key); }
-                                    *states_bin = Some(states);
                                     output
                                 })
                             };
@@ -108,16 +103,11 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: Abomonation + Defaul
                     let mut session = output.session(&time);
                     for (key, val) in pend {
                         let output = {
-                            bin_states2.with_state(hash(&key) as usize, |states_bin| {
-                                if states_bin.is_none() {
-                                    *states_bin = Some(Default::default());
-                                }
-                                let mut states = states_bin.take().unwrap();
+                            bin_states2.with_state(hash(&key) as usize, |states| {
                                 let (remove, output) = {
                                     let state = states.entry(key.clone()).or_insert_with(Default::default);
                                     fold2(&key, val.clone(), state)};
                                 if remove { states.remove(&key); }
-                                *states_bin = Some(states);
                                 output
                             })
                         };
