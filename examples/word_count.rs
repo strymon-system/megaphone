@@ -6,6 +6,7 @@ extern crate dynamic_scaling_mechanism;
 use std::hash::{Hash, Hasher};
 use rand::{Rng, SeedableRng, StdRng};
 
+use timely::ExchangeData;
 use timely::dataflow::*;
 use timely::dataflow::operators::{Broadcast, Filter, Input, Map, Probe};
 use timely::dataflow::operators::aggregation::StateMachine;
@@ -80,6 +81,40 @@ fn duration_to_nanos(duration: ::std::time::Duration) -> u64 {
     (duration.as_secs() * 1_000_000_000).checked_add(duration.subsec_nanos() as u64).unwrap()
 }
 
+fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T>, output: &Stream<S, T>) {
+    use timely::dataflow::operators::Binary;
+    use timely::dataflow::channels::pact::Exchange;
+    use std::collections::HashMap;
+    let mut in1_pending: HashMap<_, Vec<_>> = Default::default();
+    let mut in2_pending: HashMap<_, Vec<_>> = Default::default();
+    correct.binary_notify::<_, (), _, _, _>(&output, Exchange::new(|_| 0), Exchange::new(|_| 0), "Verify", vec![],
+        move |in1, in2, _out, not| {
+            in1.for_each(|time, data| {
+                in1_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data.drain(..));
+                not.notify_at(time.retain());
+            });
+            in2.for_each(|time, data| {
+                in2_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data.drain(..));
+                not.notify_at(time.retain());
+            });
+            not.for_each(|time, _, _| {
+                let mut v1 = in1_pending.remove(time.time()).unwrap_or_default();
+                let mut v2 = in2_pending.remove(time.time()).unwrap_or_default();
+                v1.sort();
+                v2.sort();
+                assert_eq!(v1.len(), v2.len());
+                let i1 = v1.iter();
+                let i2 = v2.iter();
+                for (a, b) in i1.zip(i2) {
+//                    println!("a: {:?}, b: {:?}", a, b);
+                    assert_eq!(a, b);
+                }
+            })
+        }
+    );
+
+}
+
 fn main() {
     println!("args: {:?}", std::env::args());
 
@@ -138,7 +173,7 @@ fn main() {
                 (false, Some(*agg))
             };
 
-            let input: Stream<_, ([u8; 24], u64)> = input
+            let input: Stream<_, (_, u64)> = input
                 .map(|x| (x, 1));
             let output = match backend {
                 Backend::Native => input
@@ -159,43 +194,14 @@ fn main() {
                         )
                 },
             };
-            let validate = true;
+            let validate = false;
             if validate {
-                use timely::dataflow::operators::Binary;
-                use timely::dataflow::channels::pact::Exchange;
-                use std::collections::HashMap;
                 let correct = input
                     .state_machine(|_key: &_, val, agg: &mut u64| {
                         *agg += val;
                         (false, Some(*agg))
                     }, |key| calculate_hash(key));
-                let mut in1_pending: HashMap<_, Vec<_>> = Default::default();
-                let mut in2_pending: HashMap<_, Vec<_>> = Default::default();
-                correct.binary_notify::<_, (), _, _, _>(&output, Exchange::new(|_| 0), Exchange::new(|_| 0), "Verify", vec![],
-                    move |in1, in2, _out, not| {
-                        in1.for_each(|time, data| {
-                            in1_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data.drain(..));
-                            not.notify_at(time.retain());
-                        });
-                        in2.for_each(|time, data| {
-                            in2_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data.drain(..));
-                            not.notify_at(time.retain());
-                        });
-                        not.for_each(|time, _, _| {
-                            let mut v1 = in1_pending.remove(time.time()).unwrap_or_default();
-                            let mut v2 = in2_pending.remove(time.time()).unwrap_or_default();
-                            v1.sort();
-                            v2.sort();
-                            assert_eq!(v1.len(), v2.len());
-                            let i1 = v1.iter();
-                            let i2 = v2.iter();
-                            for (a, b) in i1.zip(i2) {
-//                                println!("a: {:?}, b: {:?}", a, b);
-                                assert_eq!(a, b);
-                            }
-                        })
-                    }
-                );
+                verify(&output, &correct);
             }
             output.probe_with(&mut probe);
         });
