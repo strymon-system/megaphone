@@ -4,6 +4,8 @@ extern crate abomonation;
 #[macro_use] extern crate abomonation_derive;
 
 pub mod distribution;
+pub mod stateful;
+pub mod state_machine;
 
 use timely::order::PartialOrder;
 use timely::progress::frontier::Antichain;

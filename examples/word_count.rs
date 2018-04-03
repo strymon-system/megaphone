@@ -12,6 +12,8 @@ use timely::dataflow::operators::aggregation::StateMachine;
 
 use dynamic_scaling_mechanism::{BIN_SHIFT, ControlInst, Control};
 use dynamic_scaling_mechanism::distribution::ControlStateMachine;
+use dynamic_scaling_mechanism::stateful::Stateful;
+use dynamic_scaling_mechanism::state_machine::BinnedStateMachine;
 
 // include!(concat!(env!("OUT_DIR"), "/words.rs"));
 
@@ -71,6 +73,7 @@ enum Backend {
     Native,
     Noop,
     Scaling,
+    Generic,
 }
 
 fn duration_to_nanos(duration: ::std::time::Duration) -> u64 {
@@ -108,6 +111,7 @@ fn main() {
         "native" => Backend::Native,
         "noop" => Backend::Noop,
         "scaling" => Backend::Scaling,
+        "generic" => Backend::Generic,
         _ => panic!("invalid backend"),
     };
 
@@ -134,7 +138,7 @@ fn main() {
                 (false, Some(*agg))
             };
 
-            let input = input
+            let input: Stream<_, ([u8; 24], u64)> = input
                 .map(|x| (x, 1));
             let output = match backend {
                 Backend::Native => input
@@ -146,8 +150,16 @@ fn main() {
                         |key| calculate_hash(key),
                         &control
                     ),
+                Backend::Generic => {
+                    let mut stateful = input
+                        .stateful(|key| calculate_hash(&key.0), &control);
+                    stateful.state_machine(
+                            fold,
+                            |key| calculate_hash(key)
+                        )
+                },
             };
-            let validate = false;
+            let validate = true;
             if validate {
                 use timely::dataflow::operators::Binary;
                 use timely::dataflow::channels::pact::Exchange;
