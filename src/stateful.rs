@@ -132,7 +132,6 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         let (mut state_out, state) = builder.new_output();
 
         // Number of bits to shift a hash to determine bin index
-        let bin_shift = ::std::mem::size_of::<usize>() * 8 - BIN_SHIFT;
 
         let probe1 = ProbeHandle::new();
         let probe2 = probe1.clone();
@@ -218,7 +217,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                 .map();
 
                         let mut session = data_out.session(&time);
-                        let data_iter = data.drain(..).into_iter().map(|d| (map[(bin(&d) >> bin_shift) as usize], d));
+                        let data_iter = data.drain(..).into_iter().map(|d| (map[(bin(&d) & (( 1 << BIN_SHIFT) - 1)) as usize], d));
                         session.give_iterator(data_iter);
                     }
                     data_notificator.notify_at(time.retain());
@@ -239,7 +238,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                         let mut session = data_out.session(&time);
                         for mut data in vec {
                             {
-                                let data_iter = data.drain(..).map(|d| (map[(bin2(&d) >> bin_shift) as usize], d));
+                                let data_iter = data.drain(..).map(|d| (map[(bin2(&d) & (( 1 << BIN_SHIFT) - 1)) as usize], d));
                                 session.give_iterator(data_iter);
                             }
                             if data_return_buffer.len() < BUFFER_CAP {
