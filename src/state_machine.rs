@@ -3,7 +3,6 @@ use std::hash::Hash;
 // use std::collections::HashMap;
 use std::rc::Rc;
 
-use abomonation::Abomonation;
 use fnv::FnvHashMap as HashMap;
 
 use timely::ExchangeData;
@@ -15,7 +14,7 @@ use timely::dataflow::operators::generic::Unary;
 
 use stateful::{State, StateHandle};
 
-pub trait BinnedStateMachine<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: Default + 'static> {
+pub trait BinnedStateMachine<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: ExchangeData + Default + 'static> {
     /// Tracks a state for each presented key, using user-supplied state transition logic.
     ///
     /// The transition logic `fold` may mutate the state, and produce both output records and
@@ -52,7 +51,7 @@ pub trait BinnedStateMachine<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData,
     >(&mut self, fold: F, hash: H) -> Stream<S, R> where S::Timestamp : Hash+Eq ;
 }
 
-impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: Abomonation + Default + 'static> BinnedStateMachine<S, K, V, D> for (Stream<S, (K, V)>, State<(K, D), HashMap<K, D>>, ProbeHandle<S::Timestamp>) {
+impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: ExchangeData + Default + 'static> BinnedStateMachine<S, K, V, D> for (Stream<S, (K, V)>, State<HashMap<K, D>>, ProbeHandle<S::Timestamp>) {
     fn state_machine<
         R: Data,                                    // output type
 //        D: Default + 'static,                         // per-key state (data)

@@ -6,8 +6,6 @@ use std::rc::Rc;
 
 use std::iter::FromIterator;
 
-use abomonation::Abomonation;
-
 use fnv::FnvHashMap as HashMap;
 
 use timely::ExchangeData;
@@ -33,11 +31,11 @@ const BUFFER_CAP: usize = 16;
 /// is some total order on times respecting the total order (updates may be interleaved).
 
 
-pub struct State<I: Abomonation, S: IntoIterator<Item=I>> {
+pub struct State<S> {
     bins: Rc<RefCell<Vec<S>>>,
 }
 
-impl<I: Abomonation, S: IntoIterator<Item=I>> Clone for State<I, S> {
+impl<S: Clone> Clone for State<S> {
     fn clone(&self) -> Self {
         Self {
             bins: self.bins.clone(),
@@ -45,7 +43,7 @@ impl<I: Abomonation, S: IntoIterator<Item=I>> Clone for State<I, S> {
     }
 }
 
-impl<I: Abomonation, S: IntoIterator<Item=I>> State<I, S> {
+impl<S> State<S> {
     fn new(bins: Rc<RefCell<Vec<S>>>) -> Self {
         Self { bins }
     }
@@ -58,7 +56,7 @@ pub trait StateHandle<S> {
     >(&mut self, bin: usize, f: F) -> R;
 }
 
-impl<I: Abomonation, S: IntoIterator<Item=I>> StateHandle<S> for State<I, S> {
+impl<S> StateHandle<S> for State<S> {
     fn with_state<
         R,
         F: Fn(&mut S) -> R
@@ -102,7 +100,7 @@ pub trait Stateful<S: Scope, V: ExchangeData> {
         W: ExchangeData,                            // State format on the wire
         D: Clone+IntoIterator<Item=W>+FromIterator<W>+Default+'static,    // per-key state (data)
         B: Fn(&V)->u64+'static,                     // "hash" function for values
-    >(&self, bin: B, control: &Stream<S, Control>) -> (Stream<S, V>, State<W, D>, ProbeHandle<S::Timestamp>) where S::Timestamp : Hash+Eq ;
+    >(&self, bin: B, control: &Stream<S, Control>) -> (Stream<S, V>, State<D>, ProbeHandle<S::Timestamp>) where S::Timestamp : Hash+Eq ;
 
 }
 
@@ -111,7 +109,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         W: ExchangeData,                            // State format on the wire
         D: Clone+IntoIterator<Item=W>+FromIterator<W>+Default+'static,    // per-key state (data)
         B: Fn(&V)->u64+'static,                     // "hash" function for values
-    >(&self, bin: B, control: &Stream<S, Control>) -> (Stream<S, V>, State<W, D>, ProbeHandle<S::Timestamp>) where S::Timestamp : Hash+Eq
+    >(&self, bin: B, control: &Stream<S, Control>) -> (Stream<S, V>, State<D>, ProbeHandle<S::Timestamp>) where S::Timestamp : Hash+Eq
     {
 
         let bin = Rc::new(bin);
