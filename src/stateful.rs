@@ -65,8 +65,6 @@ impl<S> StateHandle<S> for State<S> {
     }
 }
 
-
-
 /// Provides the `control_state_machine` method.
 pub trait Stateful<S: Scope, V: ExchangeData> {
     /// Tracks a state for each presented key, using user-supplied state transition logic.
@@ -100,7 +98,7 @@ pub trait Stateful<S: Scope, V: ExchangeData> {
         W: ExchangeData,                            // State format on the wire
         D: Clone+IntoIterator<Item=W>+FromIterator<W>+Default+'static,    // per-key state (data)
         B: Fn(&V)->u64+'static,                     // "hash" function for values
-    >(&self, bin: B, control: &Stream<S, Control>) -> (Stream<S, V>, State<D>, ProbeHandle<S::Timestamp>) where S::Timestamp : Hash+Eq ;
+    >(&self, bin: B, control: &Stream<S, Control>) -> (Stream<S, (usize, u64, V)>, State<D>, ProbeHandle<S::Timestamp>) where S::Timestamp : Hash+Eq ;
 
 }
 
@@ -109,12 +107,8 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         W: ExchangeData,                            // State format on the wire
         D: Clone+IntoIterator<Item=W>+FromIterator<W>+Default+'static,    // per-key state (data)
         B: Fn(&V)->u64+'static,                     // "hash" function for values
-    >(&self, bin: B, control: &Stream<S, Control>) -> (Stream<S, V>, State<D>, ProbeHandle<S::Timestamp>) where S::Timestamp : Hash+Eq
+    >(&self, bin: B, control: &Stream<S, Control>) -> (Stream<S, (usize, u64, V)>, State<D>, ProbeHandle<S::Timestamp>) where S::Timestamp : Hash+Eq
     {
-
-        let bin = Rc::new(bin);
-        let bin2 = Rc::clone(&bin);
-
         let index = self.scope().index();
         let peers = self.scope().peers();
 
@@ -129,8 +123,6 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         let mut control_in = builder.new_input(control, Pipeline);
         let (mut data_out, stream) = builder.new_output();
         let (mut state_out, state) = builder.new_output();
-
-        // Number of bits to shift a hash to determine bin index
 
         let probe1 = ProbeHandle::new();
         let probe2 = probe1.clone();
@@ -216,7 +208,11 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                 .map();
 
                         let mut session = data_out.session(&time);
-                        let data_iter = data.drain(..).into_iter().map(|d| (map[(bin(&d) & (( 1 << BIN_SHIFT) - 1)) as usize], d));
+
+                        let data_iter = data.drain(..).into_iter().map(|d| {
+                            let bin = bin(&d);
+                            (map[(bin & (( 1 << BIN_SHIFT) - 1)) as usize], bin, d)
+                        });
                         session.give_iterator(data_iter);
                     }
                     data_notificator.notify_at(time.retain());
@@ -237,7 +233,10 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                         let mut session = data_out.session(&time);
                         for mut data in vec {
                             {
-                                let data_iter = data.drain(..).map(|d| (map[(bin2(&d) & (( 1 << BIN_SHIFT) - 1)) as usize], d));
+                                let data_iter = data.drain(..).map(|d| {
+                                    let bin = bin(&d);
+                                    (map[(bin & (( 1 << BIN_SHIFT) - 1)) as usize], bin, d)
+                                });
                                 session.give_iterator(data_iter);
                             }
                             if data_return_buffer.len() < BUFFER_CAP {
@@ -291,7 +290,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         let mut pending_states: HashMap<_,_> = Default::default();
         let mut data_return_buffer = vec![];
 
-        let stream = stream.binary_notify(&state, Exchange::new(move |&(target, _)| target as u64), Exchange::new(move |&(target, _, _)| target as u64), "State", vec![], move |input, state, output, notificator| {
+        let stream = stream.binary_notify(&state, Exchange::new(move |&(target, _bin, _)| target as u64), Exchange::new(move |&(target, _, _)| target as u64), "State", vec![], move |input, state, output, notificator| {
 
             // stash each input and request a notification when ready
             input.for_each(|time, data| {
@@ -304,11 +303,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                     notificator.notify_at(time.retain());
                 } else {
                     let mut session = output.session(&time);
-                    let mut data = data.replace_with(data_return_buffer.pop().unwrap_or_else(Vec::new));
-                    session.give_iterator(data.drain(..).map(|d| d.1));
-                    if data_return_buffer.len() < BUFFER_CAP {
-                        data_return_buffer.push(data);
-                    }
+                    session.give_content(data);
                 }
             });
 
@@ -335,7 +330,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                 if let Some(pend) = pending.remove(time.time()) {
                     let mut session = output.session(&time);
                     for mut chunk in pend {
-                        session.give_iterator(chunk.drain(..).map(|d| d.1));
+                        session.give_iterator(chunk.drain(..));
                         if data_return_buffer.len() < BUFFER_CAP {
                             data_return_buffer.push(chunk);
                         }

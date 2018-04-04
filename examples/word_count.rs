@@ -188,10 +188,7 @@ fn main() {
                 Backend::Generic => {
                     let mut stateful = input
                         .stateful(|key| calculate_hash(&key.0), &control);
-                    stateful.state_machine(
-                            fold,
-                            |key| calculate_hash(key)
-                        )
+                    stateful.state_machine(fold)
                 },
             };
             let validate = false;

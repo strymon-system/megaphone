@@ -44,21 +44,17 @@ pub trait BinnedStateMachine<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData,
     /// ```
     fn state_machine<
         R: Data,                                    // output type
-//        D: Default+'static,                         // per-key state (data)
         I: IntoIterator<Item=R>,                    // type of output iterator
         F: Fn(&K, V, &mut D)->(bool, I)+'static,    // state update logic
-        H: Fn(&K)->u64+'static,                     // "hash" function for keys
-    >(&mut self, fold: F, hash: H) -> Stream<S, R> where S::Timestamp : Hash+Eq ;
+    >(&mut self, fold: F) -> Stream<S, R> where S::Timestamp : Hash+Eq ;
 }
 
-impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: ExchangeData + Default + 'static> BinnedStateMachine<S, K, V, D> for (Stream<S, (K, V)>, State<HashMap<K, D>>, ProbeHandle<S::Timestamp>) {
+impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: ExchangeData + Default + 'static> BinnedStateMachine<S, K, V, D> for (Stream<S, (usize, u64, (K, V))>, State<HashMap<K, D>>, ProbeHandle<S::Timestamp>) {
     fn state_machine<
         R: Data,                                    // output type
-//        D: Default + 'static,                         // per-key state (data)
         I: IntoIterator<Item=R>,                    // type of output iterator
         F: Fn(&K, V, &mut D) -> (bool, I) + 'static,    // state update logic
-        H: Fn(&K) -> u64 + 'static,                     // "hash" function for keys
-    >(&mut self, fold: F, hash: H) -> Stream<S, R> where S::Timestamp: Hash + Eq {
+    >(&mut self, fold: F) -> Stream<S, R> where S::Timestamp: Hash + Eq {
         let mut pending: HashMap<_, _> = Default::default();   // times -> (keys -> state)
 
         let mut bin_states1 = self.1.clone();
@@ -81,12 +77,13 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: ExchangeData + Defau
                     else {
                         // else we can process immediately
                         let mut session = output.session(&time);
-                        for (key, val) in data.drain(..) {
+                        for (_target, bin, (key, val)) in data.drain(..) {
                             let output = {
-                                bin_states1.with_state(hash(&key) as usize, |states| {
+                                bin_states1.with_state(bin as usize, |states| {
                                     let (remove, output) = {
                                         let state = states.entry(key.clone()).or_insert_with(Default::default);
-                                        fold(&key, val.clone(), state)};
+                                        fold(&key, val.clone(), state)
+                                    };
                                     if remove { states.remove(&key); }
                                     output
                                 })
@@ -100,9 +97,9 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: ExchangeData + Defau
             notificator.for_each(|time,_,_| {
                 if let Some(pend) = pending.remove(time.time()) {
                     let mut session = output.session(&time);
-                    for (key, val) in pend {
+                    for (_target, bin, (key, val)) in pend {
                         let output = {
-                            bin_states2.with_state(hash(&key) as usize, |states| {
+                            bin_states2.with_state(bin as usize, |states| {
                                 let (remove, output) = {
                                     let state = states.entry(key.clone()).or_insert_with(Default::default);
                                     fold2(&key, val.clone(), state)};
