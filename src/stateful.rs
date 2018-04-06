@@ -32,19 +32,11 @@ const BUFFER_CAP: usize = 16;
 
 
 pub struct State<S> {
-    bins: Rc<RefCell<Vec<S>>>,
-}
-
-impl<S: Clone> Clone for State<S> {
-    fn clone(&self) -> Self {
-        Self {
-            bins: self.bins.clone(),
-        }
-    }
+    bins: Vec<S>,
 }
 
 impl<S> State<S> {
-    fn new(bins: Rc<RefCell<Vec<S>>>) -> Self {
+    fn new(bins: Vec<S>) -> Self {
         Self { bins }
     }
 }
@@ -57,11 +49,13 @@ pub trait StateHandle<S> {
 }
 
 impl<S> StateHandle<S> for State<S> {
+
+    #[inline(always)]
     fn with_state<
         R,
         F: Fn(&mut S) -> R
     >(&mut self, bin: usize, f: F) -> R {
-        f(&mut self.bins.borrow_mut()[bin & (( 1 << BIN_SHIFT) - 1)])
+        f(&mut self.bins[bin & (( 1 << BIN_SHIFT) - 1)])
     }
 }
 
@@ -98,7 +92,7 @@ pub trait Stateful<S: Scope, V: ExchangeData> {
         W: ExchangeData,                            // State format on the wire
         D: Clone+IntoIterator<Item=W>+FromIterator<W>+Default+'static,    // per-key state (data)
         B: Fn(&V)->u64+'static,                     // "hash" function for values
-    >(&self, bin: B, control: &Stream<S, Control>) -> (Stream<S, (usize, u64, V)>, State<D>, ProbeHandle<S::Timestamp>) where S::Timestamp : Hash+Eq ;
+    >(&self, bin: B, control: &Stream<S, Control>) -> (Stream<S, (usize, u64, V)>, Rc<RefCell<State<D>>>, ProbeHandle<S::Timestamp>) where S::Timestamp : Hash+Eq ;
 
 }
 
@@ -107,13 +101,13 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         W: ExchangeData,                            // State format on the wire
         D: Clone+IntoIterator<Item=W>+FromIterator<W>+Default+'static,    // per-key state (data)
         B: Fn(&V)->u64+'static,                     // "hash" function for values
-    >(&self, bin: B, control: &Stream<S, Control>) -> (Stream<S, (usize, u64, V)>, State<D>, ProbeHandle<S::Timestamp>) where S::Timestamp : Hash+Eq
+    >(&self, bin: B, control: &Stream<S, Control>) -> (Stream<S, (usize, u64, V)>, Rc<RefCell<State<D>>>, ProbeHandle<S::Timestamp>) where S::Timestamp : Hash+Eq
     {
         let index = self.scope().index();
         let peers = self.scope().peers();
 
         // bin -> keys -> state
-        let states: Rc<RefCell<Vec<D>>> = Rc::new(RefCell::new(vec![Default::default(); 1 << BIN_SHIFT]));
+        let states: Rc<RefCell<State<D>>> = Rc::new(RefCell::new(State::new(vec![Default::default(); 1 << BIN_SHIFT])));
         let states_f = Rc::clone(&states);
         let states_op = Rc::clone(&states);
 
@@ -273,7 +267,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                 // actually contains data. Also, we must be the current owner of the bin.
                                 if (*old % peers == index) && (old != new) {
                                     // Capture bin's values as a `Vec` of (key, state) pairs
-                                    let state = ::std::mem::replace(&mut states[bin], Default::default());
+                                    let state = ::std::mem::replace(&mut states.bins[bin], Default::default());
                                     session.give((*new, Bin(bin), state.into_iter().collect::<Vec<W>>()));
                                 }
                             }
@@ -322,7 +316,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
                     for state_update in state_updates {
                         for (_target, bin, state) in state_update {
-                            states[*bin] = <D as FromIterator<W>>::from_iter(state.into_iter());
+                            states.bins[*bin] = <D as FromIterator<W>>::from_iter(state.into_iter());
                         }
                     }
                 }
@@ -338,6 +332,6 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                 }
             });
         });
-        (stream, State::new(states_op), probe1)
+        (stream, states_op, probe1)
     }
 }

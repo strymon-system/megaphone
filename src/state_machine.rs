@@ -2,6 +2,7 @@
 use std::hash::Hash;
 // use std::collections::HashMap;
 use std::rc::Rc;
+use std::cell::RefCell;
 
 use fnv::FnvHashMap as HashMap;
 
@@ -12,7 +13,7 @@ use timely::dataflow::operators::Probe;
 use timely::Data;
 use timely::dataflow::operators::generic::Unary;
 
-use stateful::{State, StateHandle};
+use stateful::StateHandle;
 
 pub trait BinnedStateMachine<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: ExchangeData + Default + 'static> {
     /// Tracks a state for each presented key, using user-supplied state transition logic.
@@ -49,7 +50,14 @@ pub trait BinnedStateMachine<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData,
     >(&mut self, fold: F) -> Stream<S, R> where S::Timestamp : Hash+Eq ;
 }
 
-impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: ExchangeData + Default + 'static> BinnedStateMachine<S, K, V, D> for (Stream<S, (usize, u64, (K, V))>, State<HashMap<K, D>>, ProbeHandle<S::Timestamp>) {
+impl<S, K, V, D, H> BinnedStateMachine<S, K, V, D> for (Stream<S, (usize, u64, (K, V))>, Rc<RefCell<H>>, ProbeHandle<S::Timestamp>)
+where
+    S: Scope,
+    K: ExchangeData+Hash+Eq,
+    V: ExchangeData,
+    D: ExchangeData + Default + 'static,
+    H: StateHandle<HashMap<K, D>> + 'static,
+{
     fn state_machine<
         R: Data,                                    // output type
         I: IntoIterator<Item=R>,                    // type of output iterator
@@ -57,8 +65,7 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: ExchangeData + Defau
     >(&mut self, fold: F) -> Stream<S, R> where S::Timestamp: Hash + Eq {
         let mut pending: HashMap<_, _> = Default::default();   // times -> (keys -> state)
 
-        let mut bin_states1 = self.1.clone();
-        let mut bin_states2 = self.1.clone();
+        let states = self.1.clone();
 
         let fold = Rc::new(fold);
         let fold2 = Rc::clone(&fold);
@@ -77,9 +84,10 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: ExchangeData + Defau
                     else {
                         // else we can process immediately
                         let mut session = output.session(&time);
+                        let mut states = states.borrow_mut();
                         for (_target, bin, (key, val)) in data.drain(..) {
                             let output = {
-                                bin_states1.with_state(bin as usize, |states| {
+                                states.with_state(bin as usize, |states| {
                                     let (remove, output) = {
                                         let state = states.entry(key.clone()).or_insert_with(Default::default);
                                         fold(&key, val.clone(), state)
@@ -97,9 +105,10 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: ExchangeData + Defau
             notificator.for_each(|time,_,_| {
                 if let Some(pend) = pending.remove(time.time()) {
                     let mut session = output.session(&time);
+                    let mut states = states.borrow_mut();
                     for (_target, bin, (key, val)) in pend {
                         let output = {
-                            bin_states2.with_state(bin as usize, |states| {
+                            states.with_state(bin as usize, |states| {
                                 let (remove, output) = {
                                     let state = states.entry(key.clone()).or_insert_with(Default::default);
                                     fold2(&key, val.clone(), state)};
