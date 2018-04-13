@@ -38,7 +38,7 @@ def run_isolation(socket, rounds, batch, keys, backend, n, p, w, outfile):
 all_map_modes = ["sudden", "one-by-one", "fluid"]
 
 # all_backends = ["native", "scaling", "redis"]
-all_backends = ["native", "scaling"]
+all_backends = ["native", "scaling", "generic"]
 
 def word_count_closed_one_two():
     experiment_name = "word_count-closed-one-two"
