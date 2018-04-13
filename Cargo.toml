@@ -8,9 +8,9 @@ build = "build.rs"
 timely = { git = "https://github.com/frankmcsherry/timely-dataflow.git" }
 abomonation = "^0.5"
 abomonation_derive = "^0.3"
-rand = "^0.3.18"
+rand = "^0.4"
 fnv="1.0"
-redis = "0.8"
+zipf = "2.0"
 
 # [profile.release]
 # opt-level = 3

@@ -1,10 +1,13 @@
 extern crate fnv;
 extern crate rand;
+extern crate zipf;
 
 extern crate timely;
 extern crate dynamic_scaling_mechanism;
 use std::hash::{Hash, Hasher};
 use rand::{Rng, SeedableRng, StdRng};
+use rand::distributions::Sample;
+use zipf::ZipfDistribution;
 
 use timely::ExchangeData;
 use timely::dataflow::*;
@@ -24,33 +27,35 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
     h.finish()
 }
 
-struct SentenceGenerator {
-    rng: StdRng,
+enum WordGenerator {
+    Uniform(StdRng, usize),
+    Zipf(StdRng, ZipfDistribution),
 }
 
-impl SentenceGenerator {
+impl WordGenerator {
 
-    fn new(index: usize) -> Self {
+    fn new_uniform(index: usize, keys: usize) -> Self {
         let seed: &[_] = &[1, 2, 3, index];
-        Self {
-            rng: SeedableRng::from_seed(seed),
-        }
+        WordGenerator::Uniform(SeedableRng::from_seed(seed), keys)
+    }
+
+    fn new_zipf(index: usize, keys: usize, s: f64) -> Self {
+        let seed: &[_] = &[1, 2, 3, index];
+        WordGenerator::Zipf(SeedableRng::from_seed(seed), ZipfDistribution::new(keys, s).unwrap())
     }
 
     #[inline(always)]
-    pub fn word_rand(&mut self, keys: usize) -> [u8; 24] {
-        let index = self.rng.gen_range(0, keys);
+    pub fn word_rand(&mut self) -> u64 {
+        let index = match *self {
+            WordGenerator::Uniform(mut rng, keys) => rng.gen_range(0, keys),
+            WordGenerator::Zipf(mut rng, ref mut zipf) => Sample::<isize>::sample(zipf, &mut rng) as usize,
+        };
         self.word_at(index)
     }
 
     #[inline(always)]
-    pub fn word_at(&mut self, k: usize) -> [u8; 24] {
-        let mut s = [0; 24];
-        let f = format!("{}", k);
-        for (&x, p) in f.as_bytes().iter().zip(s.iter_mut()) {
-            *p = x;
-        }
-        s
+    pub fn word_at(&mut self, k: usize) -> u64 {
+        k as u64
     }
 }
 
@@ -150,12 +155,18 @@ fn main() {
         _ => panic!("invalid backend"),
     };
 
+    let random = args.next().unwrap();
+
     println!("parameters: rounds: {}, batch: {}, keys: {}, mode: {:?}, map_mode: {:?}, backend: {:?}",
              rounds, batch, keys, mode, map_mode, backend);
 
     timely::execute_from_args(args, move |worker| {
 
-        let mut text_gen = SentenceGenerator::new(worker.index());
+        let mut text_gen = match random.as_str() {
+            "uniform" => WordGenerator::new_uniform(worker.index(), keys),
+            "zipf" => WordGenerator::new_zipf(worker.index(), keys, 1.07f64),
+            random => panic!("invalid rng: {}", random),
+        };
 
         let index = worker.index();
         let peers = worker.peers();
@@ -345,7 +356,7 @@ fn main() {
                     let requested_at = requested.as_secs() * 1_000_000_000 + (requested.subsec_nanos() as u64);
 
                     for i in 0..batch/peers {
-                        input.send(text_gen.word_rand(keys));
+                        input.send(text_gen.word_rand());
                         request_counter += peers;
                     }
                     input.advance_to(measurements.len() + 2);
@@ -373,7 +384,7 @@ fn main() {
                     // Request i "arrives" at `index + ns_per_request * (i + 1)`.
                     while ((request_counter * ns_per_request) as u64) < elapsed_ns {
                         // input.send(text_gen.generate());
-                        input.send(text_gen.word_rand(keys));
+                        input.send(text_gen.word_rand());
                         request_counter += peers;
                     }
                     input.advance_to(elapsed_ns as usize);
@@ -412,7 +423,7 @@ fn main() {
                     let time_base = |counter| counter / ns_times_in_period.len() * square_period;
 
                     while time_base(request_counter + peers) + ns_times_in_period[ns_times_in_period_index(request_counter + peers)] < (elapsed_ns as usize) {
-                        input.send(text_gen.word_rand(keys));
+                        input.send(text_gen.word_rand());
                         request_counter += peers;
                     }
                     input.advance_to(elapsed_ns as usize);

@@ -71,9 +71,6 @@ where
         let fold2 = Rc::clone(&fold);
 
         self.0.unary_notify(Pipeline, "StateMachine", vec![], move |input, output, notificator| {
-
-            let fold = fold.clone();
-            let fold2 = fold2.clone();
             // stash each input and request a notification when ready
             input.for_each(|time, data| {
                 // stash if not time yet
