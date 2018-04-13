@@ -55,7 +55,7 @@ impl<S> StateHandle<S> for State<S> {
         R,
         F: Fn(&mut S) -> R
     >(&mut self, bin: usize, f: F) -> R {
-        f(&mut self.bins[bin & (( 1 << BIN_SHIFT) - 1)])
+        f(&mut self.bins[bin >> ::std::mem::size_of::<usize>() * 8 - BIN_SHIFT])
     }
 }
 
@@ -142,6 +142,8 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                 map: vec![0; 1 << BIN_SHIFT],
             };
 
+            let bin_shift = ::std::mem::size_of::<usize>() * 8 - BIN_SHIFT;
+
             let mut data_return_buffer = vec![];
 
             // Handle input data
@@ -205,7 +207,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
                         let data_iter = data.drain(..).into_iter().map(|d| {
                             let bin = bin(&d);
-                            (map[(bin & (( 1 << BIN_SHIFT) - 1)) as usize], bin, d)
+                            (map[(bin >> bin_shift) as usize], bin, d)
                         });
                         session.give_iterator(data_iter);
                     }
@@ -229,7 +231,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                             {
                                 let data_iter = data.drain(..).map(|d| {
                                     let bin = bin(&d);
-                                    (map[(bin & (( 1 << BIN_SHIFT) - 1)) as usize], bin, d)
+                                    (map[(bin >> bin_shift) as usize], bin, d)
                                 });
                                 session.give_iterator(data_iter);
                             }
