@@ -26,7 +26,7 @@ def word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mod
         experlib.experdir(experiment_name), n, w, rounds, batch, keys, open_loop, map_mode, backend)
 
 def run_word_count(socket, rounds, batch, keys, open_loop, map_mode, backend, n, p, w, outfile):
-    return run_cmd("hwloc-bind socket:{} -- cargo run --release --example word_count -- {} {} {} {} {} {} -n {} -p {} -w {}".format(socket, rounds, batch, keys, open_loop, map_mode, backend, n, p, w), outfile, True)
+    return run_cmd("hwloc-bind socket:{} -- cargo run --release --example word_count -- {} {} {} {} {} {} uniform -n {} -p {} -w {}".format(socket, rounds, batch, keys, open_loop, map_mode, backend, n, p, w), outfile, True)
 
 def isolation_filename(experiment_name, rounds, batch, keys, backend, n, w):
     return "{}/isolation_n{}_w{}_rounds{}_batch{}_keys{}_{}".format(
