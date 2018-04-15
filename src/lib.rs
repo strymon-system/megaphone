@@ -3,6 +3,7 @@ extern crate timely;
 extern crate abomonation;
 #[macro_use] extern crate abomonation_derive;
 
+pub mod bin_prober;
 pub mod distribution;
 pub mod stateful;
 pub mod state_machine;
