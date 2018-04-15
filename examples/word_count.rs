@@ -47,8 +47,8 @@ impl WordGenerator {
     #[inline(always)]
     pub fn word_rand(&mut self) -> u64 {
         let index = match *self {
-            WordGenerator::Uniform(mut rng, keys) => rng.gen_range(0, keys),
-            WordGenerator::Zipf(mut rng, ref mut zipf) => Sample::<isize>::sample(zipf, &mut rng) as usize,
+            WordGenerator::Uniform(ref mut rng, ref keys) => rng.gen_range(0, *keys),
+            WordGenerator::Zipf(ref mut rng, ref mut zipf) => Sample::<isize>::sample(zipf, rng) as usize,
         };
         self.word_at(index)
     }
