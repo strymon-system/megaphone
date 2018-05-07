@@ -2,8 +2,6 @@
 name = "dynamic_scaling_mechanism"
 version = "0.0.1"
 
-build = "build.rs"
-
 [dependencies]
 timely = { git = "https://github.com/frankmcsherry/timely-dataflow.git" }
 abomonation = "^0.5"
