@@ -17,6 +17,7 @@ use timely::dataflow::operators::generic::binary::Binary;
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::progress::Timestamp;
 use timely::progress::frontier::Antichain;
+use timely::dataflow::scopes::child::Child;
 
 use ::{BIN_SHIFT, Bin, Control, ControlSetBuilder, ControlSet};
 
@@ -143,6 +144,12 @@ pub trait Stateful<S: Scope, V: ExchangeData> {
         B: Fn(&V)->u64+'static,                     // "hash" function for values
     >(&self, bin: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W> where S::Timestamp : Hash+Eq ;
 
+    fn stateful_scope<
+        W: ExchangeData,                            // State format on the wire
+        D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
+        B: Fn(&V)->u64+'static,                     // "hash" function for values
+        R, F:FnOnce(&mut Child<S, ()>)->R,
+    >(&self, bin: B, control: &Stream<S, Control>, func: F) -> R where S::Timestamp : Hash+Eq;
 }
 
 impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
@@ -400,5 +407,18 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
             probe: probe1,
             _phantom: PhantomData,
         }
+    }
+
+    fn stateful_scope<
+        W: ExchangeData,                            // State format on the wire
+        D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
+        B: Fn(&V)->u64+'static,                     // "hash" function for values
+        R,
+        F: FnOnce(&mut Child<S, ()>)->R,
+    >(&self, bin: B, control: &Stream<S, Control>, func: F) -> R where S::Timestamp : Hash+Eq
+    {
+
+        let state_stream = self.stateful(bin, control);
+        state_stream.stream.scope().scoped(func)
     }
 }
