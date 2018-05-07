@@ -4,6 +4,8 @@ use std::cell::RefCell;
 // use std::collections::HashMap;
 use std::rc::Rc;
 
+use std::marker::PhantomData;
+
 use fnv::FnvHashMap as HashMap;
 
 use timely::ExchangeData;
@@ -94,8 +96,19 @@ enum StateProtocol<T, S> {
     Pending(T),
 }
 
+pub struct StateStream<S, V, D, W,> where
+    S: Scope,
+    V: ExchangeData,
+    D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
+    W: ExchangeData,                            // State format on the wire
+{
+    pub stream: Stream<S, (usize, u64, V)>,
+    pub state: Rc<RefCell<State<S::Timestamp, D>>>,
+    pub probe: ProbeHandle<S::Timestamp>,
+    _phantom: PhantomData<(W)>,
+}
 
-/// Provides the `control_state_machine` method.
+/// Provides the `stateful` method.
 pub trait Stateful<S: Scope, V: ExchangeData> {
     /// Tracks a state for each presented key, using user-supplied state transition logic.
     ///
@@ -128,7 +141,7 @@ pub trait Stateful<S: Scope, V: ExchangeData> {
         W: ExchangeData,                            // State format on the wire
         D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
         B: Fn(&V)->u64+'static,                     // "hash" function for values
-    >(&self, bin: B, control: &Stream<S, Control>) -> (Stream<S, (usize, u64, V)>, Rc<RefCell<State<S::Timestamp, D>>>, ProbeHandle<S::Timestamp>) where S::Timestamp : Hash+Eq ;
+    >(&self, bin: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W> where S::Timestamp : Hash+Eq ;
 
 }
 
@@ -137,7 +150,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         W: ExchangeData,                            // State format on the wire
         D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
         B: Fn(&V)->u64+'static,                     // "hash" function for values
-    >(&self, bin: B, control: &Stream<S, Control>) -> (Stream<S, (usize, u64, V)>, Rc<RefCell<State<S::Timestamp, D>>>, ProbeHandle<S::Timestamp>) where S::Timestamp : Hash+Eq
+    >(&self, bin: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W> where S::Timestamp : Hash+Eq
     {
         let index = self.scope().index();
         let peers = self.scope().peers();
@@ -380,6 +393,12 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                 }
             });
         });
-        (stream, states_op, probe1)
+
+        StateStream {
+            stream,
+            state: states_op,
+            probe: probe1,
+            _phantom: PhantomData,
+        }
     }
 }

@@ -1,19 +1,17 @@
 //! General purpose state transition operator.
 use std::hash::Hash;
-// use std::collections::HashMap;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 use fnv::FnvHashMap as HashMap;
 
 use timely::ExchangeData;
-use timely::dataflow::{Stream, Scope, ProbeHandle};
+use timely::dataflow::{Stream, Scope};
 use timely::dataflow::channels::pact::Pipeline;
 use timely::dataflow::operators::Probe;
 use timely::Data;
 use timely::dataflow::operators::Operator;
 
-use stateful::StateHandle;
+use stateful::{StateHandle, StateStream};
 
 pub trait BinnedStateMachine<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: ExchangeData + Default + 'static> {
     /// Tracks a state for each presented key, using user-supplied state transition logic.
@@ -50,13 +48,12 @@ pub trait BinnedStateMachine<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData,
     >(&mut self, fold: F) -> Stream<S, R> where S::Timestamp : Hash+Eq ;
 }
 
-impl<S, K, V, D, H> BinnedStateMachine<S, K, V, D> for (Stream<S, (usize, u64, (K, V))>, Rc<RefCell<H>>, ProbeHandle<S::Timestamp>)
+impl<S, K, V, D> BinnedStateMachine<S, K, V, D> for StateStream<S, (K, V), HashMap<K, D>, (K, D)>
 where
     S: Scope,
     K: ExchangeData+Hash+Eq,
     V: ExchangeData,
     D: ExchangeData + Default + 'static,
-    H: StateHandle<S::Timestamp, HashMap<K, D>> + 'static,
 {
     fn state_machine<
         R: Data,                                    // output type
@@ -65,12 +62,12 @@ where
     >(&mut self, fold: F) -> Stream<S, R> where S::Timestamp: Hash + Eq {
         let mut pending: HashMap<_, _> = Default::default();   // times -> (keys -> state)
 
-        let states = self.1.clone();
+        let states = self.state.clone();
 
         let fold = Rc::new(fold);
         let fold2 = Rc::clone(&fold);
 
-        self.0.unary_frontier(Pipeline, "StateMachine", |_cap, _info| {
+        self.stream.unary_frontier(Pipeline, "StateMachine", |_cap, _info| {
             move |input, output| {
                 let frontier = input.frontier();
                 // stash each input and request a notification when ready
@@ -120,6 +117,6 @@ where
                 }
             });
             }
-        }).probe_with(&mut self.2)
+        }).probe_with(&mut self.probe)
     }
 }
