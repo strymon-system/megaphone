@@ -9,6 +9,8 @@ mkdir -p plots/$COMMIT
 
 modes=("sudden" "one-by-one" "fluid")
 backends=("native" "scaling")
+#rands=("uniform" "zipf")
+rand="uniform"
 
 out_format=pdf
 out_ext=pdf
@@ -49,8 +51,8 @@ rounds=100
 
 for backend in ${backends[@]}; do
     for mode in "sudden"; do
-      plot="set logscale y; set xlabel \"sec (wall clock)\"; set ylabel \"latency (µsec)\"; set key off; plot \"$experiment/latency-word_count_n2_w1_rounds${rounds}_batch${batch}_keys${keys}_closed_${mode}_${backend}\" using (\$1/1000000000):(\$2/1000) with lines lt rgb \"black\","
-      gnuplot -p -e "$common; set terminal ${out_format} size 2.3,1.1; $plot" > plots/$COMMIT/word_count_scaling_n02_w01_closed_${mode}_batch${batch}_keys${keys}_${backend}.${out_ext}
+      plot="set logscale y; set xlabel \"sec (wall clock)\"; set ylabel \"latency (µsec)\"; set key off; plot \"$experiment/latency-word_count_n2_w1_rounds${rounds}_batch${batch}_keys${keys}_closed_${mode}_${backend}_${rand}\" using (\$1/1000000000):(\$2/1000) with lines lt rgb \"black\","
+      gnuplot -p -e "$common; set terminal ${out_format} size 2.3,1.1; $plot" > plots/$COMMIT/word_count_scaling_n02_w01_closed_${mode}_batch${batch}_keys${keys}_${backend}_${rand}.${out_ext}
     done
 done
 
@@ -85,10 +87,10 @@ for backend in "scaling"; do
             set ytics border in scale 1,0.5 nomirror norotate  autojustify
             set xlabel "State size [\$10^x\$]"
             set ylabel "Throughput [keys/s]"
-            filename(n) = sprintf("$experiment/latency-word_count_n2_w1_rounds${rounds}_batch${batch}_keys%d_closed_${mode}_${backend}", n)
+            filename(n) = sprintf("$experiment/latency-word_count_n2_w1_rounds${rounds}_batch${batch}_keys%d_closed_${mode}_${backend}_${rand}", n)
             # set terminal ${out_format} size 2.3,1.1
             set terminal ${out_format} size 8cm,5cm
-            set output "plots/$COMMIT/word_count_scaling_n02_w01_state_throughput_${mode}_batch${batch}_keys${keys}_${backend}.${out_ext}"
+            set output "plots/$COMMIT/word_count_scaling_n02_w01_state_throughput_${mode}_batch${batch}_keys${keys}_${backend}_${rand}.${out_ext}"
             plot for [i=0:7] filename(10**i) using (i):(10**i/\$2*1000000000/2)
 EOFMarker
         gnuplot -persist <<-EOFMarker
@@ -107,10 +109,10 @@ EOFMarker
             set ytics border in scale 1,0.5 nomirror norotate  autojustify
             set xlabel "State size [\$10^x\$]"
             set ylabel "Latency [ns/key]"
-            filename(n) = sprintf("$experiment/latency-word_count_n2_w1_rounds${rounds}_batch${batch}_keys%d_closed_${mode}_${backend}", n)
+            filename(n) = sprintf("$experiment/latency-word_count_n2_w1_rounds${rounds}_batch${batch}_keys%d_closed_${mode}_${backend}_${rand}", n)
             # set terminal ${out_format} size 2.3,1.1
             set terminal ${out_format} size 8cm,5cm
-            set output "plots/$COMMIT/word_count_scaling_n02_w01_state_latency_${mode}_batch${batch}_keys${keys}_${backend}.${out_ext}"
+            set output "plots/$COMMIT/word_count_scaling_n02_w01_state_latency_${mode}_batch${batch}_keys${keys}_${backend}_${rand}.${out_ext}"
             plot for [i=0:7] filename(10**i) using (i):(\$2/10**i)
 EOFMarker
     done
@@ -130,18 +132,18 @@ batch=1000000
 
 for backend in ${backends[@]}; do
     for mode in ${modes[@]}; do
-        file="$experiment/latency-word_count_n2_w1_rounds10_batch${batch}_keys${keys}_constant_${mode}_${backend}"
+        file="$experiment/latency-word_count_n2_w1_rounds10_batch${batch}_keys${keys}_constant_${mode}_${backend}_${rand}"
         plot="set logscale y; set xlabel \"sec (wall clock)\"; set ylabel \"latency (µsec)\"; set key off; plot \"${file}\" using (\$1/1000000000):(\$2/1000) with lines lt rgb \"black\","
-        gnuplot -p -e "$common; set terminal ${out_format} size 2.3,1.1; $plot" > plots/$COMMIT/word_count_scaling_n02_w01_constant_${mode}_batch${batch}_keys${keys}_${backend}.${out_ext}
+        gnuplot -p -e "$common; set terminal ${out_format} size 2.3,1.1; $plot" > plots/$COMMIT/word_count_scaling_n02_w01_constant_${mode}_batch${batch}_keys${keys}_${backend}_${rand}.${out_ext}
         gnuplot -persist <<-EOFMarker
             set title "Constant ${batch}/s, ${keys} keys, ${backend}, ${mode}"
             set xlabel "Latency [ns]"
             set ylabel "CDF"
             set logscale x
             set terminal ${out_format} size 9cm,5cm
-            set output "plots/$COMMIT/word_count_scaling_n02_w01_constant_${mode}_batch${batch}_keys${keys}_${backend}-cdf.${out_ext}"
+            set output "plots/$COMMIT/word_count_scaling_n02_w01_constant_${mode}_batch${batch}_keys${keys}_${backend}_${rand}-cdf.${out_ext}"
             $(cdf)
-            set output "plots/$COMMIT/word_count_scaling_n02_w01_constant_${mode}_batch${batch}_keys${keys}_${backend}-cdf99.${out_ext}"
+            set output "plots/$COMMIT/word_count_scaling_n02_w01_constant_${mode}_batch${batch}_keys${keys}_${backend}_${rand}-cdf99.${out_ext}"
             $(cdf99)
 EOFMarker
     done
@@ -152,7 +154,7 @@ EOFMarker
     multiplot="$multiplot; unset ylabel; set format y \"\"; set xtics 5; set size 0.3,0.95; "
 
     for mode in ${modes[@]}; do
-        file="$experiment/latency-word_count_n2_w1_rounds10_batch${batch}_keys${keys}_constant_${mode}_${backend}"
+        file="$experiment/latency-word_count_n2_w1_rounds10_batch${batch}_keys${keys}_constant_${mode}_${backend}_${rand}"
       if [ $mode == "sudden" ]; then
         multiplot="$multiplot; set origin 0.1,0.05; "
       fi
@@ -170,13 +172,13 @@ EOFMarker
 
     multiplot="$multiplot; set origin 0,0; set size 1,1; set ylabel; unset format y;  unset border; set tic scale 0; set xlabel \"sec (wall clock)\"; set format x \"\"; plot (1/0); "
 
-    gnuplot -p -e "$common; set terminal ${out_format} size 3.5,1.1; $multiplot" > plots/$COMMIT/word_count_scaling_n02_w01_constant_multiplot_batch${batch}_keys${keys}_${backend}.${out_ext}
+    gnuplot -p -e "$common; set terminal ${out_format} size 3.5,1.1; $multiplot" > plots/$COMMIT/word_count_scaling_n02_w01_constant_multiplot_batch${batch}_keys${keys}_${backend}_${rand}.${out_ext}
 
     cat > gnuplot.script <<-EOFMarker
         set terminal ${out_format} size 8cm,8cm
-        set output "plots/$COMMIT/word_count_scaling_n02_w01_constant_multiplot_batch${batch}_keys${keys}_${backend}-cdf.${out_ext}"
+        set output "plots/$COMMIT/word_count_scaling_n02_w01_constant_multiplot_batch${batch}_keys${keys}_${backend}_${rand}-cdf.${out_ext}"
         set logscale x
-        set multiplot layout 3, 1 title "Constant ${batch}/s, ${keys} keys, ${backend}"
+        set multiplot layout 3, 1 title "Constant ${batch}/s, ${keys} keys, ${backend}, ${rand}"
         set xrange [100:*]
         ${multi_cdf}
         set xlabel "Latency [ns]"
@@ -198,18 +200,18 @@ batch=1000000
 
 for backend in ${backends[@]}; do
     for mode in ${modes[@]}; do
-        file="$experiment/latency-word_count_n2_w4_rounds10_batch${batch}_keys${keys}_constant_${mode}_${backend}"
+        file="$experiment/latency-word_count_n2_w4_rounds10_batch${batch}_keys${keys}_constant_${mode}_${backend}_${rand}"
         plot="set logscale y; set xlabel \"sec (wall clock)\"; set ylabel \"latency (µsec)\"; set key off; plot \"${file}\" using (\$1/1000000000):(\$2/1000) with lines lt rgb \"black\","
-        gnuplot -p -e "$common; set terminal ${out_format} size 2.3,1.1; $plot" > plots/$COMMIT/word_count_scaling_n02_w04_constant_${mode}_batch${batch}_keys${keys}_${backend}.${out_ext}
+        gnuplot -p -e "$common; set terminal ${out_format} size 2.3,1.1; $plot" > plots/$COMMIT/word_count_scaling_n02_w04_constant_${mode}_batch${batch}_keys${keys}_${backend}_${rand}.${out_ext}
         gnuplot -persist <<-EOFMarker
             set title "Constant ${batch}/s, ${keys} keys, ${backend}, ${mode}"
             set xlabel "Latency [ns]"
             set ylabel "CDF"
             set logscale x
             set terminal ${out_format} size 9cm,5cm
-            set output "plots/$COMMIT/word_count_scaling_n02_w04_constant_${mode}_batch${batch}_keys${keys}_${backend}-cdf.${out_ext}"
+            set output "plots/$COMMIT/word_count_scaling_n02_w04_constant_${mode}_batch${batch}_keys${keys}_${backend}_${rand}-cdf.${out_ext}"
             $(cdf)
-            set output "plots/$COMMIT/word_count_scaling_n02_w04_constant_${mode}_batch${batch}_keys${keys}_${backend}-cdf99.${out_ext}"
+            set output "plots/$COMMIT/word_count_scaling_n02_w04_constant_${mode}_batch${batch}_keys${keys}_${backend}_${rand}-cdf99.${out_ext}"
             $(cdf99)
 EOFMarker
     done
@@ -220,7 +222,7 @@ EOFMarker
     multiplot="$multiplot; unset ylabel; set format y \"\"; set xtics 5; set size 0.3,0.95; "
 
     for mode in ${modes[@]}; do
-        file="$experiment/latency-word_count_n2_w4_rounds10_batch${batch}_keys${keys}_constant_${mode}_${backend}"
+        file="$experiment/latency-word_count_n2_w4_rounds10_batch${batch}_keys${keys}_constant_${mode}_${backend}_${rand}"
       if [ $mode == "sudden" ]; then
         multiplot="$multiplot; set origin 0.1,0.05; "
       fi
@@ -238,13 +240,13 @@ EOFMarker
 
     multiplot="$multiplot; set origin 0,0; set size 1,1; set ylabel; unset format y;  unset border; set tic scale 0; set xlabel \"sec (wall clock)\"; set format x \"\"; plot (1/0); "
 
-    gnuplot -p -e "$common; set terminal ${out_format} size 3.5,1.1; $multiplot" > plots/$COMMIT/word_count_scaling_n02_w04_constant_multiplot_batch${batch}_keys${keys}_${backend}.${out_ext}
+    gnuplot -p -e "$common; set terminal ${out_format} size 3.5,1.1; $multiplot" > plots/$COMMIT/word_count_scaling_n02_w04_constant_multiplot_batch${batch}_keys${keys}_${backend}_${rand}.${out_ext}
 
     cat > gnuplot.script <<-EOFMarker
         set terminal ${out_format} size 8cm,8cm
-        set output "plots/$COMMIT/word_count_scaling_n02_w04_constant_multiplot_batch${batch}_keys${keys}_${backend}-cdf.${out_ext}"
+        set output "plots/$COMMIT/word_count_scaling_n02_w04_constant_multiplot_batch${batch}_keys${keys}_${backend}_${rand}-cdf.${out_ext}"
         set logscale x
-        set multiplot layout 3, 1 title "Constant ${batch}/s, ${keys} keys, ${backend}"
+        set multiplot layout 3, 1 title "Constant ${batch}/s, ${keys} keys, ${backend}, ${rand}"
         set xrange [1000:*]
         ${multi_cdf}
         set xlabel "Latency [ns]"
@@ -268,18 +270,18 @@ rounds=10
 
 for backend in ${backends[@]}; do
     for mode in ${modes[@]}; do
-        file="$experiment/latency-word_count_n2_w4_rounds${rounds}_batch${batch}_keys${keys}_square_${mode}_${backend}"
+        file="$experiment/latency-word_count_n2_w4_rounds${rounds}_batch${batch}_keys${keys}_square_${mode}_${backend}_${rand}"
         plot="set logscale y; set xlabel \"sec (wall clock)\"; set ylabel \"latency (µsec)\"; set key off; plot \"${file}\" using (\$1/1000000000):(\$2/1000) with lines lt rgb \"black\","
-        gnuplot -p -e "$common; set terminal ${out_format} size 2.3,1.1; $plot" > plots/$COMMIT/word_count_scaling_n02_w04_square_${mode}_batch${batch}_keys${keys}_${backend}.${out_ext}
+        gnuplot -p -e "$common; set terminal ${out_format} size 2.3,1.1; $plot" > plots/$COMMIT/word_count_scaling_n02_w04_square_${mode}_batch${batch}_keys${keys}_${backend}_${rand}.${out_ext}
         gnuplot -persist <<-EOFMarker
             set title "Constant ${batch}/s, ${keys} keys, ${backend}, ${mode}"
             set xlabel "Latency [ns]"
             set ylabel "CDF"
             set logscale x
             set terminal ${out_format} size 9cm,5cm
-            set output "plots/$COMMIT/word_count_scaling_n02_w04_square_${mode}_batch${batch}_keys${keys}_${backend}-cdf.${out_ext}"
+            set output "plots/$COMMIT/word_count_scaling_n02_w04_square_${mode}_batch${batch}_keys${keys}_${backend}_${rand}-cdf.${out_ext}"
             $(cdf)
-            set output "plots/$COMMIT/word_count_scaling_n02_w04_square_${mode}_batch${batch}_keys${keys}_${backend}-cdf99.${out_ext}"
+            set output "plots/$COMMIT/word_count_scaling_n02_w04_square_${mode}_batch${batch}_keys${keys}_${backend}_${rand}-cdf99.${out_ext}"
             $(cdf99)
 EOFMarker
     done
@@ -290,7 +292,7 @@ EOFMarker
     multiplot="$multiplot; unset ylabel; set format y \"\"; set xtics 5; set size 0.3,0.95; "
 
     for mode in ${modes[@]}; do
-        file="$experiment/latency-word_count_n2_w4_rounds${rounds}_batch${batch}_keys${keys}_square_${mode}_${backend}"
+        file="$experiment/latency-word_count_n2_w4_rounds${rounds}_batch${batch}_keys${keys}_square_${mode}_${backend}_${rand}"
       if [ $mode == "sudden" ]; then
         multiplot="$multiplot; set origin 0.1,0.05; "
       fi
@@ -308,13 +310,13 @@ EOFMarker
 
     multiplot="$multiplot; set origin 0,0; set size 1,1; set ylabel; unset format y;  unset border; set tic scale 0; set xlabel \"sec (wall clock)\"; set format x \"\"; plot (1/0); "
 
-    gnuplot -p -e "$common; set terminal ${out_format} size 3.5,1.1; $multiplot" > plots/$COMMIT/word_count_scaling_n02_w04_square_multiplot_batch${batch}_keys${keys}_${backend}.${out_ext}
+    gnuplot -p -e "$common; set terminal ${out_format} size 3.5,1.1; $multiplot" > plots/$COMMIT/word_count_scaling_n02_w04_square_multiplot_batch${batch}_keys${keys}_${backend}_${rand}.${out_ext}
 
     cat > gnuplot.script <<-EOFMarker
         set terminal ${out_format} size 8cm,8cm
-        set output "plots/$COMMIT/word_count_scaling_n02_w04_square_multiplot_batch${batch}_keys${keys}_${backend}-cdf.${out_ext}"
+        set output "plots/$COMMIT/word_count_scaling_n02_w04_square_multiplot_batch${batch}_keys${keys}_${backend}_${rand}-cdf.${out_ext}"
         set logscale x
-        set multiplot layout 3, 1 title "Constant ${batch}/s, ${keys} keys, ${backend}"
+        set multiplot layout 3, 1 title "Constant ${batch}/s, ${keys} keys, ${backend}, ${rand}"
         set xrange [5000:1000000]
         ${multi_cdf}
         set xlabel "Latency [ns]"

@@ -21,12 +21,12 @@ def run_cmd(cmd, redirect=None, background=False):
 run_cmd("cargo build --release --example word_count")
 run_cmd("cargo build --release --example isolation")
 
-def word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, n, w):
-    return "{}/word_count_n{}_w{}_rounds{}_batch{}_keys{}_{}_{}_{}".format(
-        experlib.experdir(experiment_name), n, w, rounds, batch, keys, open_loop, map_mode, backend)
+def word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, rand, n, w):
+    return "{}/word_count_n{}_w{}_rounds{}_batch{}_keys{}_{}_{}_{}_{}".format(
+        experlib.experdir(experiment_name), n, w, rounds, batch, keys, open_loop, map_mode, backend, rand)
 
-def run_word_count(socket, rounds, batch, keys, open_loop, map_mode, backend, n, p, w, outfile):
-    return run_cmd("hwloc-bind socket:{} -- cargo run --release --example word_count -- {} {} {} {} {} {} uniform -n {} -p {} -w {}".format(socket, rounds, batch, keys, open_loop, map_mode, backend, n, p, w), outfile, True)
+def run_word_count(socket, rounds, batch, keys, open_loop, map_mode, backend, rand, n, p, w, outfile):
+    return run_cmd("hwloc-bind socket:{} -- cargo run --release --example word_count -- {} {} {} {} {} {} {} -n {} -p {} -w {}".format(socket, rounds, batch, keys, open_loop, map_mode, backend, rand, n, p, w), outfile, True)
 
 def isolation_filename(experiment_name, rounds, batch, keys, backend, n, w):
     return "{}/isolation_n{}_w{}_rounds{}_batch{}_keys{}_{}".format(
@@ -40,6 +40,8 @@ all_map_modes = ["sudden", "one-by-one", "fluid"]
 # all_backends = ["native", "scaling", "redis"]
 all_backends = ["native", "scaling", "generic"]
 
+all_rand = ["uniform", "zipf"]
+
 def word_count_closed_one_two():
     experiment_name = "word_count-closed-one-two"
 
@@ -51,14 +53,15 @@ def word_count_closed_one_two():
         for keys in [10240000]:
             for map_mode in ["sudden"]:
                 for backend in all_backends:
-                    n = 2
-                    w = 1
-                    rounds=100
-                    open_loop="closed"
+                    for rand in all_rand:
+                        n = 2
+                        w = 1
+                        rounds=100
+                        open_loop="closed"
 
-                    filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, n, w)
-                    eprint("RUNNING keys: {} in {}".format(keys, filename))
-                    experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, backend, n, p, w, filename) for p in range(0, 2)])
+                        filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, rand, n, w)
+                        eprint("RUNNING keys: {} in {}".format(keys, filename))
+                        experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, backend, rand, n, p, w, filename) for p in range(0, 2)])
 
 def word_count_closed_one_two_state():
     experiment_name = "word_count-closed-one-two-state"
@@ -71,14 +74,15 @@ def word_count_closed_one_two_state():
         for keys in [10 ** x for x in range(8)]:
             for map_mode in ["tp"]:
                 for backend in all_backends:
-                    n = 2
-                    w = 1
-                    rounds=100
-                    open_loop="closed"
+                    for rand in all_rand:
+                        n = 2
+                        w = 1
+                        rounds=100
+                        open_loop="closed"
 
-                    filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, n, w)
-                    eprint("RUNNING keys: {} in {}".format(keys, filename))
-                    experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, backend, n, p, w, filename) for p in range(0, 2)])
+                        filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, rand, n, w)
+                        eprint("RUNNING keys: {} in {}".format(keys, filename))
+                        experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, backend, rand, n, p, w, filename) for p in range(0, 2)])
 
 def word_count_constant_one_two():
     experiment_name = "word_count-constant-one-two"
@@ -91,14 +95,15 @@ def word_count_constant_one_two():
         for keys in [10240000]:
             for map_mode in all_map_modes:
                 for backend in all_backends:
-                    n = 2
-                    w = 1
-                    rounds=10
-                    open_loop="constant"
+                    for rand in all_rand:
+                        n = 2
+                        w = 1
+                        rounds=10
+                        open_loop="constant"
 
-                    filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, n, w)
-                    eprint("RUNNING keys: {} in {}".format(keys, filename))
-                    experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, backend, n, p, w, filename) for p in range(0, 2)])
+                        filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, rand, n, w)
+                        eprint("RUNNING keys: {} in {}".format(keys, filename))
+                        experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, backend, rand, n, p, w, filename) for p in range(0, 2)])
 
 
 def word_count_constant_half_all():
@@ -112,14 +117,15 @@ def word_count_constant_half_all():
         for keys in [40960000]:
             for map_mode in all_map_modes:
                 for backend in all_backends:
-                    n = 2
-                    w = 4
-                    rounds=10
-                    open_loop="constant"
+                    for rand in all_rand:
+                        n = 2
+                        w = 4
+                        rounds=10
+                        open_loop="constant"
 
-                    filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, n, w)
-                    eprint("RUNNING keys: {} in {}".format(keys, filename))
-                    experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, backend, n, p, w, filename) for p in range(0, 2)])
+                        filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, rand, n, w)
+                        eprint("RUNNING keys: {} in {}".format(keys, filename))
+                        experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, backend, rand, n, p, w, filename) for p in range(0, 2)])
 
 def word_count_square_half_all():
     experiment_name = "word_count-square-half-all"
@@ -132,14 +138,15 @@ def word_count_square_half_all():
         for keys in [20480000 // 2]:
             for map_mode in all_map_modes:
                 for backend in all_backends:
-                    n = 2
-                    w = 4
-                    rounds=10
-                    open_loop="square"
+                    for rand in all_rand:
+                        n = 2
+                        w = 4
+                        rounds=10
+                        open_loop="square"
 
-                    filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, n, w)
-                    eprint("RUNNING keys: {} in {}".format(keys, filename))
-                    experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, backend, n, p, w, filename) for p in range(0, 2)])
+                        filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, rand, n, w)
+                        eprint("RUNNING keys: {} in {}".format(keys, filename))
+                        experlib.waitall([run_word_count(p, rounds, batch, keys, open_loop, map_mode, backend, rand, n, p, w, filename) for p in range(0, 2)])
 
 def isolation_one_two():
     experiment_name = "isolation-one-two"
