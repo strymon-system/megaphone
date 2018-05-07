@@ -73,7 +73,7 @@ impl<S, D, P, KV> BinProber<S> for (Stream<S, (usize, u64, KV)>, D, P)
 
                 // Read control input
                 data_in.for_each(|time, data| {
-                    let map = count_map.entry(time.time().clone()).or_insert_with(|| vec![0; (1 << BIN_SHIFT)]);
+                    let map = count_map.entry(time.time().clone()).or_insert_with(|| vec![0; 1 << BIN_SHIFT]);
                     {
                         let contents: &mut Vec<_> = &mut *data;
                         for &(_target, bin, _) in contents.iter() {
