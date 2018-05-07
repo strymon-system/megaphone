@@ -11,7 +11,7 @@ use timely::dataflow::{Stream, Scope, ProbeHandle};
 use timely::dataflow::channels::pact::Pipeline;
 use timely::dataflow::operators::Probe;
 use timely::Data;
-use timely::dataflow::operators::generic::Unary;
+use timely::dataflow::operators::Operator;
 
 use stateful::StateHandle;
 
@@ -56,7 +56,7 @@ where
     K: ExchangeData+Hash+Eq,
     V: ExchangeData,
     D: ExchangeData + Default + 'static,
-    H: StateHandle<HashMap<K, D>> + 'static,
+    H: StateHandle<S::Timestamp, HashMap<K, D>> + 'static,
 {
     fn state_machine<
         R: Data,                                    // output type
@@ -70,21 +70,23 @@ where
         let fold = Rc::new(fold);
         let fold2 = Rc::clone(&fold);
 
-        self.0.unary_notify(Pipeline, "StateMachine", vec![], move |input, output, notificator| {
-            // stash each input and request a notification when ready
-            input.for_each(|time, data| {
-                // stash if not time yet
-                if notificator.frontier(0).less_than(time.time()) {
-                    pending.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                    notificator.notify_at(time.retain());
-                }
-                    else {
+        self.0.unary_frontier(Pipeline, "StateMachine", |_cap, _info| {
+            move |input, output| {
+                let frontier = input.frontier();
+                // stash each input and request a notification when ready
+                while let Some((time, data)) = input.next() {
+                    // stash if not time yet
+                    if frontier.less_than(time.time()) {
+                        pending.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                        let mut states = states.borrow_mut();
+                        states.notificator().notify_at(time.retain());
+                    } else {
                         // else we can process immediately
                         let mut session = output.session(&time);
                         let mut states = states.borrow_mut();
                         for (_target, bin, (key, val)) in data.drain(..) {
                             let output = {
-                                states.with_state(bin as usize, |states| {
+                                states.with_state(bin, |states| {
                                     let (remove, output) = {
                                         let state = states.entry(key.clone()).or_insert_with(Default::default);
                                         fold(&key, val.clone(), state)
@@ -96,16 +98,16 @@ where
                             session.give_iterator(output.into_iter());
                         }
                     }
-            });
+                };
 
             // go through each time with data, process each (key, val) pair.
-            notificator.for_each(|time,_,_| {
+            states.borrow_mut().notificator().for_each(&[frontier], |time, _not| {
                 if let Some(pend) = pending.remove(time.time()) {
                     let mut session = output.session(&time);
                     let mut states = states.borrow_mut();
                     for (_target, bin, (key, val)) in pend {
                         let output = {
-                            states.with_state(bin as usize, |states| {
+                            states.with_state(bin, |states| {
                                 let (remove, output) = {
                                     let state = states.entry(key.clone()).or_insert_with(Default::default);
                                     fold2(&key, val.clone(), state)};
@@ -117,6 +119,7 @@ where
                     }
                 }
             });
+            }
         }).probe_with(&mut self.2)
     }
 }

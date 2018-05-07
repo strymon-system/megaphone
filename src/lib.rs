@@ -22,7 +22,7 @@ pub struct Control {
 }
 
 /// A bin identifier. Wraps a `usize`.
-#[derive(Abomonation, Clone, Debug)]
+#[derive(Abomonation, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Bin(usize);
 
 impl ::std::ops::Deref for Bin {
