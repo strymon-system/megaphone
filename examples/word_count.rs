@@ -86,7 +86,7 @@ fn duration_to_nanos(duration: ::std::time::Duration) -> u64 {
     (duration.as_secs() * 1_000_000_000).checked_add(duration.subsec_nanos() as u64).unwrap()
 }
 
-fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T>, output: &Stream<S, T>) {
+fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T>, output: &Stream<S, T>) -> Stream<S, ()> {
     use timely::dataflow::operators::Binary;
     use timely::dataflow::channels::pact::Exchange;
     use std::collections::HashMap;
@@ -116,8 +116,7 @@ fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T
                 }
             })
         }
-    );
-
+    )
 }
 
 fn main() {
@@ -209,7 +208,7 @@ fn main() {
                         *agg += val;
                         (false, Some(*agg))
                     }, |key| calculate_hash(key));
-                verify(&output, &correct);
+                verify(&output, &correct).probe_with(&mut probe);
             }
             output.probe_with(&mut probe);
         });
