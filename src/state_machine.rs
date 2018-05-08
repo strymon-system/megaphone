@@ -89,22 +89,22 @@ where
                     }
                 };
 
-            // go through each time with data, process each (key, val) pair.
-            states.borrow_mut().notificator().for_each(&[frontier], |time, _not| {
-                if let Some(pend) = pending.remove(time.time()) {
-                    let mut session = output.session(&time);
-                    let mut states = states.borrow_mut();
-                    for (_target, bin, (key, val)) in pend {
-                        let mut states = states.get_state(bin);
-                        let (remove, output) = {
-                            let state = states.entry(key.clone()).or_insert_with(Default::default);
-                            fold(&key, val.clone(), state)
-                        };
-                        if remove { states.remove(&key); }
-                        session.give_iterator(output.into_iter());
+                // go through each time with data, process each (key, val) pair.
+                let mut states = states.borrow_mut();
+                while let Some(time) = states.notificator().next(&[frontier]) {
+                    if let Some(pend) = pending.remove(time.time()) {
+                        let mut session = output.session(&time);
+                        for (_target, bin, (key, val)) in pend {
+                            let mut states = states.get_state(bin);
+                            let (remove, output) = {
+                                let state = states.entry(key.clone()).or_insert_with(Default::default);
+                                fold(&key, val.clone(), state)
+                            };
+                            if remove { states.remove(&key); }
+                            session.give_iterator(output.into_iter());
+                        }
                     }
                 }
-            });
             }
         }).probe_with(&mut self.probe)
     }
