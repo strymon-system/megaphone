@@ -1,6 +1,5 @@
 //! General purpose state transition operator.
 use std::hash::Hash;
-use std::rc::Rc;
 
 use fnv::FnvHashMap as HashMap;
 
@@ -64,9 +63,6 @@ where
 
         let states = self.state.clone();
 
-        let fold = Rc::new(fold);
-        let fold2 = Rc::clone(&fold);
-
         self.stream.unary_frontier(Pipeline, "StateMachine", |_cap, _info| {
             move |input, output| {
                 let frontier = input.frontier();
@@ -82,16 +78,12 @@ where
                         let mut session = output.session(&time);
                         let mut states = states.borrow_mut();
                         for (_target, bin, (key, val)) in data.drain(..) {
-                            let output = {
-                                states.with_state(bin, |states| {
-                                    let (remove, output) = {
-                                        let state = states.entry(key.clone()).or_insert_with(Default::default);
-                                        fold(&key, val.clone(), state)
-                                    };
-                                    if remove { states.remove(&key); }
-                                    output
-                                })
+                            let mut states = states.get_state(bin);
+                            let (remove, output) = {
+                                let state = states.entry(key.clone()).or_insert_with(Default::default);
+                                fold(&key, val.clone(), state)
                             };
+                            if remove { states.remove(&key); }
                             session.give_iterator(output.into_iter());
                         }
                     }
@@ -103,15 +95,12 @@ where
                     let mut session = output.session(&time);
                     let mut states = states.borrow_mut();
                     for (_target, bin, (key, val)) in pend {
-                        let output = {
-                            states.with_state(bin, |states| {
-                                let (remove, output) = {
-                                    let state = states.entry(key.clone()).or_insert_with(Default::default);
-                                    fold2(&key, val.clone(), state)};
-                                if remove { states.remove(&key); }
-                                output
-                            })
+                        let mut states = states.get_state(bin);
+                        let (remove, output) = {
+                            let state = states.entry(key.clone()).or_insert_with(Default::default);
+                            fold(&key, val.clone(), state)
                         };
+                        if remove { states.remove(&key); }
                         session.give_iterator(output.into_iter());
                     }
                 }

@@ -45,10 +45,7 @@ impl<T: Timestamp, S> State<T, S> {
 }
 
 pub trait StateHandle<T: Timestamp, S> {
-    fn with_state<
-        R,
-        F: Fn(&mut S) -> R
-    >(&mut self, bin: u64, f: F) -> R;
+    fn get_state(&mut self, bin: u64) -> &mut S;
 
     fn with_state_frontier<
         R,
@@ -62,12 +59,8 @@ pub trait StateHandle<T: Timestamp, S> {
 
 impl<T: Timestamp, S> StateHandle<T, S> for State<T, S> {
 
-    #[inline(always)]
-    fn with_state<
-        R,
-        F: Fn(&mut S) -> R
-    >(&mut self, bin: u64, f: F) -> R {
-        f(&mut self.bins[(bin >> ::std::mem::size_of::<u64>() * 8 - BIN_SHIFT) as usize])
+    fn get_state(&mut self, bin: u64) -> &mut S {
+        &mut self.bins[(bin >> ::std::mem::size_of::<u64>() * 8 - BIN_SHIFT) as usize]
     }
 
     #[inline(always)]
