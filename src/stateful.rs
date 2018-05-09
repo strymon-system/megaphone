@@ -18,7 +18,7 @@ use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::progress::Timestamp;
 use timely::progress::frontier::Antichain;
 
-use ::{BIN_SHIFT, Bin, Control, ControlSetBuilder, ControlSet};
+use ::{BIN_SHIFT, Bin, Control, ControlSetBuilder, ControlSet, key_to_bin};
 
 const BUFFER_CAP: usize = 16;
 
@@ -32,42 +32,50 @@ const BUFFER_CAP: usize = 16;
 /// is some total order on times respecting the total order (updates may be interleaved).
 
 
+/// State abstraction. It encapsulates state assorted by bins and a notificator.
 pub struct State<T: Timestamp, S> {
     bins: Vec<S>,
     notificator: FrontierNotificator<T>,
 }
 
 impl<T: Timestamp, S> State<T, S> {
+    /// Construct a new `State` with the provided vector of bins and a default `FrontierNotificator`.
     fn new(bins: Vec<S>) -> Self {
         Self { bins, notificator: FrontierNotificator::new() }
     }
 }
 
+/// State access functions.
 pub trait StateHandle<T: Timestamp, S> {
-    fn get_state(&mut self, bin: u64) -> &mut S;
 
+    /// Obtain a mutable reference to the state associated with a bin.
+    fn get_state(&mut self, key: u64) -> &mut S;
+
+    /// Call-back to get state and a notificator.
     fn with_state_frontier<
         R,
         F: Fn(&mut S, &FrontierNotificator<T>) -> R
-    >(&mut self, bin: u64, f: F) -> R;
+    >(&mut self, key: u64, f: F) -> R;
 
+    /// Iterate all bins. This might go away.
     fn scan<F: Fn(&mut S)>(&mut self, f: F);
 
+    /// Obtain a reference to a notificator.
     fn notificator(&mut self) -> &mut FrontierNotificator<T>;
 }
 
 impl<T: Timestamp, S> StateHandle<T, S> for State<T, S> {
 
-    fn get_state(&mut self, bin: u64) -> &mut S {
-        &mut self.bins[(bin >> ::std::mem::size_of::<u64>() * 8 - BIN_SHIFT) as usize]
+    fn get_state(&mut self, key: u64) -> &mut S {
+        &mut self.bins[key_to_bin(key)]
     }
 
     #[inline(always)]
     fn with_state_frontier<
         R,
         F: Fn(&mut S, &FrontierNotificator<T>) -> R
-    >(&mut self, bin: u64, f: F) -> R {
-        f(&mut self.bins[(bin >> ::std::mem::size_of::<u64>() * 8 - BIN_SHIFT) as usize], &mut self.notificator)
+    >(&mut self, key: u64, f: F) -> R {
+        f(&mut self.bins[key_to_bin(key)], &mut self.notificator)
     }
 
     fn scan<F: Fn(&mut S)>(&mut self, f: F) {
@@ -89,16 +97,37 @@ enum StateProtocol<T, S> {
     Pending(T),
 }
 
+/// A timely `Stream` with an additional state handle and a probe.
 pub struct StateStream<S, V, D, W,> where
     S: Scope, // The containing scope
     V: ExchangeData, // Input data
     D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
     W: ExchangeData,                            // State format on the wire
 {
+    /// The wrapped stream
     pub stream: Stream<S, (usize, u64, V)>,
+    /// A handle to the shared state object
     pub state: Rc<RefCell<State<S::Timestamp, D>>>,
+    /// The probe `stateful` uses to determine completion.
     pub probe: ProbeHandle<S::Timestamp>,
     _phantom: PhantomData<(W)>,
+}
+
+impl<S, V, D, W> StateStream<S, V, D, W>
+    where
+        S: Scope, // The containing scope
+        V: ExchangeData, // Input data
+        D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
+        W: ExchangeData,
+{
+    pub fn new(stream: Stream<S, (usize, u64, V)>, state: Rc<RefCell<State<S::Timestamp, D>>>, probe: ProbeHandle<S::Timestamp>) -> Self {
+        StateStream {
+            stream,
+            state,
+            probe,
+            _phantom: PhantomData,
+        }
+    }
 }
 
 /// Provides the `stateful` method.
@@ -134,9 +163,9 @@ pub trait Stateful<S: Scope, V: ExchangeData> {
         W: ExchangeData,                            // State format on the wire
         D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
         B: Fn(&V)->u64+'static,                     // "hash" function for values
-    >(&self, bin: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W> where S::Timestamp : Hash+Eq ;
+    >(&self, key: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W> where S::Timestamp : Hash+Eq ;
 
-    fn stateful_scope<'a, W, D, B, C, P>(&'a self, bin: B, control: &Stream<S, Control>, func: C) -> Stream<S, P>
+    fn stateful_scope<'a, W, D, B, C, P>(&'a self, key: B, control: &Stream<S, Control>, func: C) -> Stream<S, P>
         where
             S::Timestamp : Hash+Eq,
             W: ExchangeData,                            // State format on the wire
@@ -149,7 +178,7 @@ pub trait Stateful<S: Scope, V: ExchangeData> {
 
 impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
-    fn stateful_scope<'a, W, D, B, C, P>(&'a self, bin: B, control: &Stream<S, Control>, func: C) -> Stream<S, P>
+    fn stateful_scope<'a, W, D, B, C, P>(&'a self, key: B, control: &Stream<S, Control>, func: C) -> Stream<S, P>
         where
             S::Timestamp : Hash+Eq,
             W: ExchangeData,                            // State format on the wire
@@ -159,7 +188,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
             P: ExchangeData,
             C: FnOnce(Stream<S, (usize, u64, V)>, Rc<RefCell<State<S::Timestamp, D>>>) -> Stream<S, P>, // Constructor
     {
-        let mut state_stream = self.stateful(bin, control);
+        let mut state_stream = self.stateful(key, control);
         let stream = state_stream.stream;
         func(stream, state_stream.state).probe_with(&mut state_stream.probe)
     }
@@ -168,7 +197,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         W: ExchangeData,                            // State format on the wire
         D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
         B: Fn(&V)->u64+'static,                     // "hash" function for values
-    >(&self, bin: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W> where S::Timestamp : Hash+Eq
+    >(&self, key: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W> where S::Timestamp : Hash+Eq
     {
         let index = self.scope().index();
         let peers = self.scope().peers();
@@ -201,7 +230,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
             let mut control_notificator = FrontierNotificator::new();
 
             // Data input stash, time -> Vec<Vec<V>>
-            let mut data_stash: HashMap<_,_> = Default::default();
+            let mut data_stash: HashMap<_, Vec<Vec<V>>> = Default::default();
 
             // Control input stash, time -> Vec<ControlInstr>
             let mut pending_control: HashMap<_,_> = Default::default();
@@ -215,9 +244,6 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                 frontier: Antichain::from_elem(Default::default()),
                 map: vec![0; 1 << BIN_SHIFT],
             };
-
-            // Shift to turn hash into bin ID
-            let bin_shift = ::std::mem::size_of::<usize>() * 8 - BIN_SHIFT;
 
             // Stash for consumed input buffers
             let mut data_return_buffer = vec![];
@@ -269,19 +295,10 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                     }
                 });
 
-                // Read data from the main data channel
-                data_in.for_each(|time, data| {
-                    // Can we process data
-                    if frontiers[1].less_equal(time.time()) {
-                        // No, stash data
-                        if !data_stash.contains_key(time.time()) {
-                            data_stash.insert(time.time().clone(), Vec::new());
-                        }
-                        data_stash.get_mut(time.time()).unwrap().push(data.replace_with(data_return_buffer.pop().unwrap_or_else(Vec::new)));
-                    } else {
-                        // Yes, process right-away
+                data_notificator.for_each(&[&frontiers[0], &frontiers[1]], |time, _not| {
+                    // Check for stashed data - now control input has to have advanced
+                    if let Some(vec) = data_stash.remove(time.time()) {
 
-                        // Find the configuration that applies to the input time
                         let map =
                             pending_configurations
                                 .iter()
@@ -291,36 +308,11 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                 .map();
 
                         let mut session = data_out.session(&time);
-
-                        let data_iter = data.drain(..).into_iter().map(|d| {
-                            let bin = bin(&d);
-                            (map[(bin >> bin_shift) as usize], bin, d)
-                        });
-                        session.give_iterator(data_iter);
-                    }
-
-                    // We need to notify in any case as we might be able to drop some configurations
-                    data_notificator.notify_at(time.retain());
-                });
-
-                data_notificator.for_each(&[&frontiers[0], &frontiers[1]], |time, _not| {
-                    // Check for stashed data - now control input has to have advanced
-                    if let Some(vec) = data_stash.remove(time.time()) {
-
-                        let map = 
-                        pending_configurations
-                            .iter()
-                            .rev()
-                            .find(|&c| c.frontier.less_equal(time.time()))
-                            .unwrap_or(&active_configuration)
-                            .map();
-
-                        let mut session = data_out.session(&time);
                         for mut data in vec {
                             {
                                 let data_iter = data.drain(..).map(|d| {
-                                    let bin = bin(&d);
-                                    (map[(bin >> bin_shift) as usize], bin, d)
+                                    let key = key(&d);
+                                    (map[key_to_bin(key)], key, d)
                                 });
                                 session.give_iterator(data_iter);
                             }
@@ -375,49 +367,53 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                         active_configuration = to_install;
                     }
                 });
+
+                // Read data from the main data channel
+                data_in.for_each(|time, data| {
+                    // Can we process data
+                    if frontiers[1].less_equal(time.time()) {
+                        // No, stash data
+                        if !data_stash.contains_key(time.time()) {
+                            data_stash.insert(time.time().clone(), Vec::new());
+                        }
+                        data_stash.get_mut(time.time()).unwrap().push(data.replace_with(data_return_buffer.pop().unwrap_or_else(Vec::new)));
+                    } else {
+                        // Yes, process right-away
+
+                        // Find the configuration that applies to the input time
+                        let map =
+                            pending_configurations
+                                .iter()
+                                .rev()
+                                .find(|&c| c.frontier.less_equal(time.time()))
+                                .unwrap_or(&active_configuration)
+                                .map();
+
+                        let mut session = data_out.session(&time);
+
+                        let data_iter = data.drain(..).into_iter().map(|d| {
+                            let key = key(&d);
+                            (map[key_to_bin(key)], key, d)
+                        });
+                        session.give_iterator(data_iter);
+                    }
+
+                    // We need to notify in any case as we might be able to drop some configurations
+                    data_notificator.notify_at(time.retain());
+                });
+
             }
         });
 
         // Now, construct the S operator
 
-        let mut pending: HashMap<_,_> = Default::default();   // times -> Vec<Vec<(keys -> state)>>
+        let mut pending: HashMap<_, Vec<Vec<(_, _, _)>>> = Default::default();   // times -> Vec<Vec<(keys -> state)>>
         let mut pending_states: HashMap<_,_> = Default::default();
         let mut data_return_buffer = vec![];
 
         // Read data input and state input
         // Route each according to the encoded target worker
         let stream = stream.binary_notify(&state, Exchange::new(move |&(target, _bin, _)| target as u64), Exchange::new(move |&(target, _)| target as u64), "State", vec![], move |input, state, output, notificator| {
-
-            // Handle data input
-            input.for_each(|time, data| {
-                // Do we need to wait for frontiers to advance?
-                if notificator.frontier(0).iter().any(|x| x.less_equal(time.time()))
-                    || notificator.frontier(1).iter().any(|x| x.less_equal(time.time())) {
-                    // Yes -> the data is not less than both frontiers. This is important as state
-                    // updates might not have been received yet.
-                    if !pending.contains_key(time.time()) {
-                        pending.insert(time.time().clone(), Vec::new());
-                    }
-                    // Stash input
-                    pending.get_mut(time.time()).unwrap().push(data.replace_with(data_return_buffer.pop().unwrap_or_else(Vec::new)));
-                    // Request notification
-                    notificator.notify_at(time.retain());
-                } else {
-                    // No, we can just pass-through the data
-                    let mut session = output.session(&time);
-                    session.give_content(data);
-                }
-            });
-
-            // Handle state updates
-            state.for_each(|time, data| {
-                // Just stash, we could add a fast-path later
-                if !pending_states.contains_key(time.time()) {
-                    pending_states.insert(time.time().clone(), Vec::new());
-                }
-                pending_states.get_mut(time.time()).unwrap().push(data.replace_with(Vec::new()));
-                notificator.notify_at(time.retain());
-            });
 
             // go through each time with data, process each (key, val) pair.
             notificator.for_each(|time,_,_| {
@@ -452,14 +448,40 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                     }
                 }
             });
+
+            // Handle data input
+            input.for_each(|time, data| {
+                // Do we need to wait for frontiers to advance?
+                if notificator.frontier(0).iter().any(|x| x.less_equal(time.time()))
+                    || notificator.frontier(1).iter().any(|x| x.less_equal(time.time())) {
+                    // Yes -> the data is not less than both frontiers. This is important as state
+                    // updates might not have been received yet.
+                    if !pending.contains_key(time.time()) {
+                        pending.insert(time.time().clone(), Vec::new());
+                    }
+                    // Stash input
+                    pending.get_mut(time.time()).unwrap().push(data.replace_with(data_return_buffer.pop().unwrap_or_else(Vec::new)));
+                    // Request notification
+                    notificator.notify_at(time.retain());
+                } else {
+                    // No, we can just pass-through the data
+                    let mut session = output.session(&time);
+                    session.give_content(data);
+                }
+            });
+
+            // Handle state updates
+            state.for_each(|time, data| {
+                // Just stash, we could add a fast-path later
+                if !pending_states.contains_key(time.time()) {
+                    pending_states.insert(time.time().clone(), Vec::new());
+                }
+                pending_states.get_mut(time.time()).unwrap().push(data.replace_with(Vec::new()));
+                notificator.notify_at(time.retain());
+            });
         });
 
         // `stream` is the stateful output stream where data is already correctly partitioned.
-        StateStream {
-            stream,
-            state: states_op,
-            probe: probe1,
-            _phantom: PhantomData,
-        }
+        StateStream::new(stream, states_op, probe1)
     }
 }
