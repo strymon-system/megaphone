@@ -112,7 +112,7 @@ fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T
                 let i2 = v2.iter();
                 for (a, b) in i1.zip(i2) {
 //                    println!("a: {:?}, b: {:?}", a, b);
-                    assert_eq!(a, b);
+                    assert_eq!(a, b, " at {:?}", time.time());
                 }
             })
         }
