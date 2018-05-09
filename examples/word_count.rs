@@ -180,7 +180,7 @@ fn main() {
 
             let fold = |_key: &_, val, agg: &mut u64| {
                 *agg += val;
-                (false, Some(*agg))
+                (false, Some((*_key, *agg)))
             };
 
             let input: Stream<_, (_, u64)> = input
@@ -188,7 +188,7 @@ fn main() {
             let output = match backend {
                 Backend::Native => input
                     .state_machine( fold, |key| calculate_hash(key)),
-                Backend::Noop => input.filter(|_| false).map(|x| x.1),
+                Backend::Noop => input.filter(|_| false),
                 Backend::Scaling => input
                     .control_state_machine(
                         fold,
@@ -206,7 +206,7 @@ fn main() {
                 let correct = input
                     .state_machine(|_key: &_, val, agg: &mut u64| {
                         *agg += val;
-                        (false, Some(*agg))
+                        (false, Some((*_key, *agg)))
                     }, |key| calculate_hash(key));
                 verify(&output, &correct).probe_with(&mut probe);
             }
