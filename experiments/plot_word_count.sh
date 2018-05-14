@@ -22,26 +22,26 @@ function cdf() {
     cat <<-EOF
     set grid xtics ytics
     plot \
-        "${file}-A" using 3:(1) smooth cnorm t "Before", \
-        "${file}-B" using 3:(1) smooth cnorm t "During", \
-        "${file}-C" using 3:(1) smooth cnorm t "After"
+        "${file}-A" using 1:2 with lines dt {} t "Before", \
+        "${file}-B" using 1:2 with lines dt {} t "During", \
+        "${file}-C" using 1:2 with lines dt {} t "After"
 EOF
 }
 
 function cdf99() {
-    mode=""
-    cat <<-EOF
-    set yrange [0.00:.99999]
-    set nonlinear y via -log10(1-y) inverse 1-10**(-y)
-    $(cdf)
-EOF
+#    mode=""
+#    cat <<-EOF
+#    set yrange [0.00:.99999]
+#    set nonlinear y via -log10(1-y) inverse 1-10**(-y)
+#    $(cdf)
+#EOF
 }
 # === closed one-two ===
 experiment=results/${COMMIT}/word_count-closed-one-two
 (
   cd $experiment;
   for f in `ls word_count*`; do
-    cat $f | grep latency | cut -f3- | tee latency-$f | tee >(grep A > latency-$f-A) | tee >(grep B > latency-$f-B) | (grep C > latency-$f-C)
+    cat $f | grep ccdf | cut -f2- | tee latency-$f | tee >(grep A > latency-$f-A) | tee >(grep B > latency-$f-B) | (grep C > latency-$f-C)
   done
 )
 
