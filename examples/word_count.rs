@@ -82,6 +82,47 @@ enum Backend {
     Generic,
 }
 
+const HDHISTOGRAM_BITS: usize = 4;
+
+#[derive(Clone, Debug)]
+struct HDHistogram {
+    counts: Vec<[u64; 1 << HDHISTOGRAM_BITS]>,
+}
+
+impl HDHistogram {
+    pub fn add_value(&mut self, value: u64) {
+        let index = value.next_power_of_two().trailing_zeros() as usize;
+        let low_bits = (value >> (index - HDHISTOGRAM_BITS - 1)) & ((1 << HDHISTOGRAM_BITS) - 1);
+        self.counts[index][low_bits as usize] += 1;
+    }
+
+    pub fn flatten(&self) -> Vec<(u64, f64, u64)> {
+        let mut results = Vec::new();
+        let total = self.counts.iter().map(|x| x.iter().sum::<u64>()).sum();
+        let mut sum = 0;
+        for index in (0 .. self.counts.len()).rev() {
+            for sub in (0 .. (1 << HDHISTOGRAM_BITS)).rev() {
+                if sum > 0 && sum < total && self.counts[index][sub] > 0 {
+                    let latency = (1 << (index - 1)) + (sub << (index - HDHISTOGRAM_BITS - 1));
+                    let fraction = (sum as f64) / (total as f64);
+                    results.push((latency as u64, fraction, self.counts[index][sub]));
+                }
+                sum += self.counts[index][sub];
+            }
+        }
+        results.reverse();
+        results
+    }
+}
+
+impl Default for HDHistogram {
+    fn default() -> Self {
+        HDHistogram {
+            counts: vec![[0u64; 16]; 64],
+        }
+    }
+}
+
 fn duration_to_nanos(duration: ::std::time::Duration) -> u64 {
     (duration.as_secs() * 1_000_000_000).checked_add(duration.subsec_nanos() as u64).unwrap()
 }
@@ -483,19 +524,23 @@ fn main() {
                 println!("worker {:02} tp:\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t(of {} measurements)", index, l2tp(batch, min), l2tp(batch, p01), l2tp(batch, p25), l2tp(batch, med), l2tp(batch, p75), l2tp(batch, p99), l2tp(batch, max), measurements.len());
             }
 
+            let sample_frequency = to_print.len() / 1000;
+
+            let mut hdhist: Vec<HDHistogram> = vec![Default::default(); 3];
             for i in 0 .. to_print.len() {
 
-                let phase = if redistributions.first().map(|end| to_print[i].0 < *end).unwrap_or(false) {
-                    'A'
+                let (phase, hdhist) = if redistributions.first().map(|end| to_print[i].0 < *end).unwrap_or(false) {
+                    ('A', &mut hdhist[0])
                 } else if redistribution_end.last().map(|end| to_print[i].0 > *end).unwrap_or(false) {
-                    'C'
+                    ('C', &mut hdhist[2])
                 } else {
-                    'B'
+                    ('B', &mut hdhist[1])
                 };
 
-                let r = requests_produced[i];
-                if r > 0 {
-                    println!("{:02}\tlatency\t{:?}\t{:?}\t{:?}\t{:?}", index, to_print[i].0, to_print[i].1, r, phase);
+                hdhist.add_value(to_print[i].1);
+
+                if i % sample_frequency == 0 {
+                    println!("{:02}\tlatency\t{:?}\t{:?}\t{:?}", index, to_print[i].0, to_print[i].1, phase);
                 }
             }
 
@@ -509,21 +554,13 @@ fn main() {
                 println!("{:02}\tred_end\t{:?}", index, rede);
             }
 
-            let mut counts = vec![0usize; 64];
-            for measurement in measurements.iter().skip(10) {
-                let count_index = measurement.next_power_of_two().trailing_zeros() as usize;
-                counts[count_index] += 1;
-            }
-
-            println!("latencies:");
-            let mut sum = 0;
-            for index in 1 .. counts.len() {
-                if counts[index] > 0 {
-                    println!("\tcount[{}]:\t{}", index, counts[index]);
-                    sum += counts[index] * (1 << (index - 1));
+            println!("latencies: latency franction");
+            for (i, phase) in vec!['A', 'B', 'C'].iter().enumerate() {
+                for (latency, fraction, sum) in hdhist[i].flatten() {
+                    println!("ccdf {}\t{}\t{:0.5}\t{}", phase, latency, fraction, sum);
                 }
             }
-            println!("\t total floor log 2: {}", sum);
+
         }
 
     }).unwrap();
