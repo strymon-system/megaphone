@@ -59,35 +59,15 @@ where
         I: IntoIterator<Item=R>,                    // type of output iterator
         F: Fn(&K, V, &mut D) -> (bool, I) + 'static,    // state update logic
     >(&mut self, fold: F) -> Stream<S, R> where S::Timestamp: Hash + Eq {
-        let mut pending: HashMap<_, _> = Default::default();   // times -> (keys -> state)
+        // times -> Vec<input>
+        let mut pending: HashMap<_, Vec<(_, _, (K, V))>> = Default::default();
 
         let states = self.state.clone();
 
         self.stream.unary_frontier(Pipeline, "StateMachine", |_cap, _info| {
             move |input, output| {
+
                 let frontier = input.frontier();
-                // stash each input and request a notification when ready
-                while let Some((time, data)) = input.next() {
-                    // stash if not time yet
-                    if frontier.less_than(time.time()) {
-                        pending.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                        let mut states = states.borrow_mut();
-                        states.notificator().notify_at(time.retain());
-                    } else {
-                        // else we can process immediately
-                        let mut session = output.session(&time);
-                        let mut states = states.borrow_mut();
-                        for (_target, bin, (key, val)) in data.drain(..) {
-                            let mut states = states.get_state(bin);
-                            let (remove, output) = {
-                                let state = states.entry(key.clone()).or_insert_with(Default::default);
-                                fold(&key, val.clone(), state)
-                            };
-                            if remove { states.remove(&key); }
-                            session.give_iterator(output.into_iter());
-                        }
-                    }
-                };
 
                 // go through each time with data, process each (key, val) pair.
                 let mut states = states.borrow_mut();
@@ -105,6 +85,27 @@ where
                         }
                     }
                 }
+
+                // stash each input and request a notification when ready
+                while let Some((time, data)) = input.next() {
+                    // stash if not time yet
+                    if frontier.less_than(time.time()) {
+                        pending.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                        states.notificator().notify_at(time.retain());
+                    } else {
+                        // else we can process immediately
+                        let mut session = output.session(&time);
+                        for (_target, bin, (key, val)) in data.drain(..) {
+                            let mut states = states.get_state(bin);
+                            let (remove, output) = {
+                                let state = states.entry(key.clone()).or_insert_with(Default::default);
+                                fold(&key, val.clone(), state)
+                            };
+                            if remove { states.remove(&key); }
+                            session.give_iterator(output.into_iter());
+                        }
+                    }
+                };
             }
         }).probe_with(&mut self.probe)
     }
