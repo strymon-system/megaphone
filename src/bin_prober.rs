@@ -42,7 +42,7 @@ pub trait BinProber<S: Scope> {
         Self: Sized;
 }
 
-impl<S, D, W, KV> BinProber<S> for StateStream<S, (usize, u64, KV), D, W>// (Stream<S, (usize, u64, KV)>, D, P)
+impl<S, D, W, KV> BinProber<S> for StateStream<S, (usize, u64, KV), D, W>
     where
         W: ExchangeData,                            // State format on the wire
         D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
