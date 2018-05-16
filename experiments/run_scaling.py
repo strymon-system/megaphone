@@ -38,7 +38,7 @@ def run_isolation(socket, rounds, batch, keys, backend, n, p, w, outfile):
 all_map_modes = ["sudden", "one-by-one", "fluid"]
 
 # all_backends = ["native", "scaling", "redis"]
-all_backends = ["native", "scaling", "generic"]
+all_backends = ["native", "generic"]
 
 all_rand = ["uniform", "zipf"]
 
@@ -49,7 +49,7 @@ def word_count_closed_one_two():
     eprint(experlib.experdir(experiment_name))
     experlib.ensuredir(experiment_name)
 
-    for batch in [3000000]:
+    for batch in [3500000]:
         for keys in [10240000]:
             for map_mode in ["sudden"]:
                 for backend in all_backends:
@@ -91,14 +91,14 @@ def word_count_constant_one_two():
     eprint(experlib.experdir(experiment_name))
     experlib.ensuredir(experiment_name)
 
-    for batch in [1000000]:
+    for batch in [3500000]:
         for keys in [10240000]:
             for map_mode in all_map_modes:
                 for backend in all_backends:
                     for rand in all_rand:
                         n = 2
                         w = 1
-                        rounds=10
+                        rounds=20
                         open_loop="constant"
 
                         filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, rand, n, w)
@@ -113,14 +113,14 @@ def word_count_constant_half_all():
     eprint(experlib.experdir(experiment_name))
     experlib.ensuredir(experiment_name)
 
-    for batch in [1000000]:
+    for batch in [3500000]:
         for keys in [40960000]:
             for map_mode in all_map_modes:
                 for backend in all_backends:
                     for rand in all_rand:
                         n = 2
                         w = 4
-                        rounds=10
+                        rounds=20
                         open_loop="constant"
 
                         filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, rand, n, w)
@@ -134,14 +134,14 @@ def word_count_square_half_all():
     eprint(experlib.experdir(experiment_name))
     experlib.ensuredir(experiment_name)
 
-    for batch in [2300000]:
+    for batch in [6000000]:
         for keys in [20480000 // 2]:
             for map_mode in all_map_modes:
                 for backend in all_backends:
                     for rand in all_rand:
                         n = 2
                         w = 4
-                        rounds=10
+                        rounds=20
                         open_loop="square"
 
                         filename = word_count_filename(experiment_name, rounds, batch, keys, open_loop, map_mode, backend, rand, n, w)
@@ -155,13 +155,13 @@ def isolation_one_two():
     eprint(experlib.experdir(experiment_name))
     experlib.ensuredir(experiment_name)
 
-    for batch in [1000000]:
+    for batch in [3500000]:
         for keys in [10240000]:
             for map_mode in all_map_modes:
                 for backend in all_backends:
                     n = 2
                     w = 1
-                    rounds=10
+                    rounds=20
 
                     filename = isolation_filename(experiment_name, rounds, batch, keys, backend, n, w)
                     eprint("RUNNING keys: {} in {}".format(keys, filename))
