@@ -42,7 +42,7 @@ pub trait BinProber<S: Scope> {
         Self: Sized;
 }
 
-impl<S, D, W, KV> BinProber<S> for StateStream<S, (usize, u64, KV), D, W>
+impl<S, D, W, KV> BinProber<S> for StateStream<S, KV, D, W>
     where
         W: ExchangeData,                            // State format on the wire
         D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
@@ -70,25 +70,25 @@ impl<S, D, W, KV> BinProber<S> for StateStream<S, (usize, u64, KV), D, W>
                 let mut data_out = data_out.activate();
                 let mut bin_probe_out = bin_probe_out.activate();
 
-                // Read control input
-                data_in.for_each(|time, data| {
-                    let map = count_map.entry(time.time().clone()).or_insert_with(|| vec![0; 1 << BIN_SHIFT]);
-                    {
-                        let contents: &mut Vec<_> = &mut *data;
-                        for &(_target, key, _) in contents.iter() {
-                            map[key_to_bin(key)] += 1;
-                        }
-                    }
-                    data_out.session(&time).give_content(data);
-                    data_notificator.notify_at(time.retain());
-                });
-
                 // Analyze control frontier
                 data_notificator.for_each(&[&frontiers[0]], |time, _not| {
                     // Check if there are pending control instructions
                     if let Some(vec) = count_map.remove(time.time()) {
                         bin_probe_out.session(&time).give_iterator(vec.into_iter().enumerate());
                     }
+                });
+
+                // Read control input
+                data_in.for_each(|time, data| {
+                    let map = count_map.entry(time.time().clone()).or_insert_with(|| vec![0; 1 << BIN_SHIFT]);
+                    {
+                        let contents: &Vec<_> = &*data;
+                        for &(_target, key, _) in contents.iter() {
+                            map[key_to_bin(key)] += 1;
+                        }
+                    }
+                    data_out.session(&time).give_content(data);
+                    data_notificator.notify_at(time.retain());
                 });
             }
         });
