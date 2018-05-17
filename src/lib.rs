@@ -7,6 +7,7 @@ pub mod bin_prober;
 pub mod distribution;
 pub mod stateful;
 pub mod state_machine;
+pub mod join;
 
 use timely::order::PartialOrder;
 use timely::progress::frontier::Antichain;
