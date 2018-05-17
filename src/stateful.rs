@@ -1,7 +1,12 @@
 //! General purpose state transition operator.
+//!
+//! The module provides the [`Stateful`] trait and [`StateStream`], a wrapper for stateful streams.
+//!
+//! [`Stateful`]: trait.Stateful.html
+//! [`StateStream`]: struct.StateStream.html
+//!
 use std::hash::Hash;
 use std::cell::RefCell;
-// use std::collections::HashMap;
 use std::rc::Rc;
 
 use std::marker::PhantomData;
@@ -89,11 +94,12 @@ impl<T: Timestamp, S> StateHandle<T, S> for State<T, S> {
     }
 }
 
+/// Datatype to multiplex state and timestamps on the state update channel.
 #[derive(Abomonation, Clone, Ord, PartialOrd, Eq, PartialEq)]
 enum StateProtocol<T, S> {
-    // Provide a piece of state for a bin
+    /// Provide a piece of state for a bin
     State(Bin, S),
-    // Announce an outstanding time stamp
+    /// Announce an outstanding time stamp
     Pending(T),
 }
 
@@ -104,7 +110,12 @@ pub struct StateStream<S, V, D, W,> where
     D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
     W: ExchangeData,                            // State format on the wire
 {
-    /// The wrapped stream
+    /// The wrapped stream. The stream provides tuples of the form `(usize, u64, V)`. The first two
+    /// parameters are the target worker and the key identifier. Implementations are encouraged to
+    /// ignore the target worker. The key identifier has to be used to obtain the associated state
+    /// from [`StateHandle`].
+    ///
+    /// [`StateHandle`]: trait.StateHandle.html
     pub stream: Stream<S, (usize, u64, V)>,
     /// A handle to the shared state object
     pub state: Rc<RefCell<State<S::Timestamp, D>>>,
@@ -132,38 +143,27 @@ impl<S, V, D, W> StateStream<S, V, D, W>
 
 /// Provides the `stateful` method.
 pub trait Stateful<S: Scope, V: ExchangeData> {
-    /// Tracks a state for each presented key, using user-supplied state transition logic.
+
+    /// Provide management and migration logic to stateful operators.
     ///
-    /// The transition logic `fold` may mutate the state, and produce both output records and
-    /// a `bool` indicating that it is appropriate to deregister the state, cleaning up once
-    /// the state is no longer helpful.
+    /// `stateful` takes a regular data input, a key extractor and a control stream. The control
+    /// stream provides key-to-worker assignments. `stateful` applies the configuration changes such
+    /// that a correctly-written downstream operator will still function correctly.
     ///
-    /// #Examples
-    /// ```rust,ignore
-    /// use timely::dataflow::operators::{ToStream, Map, Inspect};
-    /// use timely::dataflow::operators::aggregation::StateMachine;
-    ///
-    /// timely::example(|scope| {
-    ///
-    ///     // these results happen to be right, but aren't guaranteed.
-    ///     // the system is at liberty to re-order within a timestamp.
-    ///     let result = vec![(0,0), (0,2), (0,6), (0,12), (0,20),
-    ///                       (1,1), (1,4), (1,9), (1,16), (1,25)];
-    ///
-    ///         (0..10).to_stream(scope)
-    ///                .map(|x| (x % 2, x))
-    ///                .state_machine(
-    ///                    |_key, val, agg| { *agg += val; (false, Some((*_key, *agg))) },
-    ///                    |key| *key as u64
-    ///                )
-    ///                .inspect(move |x| assert!(result.contains(x)));
-    /// });
-    /// ```
-    fn stateful<
-        W: ExchangeData,                            // State format on the wire
-        D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
-        B: Fn(&V)->u64+'static,                     // "hash" function for values
-    >(&self, key: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W> where S::Timestamp : Hash+Eq ;
+    /// # Parameters
+    /// * `W`: State serialization format
+    /// * `D`: Data associated with keys
+    /// * `B`: Key function
+    fn stateful<W, D, B>(&self, key: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W>
+        where
+            S::Timestamp : Hash+Eq,
+            // State format on the wire
+            W: ExchangeData,
+            // per-key state (data)
+            D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,
+            // "hash" function for values
+            B: Fn(&V)->u64+'static,
+    ;
 
     fn stateful_scope<'a, W, D, B, C, P>(&'a self, key: B, control: &Stream<S, Control>, func: C) -> Stream<S, P>
         where
@@ -193,11 +193,15 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         func(stream, state_stream.state).probe_with(&mut state_stream.probe)
     }
 
-    fn stateful<
-        W: ExchangeData,                            // State format on the wire
-        D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
-        B: Fn(&V)->u64+'static,                     // "hash" function for values
-    >(&self, key: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W> where S::Timestamp : Hash+Eq
+    fn stateful<W, D, B>(&self, key: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W>
+        where
+            S::Timestamp : Hash+Eq,
+            // State format on the wire
+            W: ExchangeData,
+            // per-key state (data)
+            D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,
+            // "hash" function for values
+            B: Fn(&V)->u64+'static,
     {
         let index = self.scope().index();
         let peers = self.scope().peers();
@@ -413,7 +417,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
         // Read data input and state input
         // Route each according to the encoded target worker
-        let stream = stream.binary_notify(&state, Exchange::new(move |&(target, _bin, _)| target as u64), Exchange::new(move |&(target, _)| target as u64), "State", vec![], move |input, state, output, notificator| {
+        let stream = stream.binary_notify(&state, Exchange::new(move |&(target, _key, _)| target as u64), Exchange::new(move |&(target, _)| target as u64), "State", vec![], move |input, state, output, notificator| {
 
             // go through each time with data, process each (key, val) pair.
             notificator.for_each(|time,_,_| {
