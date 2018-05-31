@@ -16,5 +16,5 @@ def ensuredir(name):
 
 def waitall(processes):
     for p in processes:
-        p.wait()
+        p.wait(use_spinner=False)
 

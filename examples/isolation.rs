@@ -12,6 +12,8 @@ use timely::dataflow::operators::aggregation::StateMachine;
 
 use dynamic_scaling_mechanism::{BIN_SHIFT, ControlInst, Control};
 use dynamic_scaling_mechanism::distribution::ControlStateMachine;
+use dynamic_scaling_mechanism::stateful::Stateful;
+use dynamic_scaling_mechanism::state_machine::BinnedStateMachine;
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut h: ::fnv::FnvHasher = Default::default();
@@ -48,6 +50,7 @@ impl SentenceGenerator {
 enum Backend {
     Native,
     Scaling,
+    Generic,
 }
 
 fn main() {
@@ -66,6 +69,7 @@ fn main() {
     let backend = match args.next().unwrap().as_str() {
         "native" => Backend::Native,
         "scaling" => Backend::Scaling,
+        "generic" => Backend::Generic,
         _ => panic!("invalid backend"),
     };
 
@@ -100,6 +104,11 @@ fn main() {
                         |key| calculate_hash(key),
                         &control
                     ),
+                Backend::Generic => {
+                    let mut stateful = input
+                        .stateful(|key| calculate_hash(&key.0), &control);
+                    stateful.state_machine(fold)
+                },
             };
             output.probe_with(&mut probe);
         });

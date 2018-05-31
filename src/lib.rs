@@ -7,6 +7,7 @@ pub mod bin_prober;
 pub mod distribution;
 pub mod stateful;
 pub mod state_machine;
+pub mod join;
 
 use timely::order::PartialOrder;
 use timely::progress::frontier::Antichain;
@@ -22,8 +23,12 @@ pub struct Control {
 }
 
 /// A bin identifier. Wraps a `usize`.
-#[derive(Abomonation, Clone, Debug)]
+#[derive(Abomonation, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Bin(usize);
+
+pub fn key_to_bin(key: u64) -> usize {
+    (key >> ::std::mem::size_of::<u64>() * 8 - BIN_SHIFT) as usize
+}
 
 impl ::std::ops::Deref for Bin {
     type Target = usize;
