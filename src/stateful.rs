@@ -239,7 +239,8 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
             // Control input stash, time -> Vec<ControlInstr>
             let mut pending_control: HashMap<_,_> = Default::default();
 
-            // Active configurations: Vec<(T, ControlInstr)>
+            // Active configurations: Vec<(T, ControlInstr)> sorted by increasing T. Note that
+            // we assume the Ts form a total order, i.e. they must dominate each other.
             let mut pending_configurations: Vec<ControlSet<S::Timestamp>> = Vec::new();
 
             // TODO : default configuration may be poorly chosen.
@@ -374,7 +375,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
                 // Read data from the main data channel
                 data_in.for_each(|time, data| {
-                    // Can we process data
+                    // Can we process data? No if the control frontier is <= `time`
                     if frontiers[1].less_equal(time.time()) {
                         // No, stash data
                         if !data_stash.contains_key(time.time()) {
@@ -382,7 +383,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                         }
                         data_stash.get_mut(time.time()).unwrap().push(data.replace_with(data_return_buffer.pop().unwrap_or_else(Vec::new)));
                     } else {
-                        // Yes, process right-away
+                        // Yes, control frontier not <= `time`, process right-away
 
                         // Find the configuration that applies to the input time
                         let map =
