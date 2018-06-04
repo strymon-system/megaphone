@@ -112,17 +112,17 @@ impl Event {
 
 #[derive(Eq, PartialEq, Clone, Serialize, Deserialize, Debug, Abomonation)]
 pub struct Person{
-    id: Id,
-    name: String,
-    email_address: String,
-    credit_card: String,
-    city: String,
-    state: String,
-    date_time: Date
+    pub id: Id,
+    pub name: String,
+    pub email_address: String,
+    pub credit_card: String,
+    pub city: String,
+    pub state: String,
+    pub date_time: Date
 }
 
 impl Person {
-    fn from(event: Event) -> Option<Person> {
+    pub fn from(event: Event) -> Option<Person> {
         match event {
             Event::Person(p) => Some(p),
             _ => None
@@ -157,22 +157,22 @@ impl Person {
     }
 }
 
-#[derive(Eq, PartialEq, Clone, Serialize, Deserialize, Debug, Abomonation)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Serialize, Deserialize, Debug, Abomonation)]
 pub struct Auction{
-    id: Id,
-    item_name: String,
-    description: String,
-    initial_bid: usize,
-    reserve: usize,
-    date_time: Date,
-    expires: usize,
-    seller: Id,
-    category: Id,
+    pub id: Id,
+    pub item_name: String,
+    pub description: String,
+    pub initial_bid: usize,
+    pub reserve: usize,
+    pub date_time: Date,
+    pub expires: usize,
+    pub seller: Id,
+    pub category: Id,
 }
 // unsafe_abomonate!(Auction : id, item_name, description, initial_bid, reserve, date_time, expires, seller, category);
 
 impl Auction {
-    fn from(event: Event) -> Option<Auction> {
+    pub fn from(event: Event) -> Option<Auction> {
         match event {
             Event::Auction(p) => Some(p),
             _ => None

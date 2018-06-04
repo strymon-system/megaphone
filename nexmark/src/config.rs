@@ -174,7 +174,7 @@ impl NEXMarkConfig {
         let last_names = split_string_arg(config.get_or("last-names", "shultz,abrams,spencer,white,bartels,walton,smith,jones,noris"));
         let rate_shape = if config.get_or("rate-shape", "sine") == "sine"{ RateShape::Sine }else{ RateShape::Square };
         let rate_period = config.get_as_or("rate-period", 600);
-        let first_rate = config.get_as_or("first-event-rate", config.get_as_or("events-per-second", 1_000_000));
+        let first_rate = config.get_as_or("first-event-rate", config.get_as_or("events-per-second", 1_000));
         let next_rate = config.get_as_or("next-event-rate", first_rate);
         let ns_per_unit = config.get_as_or("us-per-unit", 1_000_000_000); // Rate is in μs
         let generators = config.get_as_or("threads", 1) as f64;
@@ -203,8 +203,8 @@ impl NEXMarkConfig {
         // Calculate events per epoch and epoch period.
         let n = if rate_shape == RateShape::Square { 2 } else { sine_approx_steps };
         let step_length = (rate_period + n - 1) / n;
-        let mut events_per_epoch = 0;
-        let mut epoch_period = 0.0;
+        let events_per_epoch = 0;
+        let epoch_period = 0.0;
         if inter_event_delays_ns.len() > 1 {
             panic!("non-constant rate not supported");
             // for inter_event_delay in &inter_event_delays {
