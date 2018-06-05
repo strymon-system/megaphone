@@ -3,7 +3,7 @@ extern crate timely;
 extern crate nexmark;
 
 use timely::dataflow::{InputHandle, ProbeHandle};
-use timely::dataflow::operators::{Map, Filter, Probe};
+use timely::dataflow::operators::{Map, Filter, Probe, Capture, capture::Replay};
 
 fn main() {
 
@@ -115,8 +115,9 @@ fn main() {
             });
         }
 
-        // Q4: Close some auctions.
-        if std::env::args().any(|x| x == "q4") {
+        // Intermission: Close some auctions.
+        let closed_auctions = std::rc::Rc::new(timely::dataflow::operators::capture::event::link::EventLink::new());
+        if std::env::args().any(|x| x == "q4" || x == "q6") {
             worker.dataflow(|scope| {
                 let events = input.to_stream(scope);
 
@@ -198,10 +199,178 @@ fn main() {
                                 }
                             }
                         }
-                    );
+                    )
+                    .capture_into(closed_auctions.clone());
             });
         }
 
+        if std::env::args().any(|x| x == "q4") {
+            worker.dataflow(|scope| {
+
+                use timely::dataflow::channels::pact::Exchange;
+                use timely::dataflow::operators::Operator;
+
+                Some(closed_auctions.clone())
+                    .replay_into(scope)
+                    .map(|(a,b)| (a.category, b.price))
+                    .unary(Exchange::new(|x: &(usize, usize)| x.0 as u64), "Q4 Average",
+                        |_cap, _info| {
+
+                            // Stores category -> (total, count)
+                            let mut state = std::collections::HashMap::new();
+
+                            move |input, output| {
+
+                                input.for_each(|time, data| {
+                                    let mut session = output.session(&time);
+                                    for (category, price) in data.drain(..) {
+                                        let entry = state.entry(category).or_insert((0, 0));
+                                        entry.0 += price;
+                                        entry.1 += 1;
+                                        session.give((category, entry.0 / entry.1));
+                                    }
+                                })
+
+                            }
+
+                        })
+                    .probe_with(&mut probe);
+            });
+        }
+
+        // if std::env::args().any(|x| x == "q5") {
+        //     worker.dataflow(|scope| {
+        //         unimplemented!()
+        //     });
+        // }
+
+        if std::env::args().any(|x| x == "q6") {
+            worker.dataflow(|scope| {
+
+                use timely::dataflow::channels::pact::Exchange;
+                use timely::dataflow::operators::Operator;
+
+                Some(closed_auctions.clone())
+                    .replay_into(scope)
+                    .map(|(_a, b)| (b.bidder, b.price))
+                    .unary(Exchange::new(|x: &(usize, usize)| x.0 as u64), "Q6 Average",
+                        |_cap, _info| {
+
+                            // Store bidder -> [prices; 10]
+                            let mut state = std::collections::HashMap::new();
+
+                            move |input, output| {
+
+                                input.for_each(|time, data| {
+                                    let mut session = output.session(&time);
+                                    for (bidder, price) in data.drain(..) {
+                                        let entry = state.entry(bidder).or_insert(std::collections::VecDeque::new());
+                                        if entry.len() >= 10 { entry.pop_back(); }
+                                        entry.push_front(price);
+                                        let mut sum: usize = entry.iter().sum();
+                                        session.give((bidder, sum / entry.len()));
+                                    }
+                                });
+                            }
+                        })
+                    .probe_with(&mut probe);
+            });
+        }
+
+        if std::env::args().any(|x| x == "q7") {
+            worker.dataflow(|scope| {
+
+                use timely::dataflow::channels::pact::{Pipeline, Exchange};
+                use timely::dataflow::operators::Operator;
+
+                // Window ticks every 10 seconds.
+                let window_size_ns = 10_000_000_000;
+
+                input.to_stream(scope)
+                     .flat_map(|e| nexmark::event::Bid::from(e))
+                     .map(move |b| (((b.date_time / window_size_ns) + 1) * window_size_ns, b.price))
+                     .unary_frontier(Pipeline, "Q7 Pre-reduce", |_cap, _info| {
+
+                        use timely::dataflow::operators::Capability;
+                        use timely::progress::nested::product::Product;
+                        use timely::progress::timestamp::RootTimestamp;
+
+                        let mut maxima = Vec::<(Capability<Product<RootTimestamp, usize>>, usize)>::new();
+
+                        move |input, output| {
+
+                            input.for_each(|time, data| {
+
+                                for (window, price) in data.drain(..) {
+                                    if let Some(position) = maxima.iter().position(|x| (x.0).time().inner == window) {
+                                        if maxima[position].1 < price {
+                                            maxima[position].1 = price;
+                                        }
+                                    }
+                                    else {
+                                        maxima.push((time.delayed(&RootTimestamp::new(window)), price));
+                                    }
+                                }
+
+                            });
+
+                            for &(ref capability, price) in maxima.iter() {
+                                if !input.frontier.less_than(capability.time()) {
+                                    output.session(&capability).give((capability.time().inner, price));
+                                }
+                            }
+
+                            maxima.retain(|(capability, _)| input.frontier.less_than(capability));
+
+                        }
+                     })
+                     .unary_frontier(Exchange::new(move |x: &(usize, usize)| (x.0 / window_size_ns) as u64), "Q7 All-reduce", |_cap, _info| {
+
+                        use timely::dataflow::operators::Capability;
+                        use timely::progress::nested::product::Product;
+                        use timely::progress::timestamp::RootTimestamp;
+
+                        let mut maxima = Vec::<(Capability<Product<RootTimestamp, usize>>, usize)>::new();
+
+                        move |input, output| {
+
+                            input.for_each(|time, data| {
+
+                                for (window, price) in data.drain(..) {
+                                    let new_time = (window + 1) * window_size_ns;
+                                    if let Some(position) = maxima.iter().position(|x| (x.0).time().inner == new_time) {
+                                        if maxima[position].1 < price {
+                                            maxima[position].1 = price;
+                                        }
+                                    }
+                                    else {
+                                        maxima.push((time.delayed(&RootTimestamp::new(new_time)), price));
+                                    }
+                                }
+
+                            });
+
+                            for &(ref capability, price) in maxima.iter() {
+                                if !input.frontier.less_than(capability.time()) {
+                                    output.session(&capability).give(price);
+                                }
+                            }
+
+                            maxima.retain(|(capability, _)| input.frontier.less_than(capability));
+
+                        }
+                     })
+                     .probe_with(&mut probe);
+
+                unimplemented!()
+            });
+        }
+
+        // if std::env::args().any(|x| x == "q8") {
+        //     worker.dataflow(|scope| {
+        //         unimplemented!()
+        //     });
+        // }
 
         let rate = std::env::args().nth(1).expect("rate absent").parse().expect("couldn't parse rate");
         let mut config1 = nexmark::config::Config::new();
