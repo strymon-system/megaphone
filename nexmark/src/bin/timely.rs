@@ -2,8 +2,17 @@ extern crate rand;
 extern crate timely;
 extern crate nexmark;
 
+use std::collections::{HashMap, VecDeque, BinaryHeap};
+
 use timely::dataflow::{InputHandle, ProbeHandle};
 use timely::dataflow::operators::{Map, Filter, Probe, Capture, capture::Replay};
+
+use timely::dataflow::channels::pact::{Pipeline, Exchange};
+use timely::dataflow::operators::Operator;
+use timely::dataflow::operators::Capability;
+use timely::progress::nested::product::Product;
+use timely::progress::timestamp::RootTimestamp;
+
 
 fn main() {
 
@@ -124,9 +133,6 @@ fn main() {
                 let bids = events.flat_map(|e| nexmark::event::Bid::from(e));
                 let auctions = events.flat_map(|e| nexmark::event::Auction::from(e));
 
-                use timely::dataflow::channels::pact::Exchange;
-                use timely::dataflow::operators::Operator;
-
                 bids.binary_frontier(
                         &auctions,
                         Exchange::new(|b: &nexmark::event::Bid| b.auction as u64),
@@ -136,10 +142,6 @@ fn main() {
 
                             let mut state = std::collections::HashMap::new();
                             let mut opens = std::collections::BinaryHeap::new();
-
-                            use timely::dataflow::operators::Capability;
-                            use timely::progress::nested::product::Product;
-                            use timely::progress::timestamp::RootTimestamp;
 
                             let mut capability: Option<Capability<Product<RootTimestamp, usize>>> = None;
 
@@ -238,11 +240,81 @@ fn main() {
             });
         }
 
-        // if std::env::args().any(|x| x == "q5") {
-        //     worker.dataflow(|scope| {
-        //         unimplemented!()
-        //     });
-        // }
+        if std::env::args().any(|x| x == "q5") {
+            worker.dataflow(|scope| {
+
+                let window_slice_count = 60;
+                let window_slide_ns = 1_000_000_000;
+
+                input.to_stream(scope)
+                     .flat_map(|e| nexmark::event::Bid::from(e))
+                     .map(move |b| (b.auction, ((b.date_time / window_slide_ns) + 1) * window_slide_ns))
+                     // TODO: Could pre-aggregate pre-exchange, if there was reason to do so.
+                     .unary_frontier(Exchange::new(|b: &(usize, usize)| b.0 as u64), "Q5 Accumulate",
+                        |_capability, _info| {
+
+                            let mut additions = HashMap::new();
+                            let mut deletions = HashMap::new();
+                            let mut accumulations = HashMap::new();
+
+                            move |input, output| {
+
+                                input.for_each(|time, data| {
+
+                                    let slide = ((time.time().inner / window_slide_ns) + 1) * window_slide_ns;
+                                    let downgrade = time.delayed(&RootTimestamp::new(slide));
+
+                                    // Collect all bids in a different slide.
+                                    for &(auction, a_time) in data.iter() {
+                                        if a_time != slide {
+                                            additions
+                                                .entry(time.delayed(&RootTimestamp::new(a_time)))
+                                                .or_insert(Vec::new())
+                                                .push(auction);
+                                        }
+                                    }
+                                    data.retain(|&(_, a_time)| a_time == slide);
+
+                                    // Collect all bids in the same slide.
+                                    additions
+                                        .entry(downgrade)
+                                        .or_insert(Vec::new())
+                                        .extend(data.drain(..).map(|(b,_)| b));
+                                });
+
+                                // Extract and order times we can now process.
+                                let mut times = {
+                                    let add_times = additions.keys().filter(|t| !input.frontier.less_equal(t.time())).cloned();
+                                    let del_times = deletions.keys().filter(|t: &&Capability<Product<RootTimestamp, usize>>| !input.frontier.less_equal(t.time())).cloned();
+                                    add_times.chain(del_times).collect::<Vec<_>>()
+                                };
+                                times.sort_by(|x,y| x.time().cmp(&y.time()));
+                                times.dedup();
+
+                                for time in times.drain(..) {
+                                    if let Some(additions) = additions.remove(&time) {
+                                        for &auction in additions.iter() {
+                                            *accumulations.entry(auction).or_insert(0) += 1;
+                                        }
+                                        let new_time = time.time().inner + (window_slice_count * window_slide_ns);
+                                        deletions.insert(time.delayed(&RootTimestamp::new(new_time)), additions);
+                                    }
+                                    if let Some(deletions) = deletions.remove(&time) {
+                                        for auction in deletions.into_iter() {
+                                            *accumulations.entry(auction).or_insert(0) -= 1;
+                                        }
+                                    }
+                                    if let Some((count, auction)) = accumulations.iter().map(|(&a,&c)| (c,a)).max() {
+                                        output.session(&time).give(auction);
+                                    }
+                                }
+                            }
+                        })
+                     .probe_with(&mut probe);
+
+                unimplemented!()
+            });
+        }
 
         if std::env::args().any(|x| x == "q6") {
             worker.dataflow(|scope| {
@@ -295,6 +367,7 @@ fn main() {
                         use timely::progress::nested::product::Product;
                         use timely::progress::timestamp::RootTimestamp;
 
+                        // Tracks the worker-local maximal bid for each capability.
                         let mut maxima = Vec::<(Capability<Product<RootTimestamp, usize>>, usize)>::new();
 
                         move |input, output| {
@@ -330,6 +403,7 @@ fn main() {
                         use timely::progress::nested::product::Product;
                         use timely::progress::timestamp::RootTimestamp;
 
+                        // Tracks the global maximal bid for each capability.
                         let mut maxima = Vec::<(Capability<Product<RootTimestamp, usize>>, usize)>::new();
 
                         move |input, output| {
@@ -361,16 +435,80 @@ fn main() {
                         }
                      })
                      .probe_with(&mut probe);
+            });
+        }
+
+        if std::env::args().any(|x| x == "q8") {
+            worker.dataflow(|scope| {
+
+                let events = input.to_stream(scope);
+
+                let auctions =
+                events.flat_map(|e| nexmark::event::Auction::from(e))
+                      .map(|a| (a.seller, a.date_time));
+
+                let people =
+                events.flat_map(|e| nexmark::event::Person::from(e))
+                      .map(|p| (p.id, p.date_time));
+
+                use timely::dataflow::channels::pact::Exchange;
+                use timely::dataflow::operators::Operator;
+
+
+                people
+                    .binary_frontier(
+                        &auctions,
+                        Exchange::new(|p: &(usize, usize)| p.0 as u64),
+                        Exchange::new(|a: &(usize, usize)| a.0 as u64),
+                        "Q8 join",
+                        |_capability, _info| {
+
+                            let window_size_ns = 12 * 60 * 60 * 1_000_000_000;
+                            let mut new_people = std::collections::HashMap::new();
+                            let mut auctions = Vec::new();
+
+                            move |input1, input2, output| {
+
+                                // Notice new people.
+                                input1.for_each(|_time, data| {
+                                    for (person, time) in data.drain(..) {
+                                        new_people.insert(person, time);
+                                    }
+                                });
+
+                                // Notice new auctions.
+                                input2.for_each(|time, data| {
+                                    auctions.push((time.retain(), data.take()));
+                                });
+
+                                // Determine least timestamp we might still see.
+                                let complete1 = input1.frontier.frontier().get(0).map(|t| t.inner).unwrap_or(usize::max_value());
+                                let complete2 = input2.frontier.frontier().get(0).map(|t| t.inner).unwrap_or(usize::max_value());
+                                let complete = std::cmp::min(complete1, complete2);
+
+                                for (capability, auctions) in auctions.iter_mut() {
+                                    if capability.time().inner < complete {
+                                        let mut session = output.session(&capability);
+                                        for &(person, time) in auctions.iter() {
+                                            if time < complete {
+                                                if let Some(p_time) = new_people.get(&person) {
+                                                    if (time - p_time) < window_size_ns {
+                                                        session.give(person);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        auctions.retain(|&(_, time)| time >= complete);
+                                    }
+                                }
+                                auctions.retain(|&(_, ref list)| !list.is_empty());
+                            }
+                        })
+                    .probe_with(&mut probe);
 
                 unimplemented!()
             });
         }
-
-        // if std::env::args().any(|x| x == "q8") {
-        //     worker.dataflow(|scope| {
-        //         unimplemented!()
-        //     });
-        // }
 
         let rate = std::env::args().nth(1).expect("rate absent").parse().expect("couldn't parse rate");
         let mut config1 = nexmark::config::Config::new();
