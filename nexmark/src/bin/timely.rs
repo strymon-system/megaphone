@@ -311,8 +311,6 @@ fn main() {
                             }
                         })
                      .probe_with(&mut probe);
-
-                unimplemented!()
             });
         }
 
@@ -356,7 +354,7 @@ fn main() {
                 use timely::dataflow::operators::Operator;
 
                 // Window ticks every 10 seconds.
-                let window_size_ns = 10_000_000_000;
+                let window_size_ns = 1_000_000_000;
 
                 input.to_stream(scope)
                      .flat_map(|e| nexmark::event::Bid::from(e))
@@ -505,8 +503,6 @@ fn main() {
                             }
                         })
                     .probe_with(&mut probe);
-
-                unimplemented!()
             });
         }
 
@@ -514,6 +510,8 @@ fn main() {
         let mut config1 = nexmark::config::Config::new();
         config1.insert("events-per-second", rate);
         let mut config = nexmark::config::NEXMarkConfig::new(&config1);
+
+        let duration_ns: usize = std::env::args().nth(2).expect("duration absent").parse::<usize>().expect("couldn't parse duration") * 1_000_000_000;
 
         // Establish a start of the computation.
         let elapsed = timer.elapsed();
@@ -527,7 +525,7 @@ fn main() {
         let mut counts = vec![[0u64; 16]; 64];
 
         let mut event_id = 0;
-        let duration_ns = 10_000_000_000;
+        // let duration_ns = 10_000_000_000;
         while requested_ns < duration_ns {
 
             let elapsed = timer.elapsed();

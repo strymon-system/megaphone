@@ -110,7 +110,7 @@ impl Event {
 //     }
 // }
 
-#[derive(Eq, PartialEq, Clone, Serialize, Deserialize, Debug, Abomonation)]
+#[derive(Eq, PartialEq,  Ord, PartialOrd, Clone, Serialize, Deserialize, Debug, Abomonation, Hash)]
 pub struct Person{
     pub id: Id,
     pub name: String,
@@ -157,7 +157,7 @@ impl Person {
     }
 }
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Serialize, Deserialize, Debug, Abomonation)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Serialize, Deserialize, Debug, Abomonation, Hash)]
 pub struct Auction{
     pub id: Id,
     pub item_name: String,
@@ -229,7 +229,7 @@ impl Auction {
     }
 }
 
-#[derive(Eq, PartialEq, Clone, Serialize, Deserialize, Debug, Abomonation)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Serialize, Deserialize, Debug, Abomonation, Hash)]
 pub struct Bid{
     pub auction: Id,
     pub bidder: Id,

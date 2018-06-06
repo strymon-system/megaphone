@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Frank McSherry <fmcsherry@me.com>"]
 
 [dependencies]
+differential-dataflow = { git = "https://github.com/frankmcsherry/differential-dataflow.git" }
 timely = { git = "https://github.com/frankmcsherry/timely-dataflow.git" }
 timely_communication = "0.5"
 abomonation = "0.5"
