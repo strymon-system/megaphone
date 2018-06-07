@@ -500,6 +500,10 @@ fn main() {
                                     }
                                 }
                                 auctions.retain(|&(_, ref list)| !list.is_empty());
+                                // println!("auctions.len: {:?}", auctions.len());
+                                // for thing in auctions.iter() {
+                                //     println!("\t{:?} (len: {:?}) vs {:?}", thing.0, thing.1.len(), complete);
+                                // }
                             }
                         })
                     .probe_with(&mut probe);
@@ -552,8 +556,11 @@ fn main() {
                 next_event = nexmark::event::Event::create(event_id, &mut rng, &mut config);
             }
 
+            // println!("{:?}\tAdvanced", elapsed);
             input.advance_to(elapsed_ns);
-            while probe.less_than(input.time()) { worker.step(); }
+
+            // while probe.less_than(input.time()) { worker.step(); }
+            worker.step();
         }
 
         // Once complete, report ccdf measurements.
