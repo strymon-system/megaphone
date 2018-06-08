@@ -1,7 +1,11 @@
+extern crate fnv;
 extern crate rand;
 extern crate timely;
 extern crate nexmark;
+extern crate dynamic_scaling_mechanism;
 
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::collections::{HashMap, VecDeque, BinaryHeap};
 
 use timely::dataflow::{InputHandle, ProbeHandle};
@@ -12,7 +16,17 @@ use timely::dataflow::operators::Operator;
 use timely::dataflow::operators::Capability;
 use timely::progress::nested::product::Product;
 use timely::progress::timestamp::RootTimestamp;
+use timely::dataflow::operators::Input;
+use timely::dataflow::operators::Broadcast;
 
+use dynamic_scaling_mechanism::stateful::Stateful;
+use dynamic_scaling_mechanism::{BIN_SHIFT, ControlInst, Control};
+
+fn calculate_hash<T: Hash>(t: &T) -> u64 {
+    let mut h: ::fnv::FnvHasher = Default::default();
+    t.hash(&mut h);
+    h.finish()
+}
 
 fn main() {
 
@@ -21,8 +35,9 @@ fn main() {
 
         let timer = ::std::time::Instant::now();
 
-        // Declare re-used input and probe handles.
+        // Declare re-used input, control and probe handles.
         let mut input = InputHandle::new();
+        let mut control_input = InputHandle::new();
         let mut probe = ProbeHandle::new();
 
         // Q0: Do nothing in particular.
@@ -30,6 +45,18 @@ fn main() {
             worker.dataflow(|scope| {
                 input.to_stream(scope)
                      .probe_with(&mut probe);
+            });
+        }
+
+        // Q0-flex: Do nothing in particular.
+        if std::env::args().any(|x| x == "q0-flex") {
+            worker.dataflow(|scope| {
+                let control = scope.input_from(&mut control_input).broadcast();
+                let mut state_stream = input.to_stream(scope)
+                                        .stateful::<_, HashMap<(), ()>, _>(|e: &nexmark::event::Event| calculate_hash(&e.id()), &control);
+                state_stream.stream
+                        .probe_with(&mut state_stream.probe)
+                        .probe_with(&mut probe);
             });
         }
 
@@ -43,6 +70,20 @@ fn main() {
             });
         }
 
+        // Q1-flex: Convert bids to euros.
+        if std::env::args().any(|x| x == "q1-flex") {
+            worker.dataflow(|scope| {
+                let control = scope.input_from(&mut control_input).broadcast();
+                let mut state_stream = input.to_stream(scope)
+                                        .flat_map(|e| nexmark::event::Bid::from(e))
+                                        .stateful::<_, HashMap<(), ()>, _>(|e| calculate_hash(&e.auction), &control);                                     
+                state_stream.stream
+                     .map_in_place(|(_,_,b)| b.price = (b.price * 89)/100)
+                     .probe_with(&mut state_stream.probe)
+                     .probe_with(&mut probe);
+            });
+        }
+
         // Q2: Filter some auctions.
         if std::env::args().any(|x| x == "q2") {
             worker.dataflow(|scope| {
@@ -51,6 +92,22 @@ fn main() {
                      .flat_map(|e| nexmark::event::Bid::from(e))
                      .filter(move |b| b.auction % auction_skip == 0)
                      .map(|b| (b.auction, b.price))
+                     .probe_with(&mut probe);
+            });
+        }
+
+        // Q2-flex: Filter some auctions.
+        if std::env::args().any(|x| x == "q2-flex") {
+            worker.dataflow(|scope| {
+                let auction_skip = 123;
+                let control = scope.input_from(&mut control_input).broadcast();
+                let mut state_stream = input.to_stream(scope)
+                                        .flat_map(|e| nexmark::event::Bid::from(e))
+                                        .stateful::<_, HashMap<(), ()>, _>(|e| calculate_hash(&e.auction), &control); 
+                state_stream.stream
+                     .filter(move |(_,_,b)| b.auction % auction_skip == 0)
+                     .map(|(_,_,b)| (b.auction, b.price))
+                     .probe_with(&mut state_stream.probe)
                      .probe_with(&mut probe);
             });
         }
@@ -528,9 +585,24 @@ fn main() {
 
         let mut counts = vec![[0u64; 16]; 64];
 
+        let mut control_counter = 0;
+        let mut map = vec![0; 1 << BIN_SHIFT];
+        // TODO(moritzo) HAAAACCCCKKK
+        let peers  = worker.peers();
+        if peers != 2 {
+            for (i, v) in map.iter_mut().enumerate() {
+                *v = ((i / 2) * 2 + (i % 2) * peers / 2) % peers;
+            }
+        }
+
         let mut event_id = 0;
         // let duration_ns = 10_000_000_000;
         while requested_ns < duration_ns {
+
+            if worker.index() == 0 {
+                control_input.send(Control::new(control_counter,  1, ControlInst::Map(map.clone())));
+                control_counter += 1;
+            }
 
             let elapsed = timer.elapsed();
             let elapsed_ns = (elapsed.as_secs() * 1_000_000_000 + (elapsed.subsec_nanos() as u64)) as usize;
@@ -558,6 +630,7 @@ fn main() {
 
             // println!("{:?}\tAdvanced", elapsed);
             input.advance_to(elapsed_ns);
+            control_input.advance_to(elapsed_ns);
 
             // while probe.less_than(input.time()) { worker.step(); }
             worker.step();

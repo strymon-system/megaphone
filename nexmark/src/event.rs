@@ -54,9 +54,9 @@ impl Event {
 
     pub fn time(&self) -> usize {
         match self {
-            Event::Person(p) => p.date_time,
-            Event::Auction(a) => a.date_time,
-            Event::Bid(b) => b.date_time,
+            &Event::Person(ref p) => p.date_time,
+            &Event::Auction(ref a) => a.date_time,
+            &Event::Bid(ref b) => b.date_time,
         }
     }
 
@@ -71,6 +71,14 @@ impl Event {
             Event::Auction(Auction::new(events_so_far, id, timestamp, rng, nex))
         } else {
             Event::Bid(Bid::new(id, timestamp, rng, nex))
+        }
+    }
+
+    pub fn id(&self) -> Id {
+        match self {
+            &Event::Person(ref p) => p.id,
+            &Event::Auction(ref a) => a.id,
+            &Event::Bid(ref b) => b.auction,
         }
     }
 

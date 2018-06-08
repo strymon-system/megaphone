@@ -13,3 +13,5 @@ serde = "*"
 serde_json = "*"
 serde_derive = "*"
 rand = "*"
+fnv="1.0"
+dynamic_scaling_mechanism = { path = "../"}

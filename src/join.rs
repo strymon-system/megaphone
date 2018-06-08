@@ -76,7 +76,6 @@ where
                         }
                     };
                 };
-
             }
         }).probe_with(&mut self.probe).probe_with(&mut other.probe)
     }

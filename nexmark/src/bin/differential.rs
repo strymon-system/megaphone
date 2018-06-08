@@ -189,7 +189,7 @@ fn main() {
                     .as_mut()
                     .expect("closed_auctions not properly set")
                     .import(scope)
-                    .as_collection(|_,(ref a, ref b)| (a.category, b.price))
+                    .as_collection(|_,&(ref a, ref b)| (a.category, b.price))
                     .explode(|(category, price)| Some((category, differential_dataflow::difference::DiffPair::new(price as isize, 1))))
                     .consolidate()
                     .probe_with(&mut probe);
