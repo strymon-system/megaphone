@@ -75,10 +75,12 @@ fn main() {
             worker.dataflow(|scope| {
                 let control = scope.input_from(&mut control_input).broadcast();
                 let mut state_stream = input.to_stream(scope)
-                                        .flat_map(|e| nexmark::event::Bid::from(e))
-                                        .stateful::<_, HashMap<(), ()>, _>(|e| calculate_hash(&e.auction), &control);                                     
+                                        .stateful::<_, HashMap<(), ()>, _>(|e: &nexmark::event::Event| calculate_hash(&e.id()), &control);
+                                        
+                                                                             
                 state_stream.stream
-                     .map_in_place(|(_,_,b)| b.price = (b.price * 89)/100)
+                     .flat_map(|(_,_,e)| nexmark::event::Bid::from(e))
+                     .map_in_place(|b| b.price = (b.price * 89)/100)
                      .probe_with(&mut state_stream.probe)
                      .probe_with(&mut probe);
             });
@@ -102,11 +104,11 @@ fn main() {
                 let auction_skip = 123;
                 let control = scope.input_from(&mut control_input).broadcast();
                 let mut state_stream = input.to_stream(scope)
-                                        .flat_map(|e| nexmark::event::Bid::from(e))
-                                        .stateful::<_, HashMap<(), ()>, _>(|e| calculate_hash(&e.auction), &control); 
+                                        .stateful::<_, HashMap<(), ()>, _>(|e: &nexmark::event::Event| calculate_hash(&e.id()), &control); 
                 state_stream.stream
-                     .filter(move |(_,_,b)| b.auction % auction_skip == 0)
-                     .map(|(_,_,b)| (b.auction, b.price))
+                     .flat_map(|(_,_,e)| nexmark::event::Bid::from(e))
+                     .filter(move |b| b.auction % auction_skip == 0)
+                     .map(|b| (b.auction, b.price))
                      .probe_with(&mut state_stream.probe)
                      .probe_with(&mut probe);
             });
@@ -178,6 +180,89 @@ fn main() {
                         }
                     )
                     .probe_with(&mut probe);
+            });
+        }
+
+        // Q3-flex: Join some auctions.
+        if std::env::args().any(|x| x == "q3-flex") {
+            worker.dataflow(|scope| {
+
+                let control = scope.input_from(&mut control_input).broadcast();
+
+                let events = input.to_stream(scope);    
+
+                let auctions =
+                events.flat_map(|e| nexmark::event::Auction::from(e))
+                      .filter(|a| a.category == 10)
+                      .stateful::<_, HashMap<(), ()>, _>(|a: &nexmark::event::Auction| calculate_hash(&a.seller), &control);
+
+                let people =
+                events.flat_map(|e| nexmark::event::Person::from(e))
+                      .filter(|p| p.state == "OR" || p.state == "ID" || p.state == "CA")
+                      .stateful::<_, HashMap<(), ()>, _>(|p: &nexmark::event::Person| calculate_hash(&p.id), &control);
+
+                let auction_state = auctions.state.clone();
+                let people_state = people.state.clone();
+
+                use std::collections::HashMap;
+                use timely::dataflow::channels::pact::Exchange;
+                use timely::dataflow::operators::Operator;
+
+                auctions
+                    .binary(
+                        &people,
+                        Pipeline,
+                        Pipeline,
+                        "Q3 Join Flex",
+                        |_capability, _info| {
+
+                            let mut pending_auction_state: HashMap<usize, Vec<(usize, u64, nexmark::event::Auction)>> = Default::default();
+                            let mut pending2: HashMap<usize, Vec<(usize, u64, nexmark::event::Person)>> = Default::default();
+
+                let mut state1 = state1.borrow_mut();
+                let mut state2 = state2.borrow_mut();
+
+                            let mut pending_auction_state = HashMap::new();
+                            let mut pending_people_state = HashMap::<usize, nexmark::event::Person>::new();
+
+                            move |input1, input2, output| {
+
+                                // Process each input auction.
+                                input1.for_each(|time, data| {
+                                    let mut session = output.session(&time);
+                                    for auction in data.drain(..) {
+                                        if let Some(person) = state2.get(&auction.seller) {
+                                                session.give((
+                                                    person.name.clone(),
+                                                    person.city.clone(),
+                                                    person.state.clone(),
+                                                    auction.id));
+                                        }
+                                        state1.entry(auction.seller).or_insert(Vec::new()).push(auction);
+                                    }
+                                });
+
+                                // Process each input person.
+                                input2.for_each(|time, data| {
+                                    let mut session = output.session(&time);
+                                    for person in data.drain(..) {
+                                        if let Some(auctions) = state1.get(&person.id) {
+                                            for auction in auctions.iter() {
+                                                session.give((
+                                                    person.name.clone(),
+                                                    person.city.clone(),
+                                                    person.state.clone(),
+                                                    auction.id));
+                                            }
+                                        }
+                                        state2.insert(person.id, person);
+                                    }
+                                });
+                            }
+                        }
+                    )
+                    .probe_with(&mut probe);
+            */
             });
         }
 

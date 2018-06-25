@@ -78,7 +78,7 @@ impl Event {
         match self {
             &Event::Person(ref p) => p.id,
             &Event::Auction(ref a) => a.id,
-            &Event::Bid(ref b) => b.auction,
+            &Event::Bid(ref b) => b.auction,    // Bid eventss don't have ids, so use the associated auction id 
         }
     }
 
