@@ -2,6 +2,30 @@
 name = "dynamic_scaling_mechanism"
 version = "0.0.1"
 
+[features]
+default = ["bin-8"]
+
+bin-1 = []
+bin-2 = []
+bin-3 = []
+bin-4 = []
+bin-5 = []
+bin-6 = []
+bin-7 = []
+bin-8 = []
+bin-9 = []
+bin-10 = []
+bin-11 = []
+bin-12 = []
+bin-13 = []
+bin-14 = []
+bin-15 = []
+bin-16 = []
+bin-17 = []
+bin-18 = []
+bin-19 = []
+bin-20 = []
+
 [dependencies]
 timely = { git = "https://github.com/frankmcsherry/timely-dataflow.git" }
 abomonation = "^0.5"

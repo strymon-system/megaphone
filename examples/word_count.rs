@@ -162,6 +162,7 @@ fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T
 
 fn main() {
     println!("args: {:?}", std::env::args());
+    println!("bin-shift: {:?}", ::dynamic_scaling_mechanism::BIN_SHIFT);
 
     let mut args = std::env::args();
     let _cmd = args.next();

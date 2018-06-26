@@ -136,4 +136,43 @@ impl<T: PartialOrder> ControlSetBuilder<T> {
     }
 }
 
+#[cfg(feature = "bin-1")]
+pub const BIN_SHIFT: usize = 1;
+#[cfg(feature = "bin-2")]
+pub const BIN_SHIFT: usize = 2;
+#[cfg(feature = "bin-3")]
+pub const BIN_SHIFT: usize = 3;
+#[cfg(feature = "bin-4")]
+pub const BIN_SHIFT: usize = 4;
+#[cfg(feature = "bin-5")]
+pub const BIN_SHIFT: usize = 5;
+#[cfg(feature = "bin-6")]
+pub const BIN_SHIFT: usize = 6;
+#[cfg(feature = "bin-7")]
+pub const BIN_SHIFT: usize = 7;
+#[cfg(feature = "bin-8")]
 pub const BIN_SHIFT: usize = 8;
+#[cfg(feature = "bin-9")]
+pub const BIN_SHIFT: usize = 9;
+#[cfg(feature = "bin-10")]
+pub const BIN_SHIFT: usize = 10;
+#[cfg(feature = "bin-11")]
+pub const BIN_SHIFT: usize = 11;
+#[cfg(feature = "bin-12")]
+pub const BIN_SHIFT: usize = 12;
+#[cfg(feature = "bin-13")]
+pub const BIN_SHIFT: usize = 13;
+#[cfg(feature = "bin-14")]
+pub const BIN_SHIFT: usize = 14;
+#[cfg(feature = "bin-15")]
+pub const BIN_SHIFT: usize = 15;
+#[cfg(feature = "bin-16")]
+pub const BIN_SHIFT: usize = 16;
+#[cfg(feature = "bin-17")]
+pub const BIN_SHIFT: usize = 17;
+#[cfg(feature = "bin-18")]
+pub const BIN_SHIFT: usize = 18;
+#[cfg(feature = "bin-19")]
+pub const BIN_SHIFT: usize = 19;
+#[cfg(feature = "bin-20")]
+pub const BIN_SHIFT: usize = 20;
