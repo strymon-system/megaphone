@@ -19,7 +19,7 @@ use timely::progress::timestamp::RootTimestamp;
 use timely::dataflow::operators::Input;
 use timely::dataflow::operators::Broadcast;
 
-use dynamic_scaling_mechanism::stateful::Stateful;
+use dynamic_scaling_mechanism::stateful::{Stateful, StateHandle};
 use dynamic_scaling_mechanism::{BIN_SHIFT, ControlInst, Control};
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
@@ -194,13 +194,16 @@ fn main() {
                 let auctions =
                 events.flat_map(|e| nexmark::event::Auction::from(e))
                       .filter(|a| a.category == 10)
-                      .stateful::<_, HashMap<(), ()>, _>(|a: &nexmark::event::Auction| calculate_hash(&a.seller), &control);
+                      .map(|a| (calculate_hash(&a.seller),a))
+                      .stateful::<_, HashMap<u64, nexmark::event::Auction>, _>(|(k,_a)| *k, &control);
 
                 let people =
                 events.flat_map(|e| nexmark::event::Person::from(e))
                       .filter(|p| p.state == "OR" || p.state == "ID" || p.state == "CA")
-                      .stateful::<_, HashMap<(), ()>, _>(|p: &nexmark::event::Person| calculate_hash(&p.id), &control);
+                      .map(|p| (calculate_hash(&p.id),p))
+                      .stateful::<_, HashMap<u64,nexmark::event::Person>, _>(|(k,_p)| *k, &control);
 
+                // Pointers to the shared state
                 let auction_state = auctions.state.clone();
                 let people_state = people.state.clone();
 
@@ -208,61 +211,70 @@ fn main() {
                 use timely::dataflow::channels::pact::Exchange;
                 use timely::dataflow::operators::Operator;
 
-                auctions
-                    .binary(
-                        &people,
+                auctions.stream.
+                    binary_frontier(
+                        &people.stream,
                         Pipeline,
                         Pipeline,
                         "Q3 Join Flex",
                         |_capability, _info| {
 
-                            let mut pending_auction_state: HashMap<usize, Vec<(usize, u64, nexmark::event::Auction)>> = Default::default();
-                            let mut pending2: HashMap<usize, Vec<(usize, u64, nexmark::event::Person)>> = Default::default();
-
-                let mut state1 = state1.borrow_mut();
-                let mut state2 = state2.borrow_mut();
-
-                            let mut pending_auction_state = HashMap::new();
-                            let mut pending_people_state = HashMap::<usize, nexmark::event::Person>::new();
-
                             move |input1, input2, output| {
+
+                                // Stash data till frontiers from both inputs have been advanced
+                                let mut pending_auction_state: HashMap<_, Vec<(_, _, _)>> = Default::default();
+                                let mut pending_people_state: HashMap<_, Vec<(_, _, _)>> = Default::default();
+
+                                // The shared state
+                                let mut auction_state = auction_state.borrow_mut();
+                                let mut people_state = people_state.borrow_mut();
 
                                 // Process each input auction.
                                 input1.for_each(|time, data| {
-                                    let mut session = output.session(&time);
-                                    for auction in data.drain(..) {
-                                        if let Some(person) = state2.get(&auction.seller) {
-                                                session.give((
-                                                    person.name.clone(),
-                                                    person.city.clone(),
-                                                    person.state.clone(),
-                                                    auction.id));
-                                        }
-                                        state1.entry(auction.seller).or_insert(Vec::new()).push(auction);
-                                    }
+                                    pending_auction_state.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                                    auction_state.notificator().notify_at(time.retain());
                                 });
 
                                 // Process each input person.
                                 input2.for_each(|time, data| {
-                                    let mut session = output.session(&time);
-                                    for person in data.drain(..) {
-                                        if let Some(auctions) = state1.get(&person.id) {
-                                            for auction in auctions.iter() {
-                                                session.give((
-                                                    person.name.clone(),
+                                    pending_people_state.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                                    people_state.notificator().notify_at(time.retain());
+                                });
+
+                            while let Some(time) = auction_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
+                                let mut session = output.session(&time);
+
+                                for (_target, key_id, (seller_id,auction)) in pending_auction_state.remove(&time.time()).into_iter().flat_map(|v| v.into_iter()) {
+                                    if let Some(mut person) = people_state.get_state(key_id).remove(&seller_id) {
+                                        session.give((person.name.clone(), 
                                                     person.city.clone(),
                                                     person.state.clone(),
                                                     auction.id));
-                                            }
-                                        }
-                                        state2.insert(person.id, person);
                                     }
-                                });
+                                    auction_state.get_state(key_id).insert(seller_id, auction);
+                                };
+
+                            }
+
+                            while let Some(time) = people_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
+                                let mut session = output.session(&time);
+
+                                for (_target, key_id, (person_id,person)) in pending_people_state.remove(&time.time()).into_iter().flat_map(|v| v.into_iter()) {
+                                    if let Some(mut auction) = auction_state.get_state(key_id).remove(&person_id) {
+                                        session.give((person.name.clone(), 
+                                                    person.city.clone(),
+                                                    person.state.clone(),
+                                                    auction.id));
+                                    }
+                                    people_state.get_state(key_id).insert(person_id, person);
+                                };
+                            }
+
                             }
                         }
                     )
                     .probe_with(&mut probe);
-            */
+            
             });
         }
 
