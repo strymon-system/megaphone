@@ -685,10 +685,10 @@ fn main() {
                 let mut winners =  Some(closed_auctions_flex.clone())
                     .replay_into(scope)
                     .map(|(_a, b)| {
-                        let vd = ::nexmark::AbomVecDeque(VecDeque::new());
+                        let mut vd = ::nexmark::AbomVecDeque(VecDeque::new());
                         vd.push_front((b.bidder, b.price));
-                        (b.bidder,vd)})
-                    .stateful::<_,HashMap<u64,::nexmark::AbomVecDeque<(usize,usize)>>,_>(|(b,p)| calculate_hash(&b), &control);
+                        (b.bidder as u64,vd)})
+                    .stateful::<_,HashMap<u64,::nexmark::AbomVecDeque<(usize,usize)>>,_>(|(b,_p)| calculate_hash(&b), &control);
 
                 let state = winners.state.clone();
 
@@ -696,22 +696,22 @@ fn main() {
                     .unary_frontier(Pipeline, "Q6 Average",
                         |_cap, _info| {
 
-                            let mut pending_state: HashMap<_, Vec<(_, _, (_,_))>> = Default::default();
+                            let mut pending_state: HashMap<_, Vec<(_, _, (_,::nexmark::AbomVecDeque<(usize,usize)>))>> = Default::default();
 
                             move |input, output| {
 
-                                let state = state.borrow_mut();
+                                let mut state = state.borrow_mut();
 
                                 let frontier = input.frontier();
 
                                 while let Some(time) = state.notificator().next(&[input.frontier()]) {
                                     if let Some(mut pend) = pending_state.remove(time.time()) {
                                         let mut session = output.session(&time);
-                                        for (_, bin_id, (bidder, price)) in pend.drain(..) {
+                                        for (_, bin_id, (bidder, mut price)) in pend.drain(..) {
                                             let entry = state.get_state(bin_id).entry(bidder).or_insert(::nexmark::AbomVecDeque(VecDeque::new()));
                                             if entry.len() >= 10 { entry.pop_back(); }
-                                            entry.push_front(price.pop_back());
-                                            let mut sum: usize = entry.iter().sum();
+                                            entry.push_front(price.pop_back().unwrap());
+                                            let mut sum: usize = entry.iter().map(|(_,b)| b).sum();
                                             session.give((bidder, sum / entry.len()));
                                         }
                                     }
@@ -724,11 +724,11 @@ fn main() {
                                     }
                                     else {
                                         let mut session = output.session(&time);
-                                        for (_, bin_id, (bidder, price)) in data.drain(..) {
+                                        for (_, bin_id, (bidder, mut price)) in data.drain(..) {
                                             let entry = state.get_state(bin_id).entry(bidder).or_insert(::nexmark::AbomVecDeque(VecDeque::new()));
                                             if entry.len() >= 10 { entry.pop_back(); }
-                                            entry.push_front(price.pop_back());
-                                            let mut sum: usize = entry.iter().sum();
+                                            entry.push_front(price.pop_back().unwrap());
+                                            let mut sum: usize = entry.iter().map(|(_,b)| b).sum();
                                             session.give((bidder, sum / entry.len()));
                                         }
                                     }
