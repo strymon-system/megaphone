@@ -6,7 +6,7 @@ extern crate dynamic_scaling_mechanism;
 
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::collections::{HashMap, BinaryHeap};
+use std::collections::{HashMap, VecDeque, BinaryHeap};
 
 use timely::dataflow::{InputHandle, ProbeHandle};
 use timely::dataflow::operators::{Map, Filter, Probe, Capture, capture::Replay};
@@ -664,7 +664,7 @@ fn main() {
                                 input.for_each(|time, data| {
                                     let mut session = output.session(&time);
                                     for (bidder, price) in data.drain(..) {
-                                        let entry = state.entry(bidder).or_insert(std::collections::VecDeque::new());
+                                        let entry = state.entry(bidder).or_insert(VecDeque::new());
                                         if entry.len() >= 10 { entry.pop_back(); }
                                         entry.push_front(price);
                                         let mut sum: usize = entry.iter().sum();
@@ -685,10 +685,10 @@ fn main() {
                 let mut winners =  Some(closed_auctions_flex.clone())
                     .replay_into(scope)
                     .map(|(_a, b)| {
-                        let vd = std::collections::VecDeque::new();
+                        let vd = VecDeque::new();
                         vd.push_front((b.bidder, b.price));
                         (b.bidder,vd)})
-                    .stateful::<_,HashMap<u64,std::collections::VecDeque<(usize,usize)>>,_>(|(b,p)| calculate_hash(&b), &control);
+                    .stateful::<_,HashMap<u64,VecDeque<(usize,usize)>>,_>(|(b,p)| calculate_hash(&b), &control);
 
                 let state = winners.state.clone();
 
@@ -708,9 +708,9 @@ fn main() {
                                     if let Some(mut pend) = pending_state.remove(time.time()) {
                                         let mut session = output.session(&time);
                                         for (_, bin_id, (bidder, price)) in pend.drain(..) {
-                                            let entry = state.get_state(bin_id).entry(bidder).or_insert(std::collections::VecDeque::new());
+                                            let entry = state.get_state(bin_id).entry(bidder).or_insert(VecDeque::new());
                                             if entry.len() >= 10 { entry.pop_back(); }
-                                            entry.push_front(price);
+                                            entry.push_front(price.pop_back());
                                             let mut sum: usize = entry.iter().sum();
                                             session.give((bidder, sum / entry.len()));
                                         }
@@ -725,9 +725,9 @@ fn main() {
                                     else {
                                         let mut session = output.session(&time);
                                         for (_, bin_id, (bidder, price)) in data.drain(..) {
-                                            let entry = state.get_state(bin_id).entry(bidder).or_insert(std::collections::VecDeque::new());
+                                            let entry = state.get_state(bin_id).entry(bidder).or_insert(VecDeque::new());
                                             if entry.len() >= 10 { entry.pop_back(); }
-                                            entry.push_front(price);
+                                            entry.push_front(price.pop_back());
                                             let mut sum: usize = entry.iter().sum();
                                             session.give((bidder, sum / entry.len()));
                                         }
