@@ -63,7 +63,7 @@ pub trait StateHandle<T: Timestamp, S> {
     >(&mut self, key: u64, f: F) -> R;
 
     /// Iterate all bins. This might go away.
-    fn scan<F: Fn(&mut S)>(&mut self, f: F);
+    fn scan<F: FnMut(&mut S)>(&mut self, mut f: F);
 
     /// Obtain a reference to a notificator.
     fn notificator(&mut self) -> &mut FrontierNotificator<T>;
@@ -83,7 +83,7 @@ impl<T: Timestamp, S> StateHandle<T, S> for State<T, S> {
         f(&mut self.bins[key_to_bin(key)], &mut self.notificator)
     }
 
-    fn scan<F: Fn(&mut S)>(&mut self, f: F) {
+    fn scan<F: FnMut(&mut S)>(&mut self, mut f: F) {
         for state in &mut self.bins {
             f(state)
         }
