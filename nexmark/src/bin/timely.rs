@@ -685,10 +685,10 @@ fn main() {
                 let mut winners =  Some(closed_auctions_flex.clone())
                     .replay_into(scope)
                     .map(|(_a, b)| {
-                        let vd = VecDeque::new();
+                        let vd = ::nexmark::AbomVecDeque(VecDeque::new());
                         vd.push_front((b.bidder, b.price));
                         (b.bidder,vd)})
-                    .stateful::<_,HashMap<u64,VecDeque<(usize,usize)>>,_>(|(b,p)| calculate_hash(&b), &control);
+                    .stateful::<_,HashMap<u64,::nexmark::AbomVecDeque<(usize,usize)>>,_>(|(b,p)| calculate_hash(&b), &control);
 
                 let state = winners.state.clone();
 
@@ -708,7 +708,7 @@ fn main() {
                                     if let Some(mut pend) = pending_state.remove(time.time()) {
                                         let mut session = output.session(&time);
                                         for (_, bin_id, (bidder, price)) in pend.drain(..) {
-                                            let entry = state.get_state(bin_id).entry(bidder).or_insert(VecDeque::new());
+                                            let entry = state.get_state(bin_id).entry(bidder).or_insert(::nexmark::AbomVecDeque(VecDeque::new()));
                                             if entry.len() >= 10 { entry.pop_back(); }
                                             entry.push_front(price.pop_back());
                                             let mut sum: usize = entry.iter().sum();
@@ -725,7 +725,7 @@ fn main() {
                                     else {
                                         let mut session = output.session(&time);
                                         for (_, bin_id, (bidder, price)) in data.drain(..) {
-                                            let entry = state.get_state(bin_id).entry(bidder).or_insert(VecDeque::new());
+                                            let entry = state.get_state(bin_id).entry(bidder).or_insert(::nexmark::AbomVecDeque(VecDeque::new()));
                                             if entry.len() >= 10 { entry.pop_back(); }
                                             entry.push_front(price.pop_back());
                                             let mut sum: usize = entry.iter().sum();
