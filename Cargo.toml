@@ -27,12 +27,13 @@ bin-19 = []
 bin-20 = []
 
 [dependencies]
-timely = { git = "https://github.com/frankmcsherry/timely-dataflow.git" }
+#timely = { git = "https://github.com/frankmcsherry/timely-dataflow.git" }
+timely = "0.6"
 abomonation = "^0.5"
 abomonation_derive = "^0.3"
-rand = "^0.4"
+rand = "^0.5"
 fnv="1.0"
-zipf = "2.0"
+zipf = "3.1"
 
 # [profile.release]
 # opt-level = 3
