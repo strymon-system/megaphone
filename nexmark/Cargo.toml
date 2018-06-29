@@ -13,3 +13,4 @@ serde = "*"
 serde_json = "*"
 serde_derive = "*"
 rand = "*"
+streaming-harness = { path = "../../streaming-harness", features = ["hdrhist-support", "timely-support"] }
