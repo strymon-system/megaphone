@@ -633,8 +633,8 @@ fn main() {
                      .unary_frontier(Pipeline, "Q5 Accumulate",
                         |_capability, _info| {
 
-                            let mut additions: HashMap<_, Vec<_>> = Default::default();
-                            let mut deletions: HashMap<_, Vec<_>> = Default::default();
+                            let mut pending_additions: HashMap<_, Vec<_>> = Default::default();
+                            let mut pending_deletions: HashMap<_, Vec<_>> = Default::default();
 
                             move |input, output| {
 
@@ -650,7 +650,7 @@ fn main() {
                                         // The bid's a_time is always greater or equal to the actual time the event was delivered
                                         bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(a_time)));
                                         if a_time != slide {
-                                            additions
+                                            pending_additions
                                                 .entry(time.delayed(&RootTimestamp::new(a_time)))
                                                 .or_insert(Vec::new())
                                                 .push((bin_id, auction));
@@ -660,7 +660,7 @@ fn main() {
                                     let mut data = data.drain(..).map(|(_, bin_id, (auction, _))| (bin_id,auction)).collect::<Vec<_>>();
 
                                     // Collect all bids in the same slide.
-                                    additions
+                                    pending_additions
                                         .entry(downgrade)
                                         .or_insert(Vec::new())
                                         .extend(data.drain(..));
@@ -668,7 +668,7 @@ fn main() {
 
                                 while let Some(time) = bid_state.notificator().next(&[input.frontier()]) {
                                     // Process additions (if any)
-                                    if let Some(additions) = additions.remove(&time) {
+                                    if let Some(additions) = pending_additions.remove(&time) {
                                         for (bin_id, auction) in additions.iter() {
                                             let slot = bid_state.get_state(*bin_id).entry(*auction as u64).or_insert((*auction,0));
                                             slot.1 += 1;
@@ -676,10 +676,10 @@ fn main() {
                                         }
                                         // Define the time these entries will be out of the window (after 'window_slice_count * window_slide_ns' nsecs)
                                         let new_time = time.time().inner + (window_slice_count * window_slide_ns);
-                                        deletions.insert(time.delayed(&RootTimestamp::new(new_time)), additions);
+                                        pending_deletions.insert(time.delayed(&RootTimestamp::new(new_time)), additions);
                                     }
                                     // Process deletions (if any)
-                                    if let Some(deletions) = deletions.remove(&time) {
+                                    if let Some(deletions) = pending_deletions.remove(&time) {
                                         for (bin_id, auction) in deletions.into_iter() {
                                             let slot = bid_state.get_state(bin_id).entry(auction as u64).or_insert((auction,0));
                                             slot.1 -= 1;
