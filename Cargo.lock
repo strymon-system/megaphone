@@ -40,7 +40,7 @@ dependencies = [
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "timely 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "zipf 3.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "zipf 4.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -186,7 +186,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "zipf"
-version = "3.1.0"
+version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "rand 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -217,4 +217,4 @@ dependencies = [
 "checksum winapi 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)" = "773ef9dcc5f24b7d850d0ff101e542ff24c3b090a9768e03ff889fdef41f00fd"
 "checksum winapi-i686-pc-windows-gnu 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
 "checksum winapi-x86_64-pc-windows-gnu 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
-"checksum zipf 3.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "e27417efe81609c3c2ad4620de61fd8a9191cc91d31edc4ca2d52e3f4fb94122"
+"checksum zipf 4.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "44358b28adad817725a0ae75b8c9b5a410a85de6eb998d66d0e38c81f4520e4c"
