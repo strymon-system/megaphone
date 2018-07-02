@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
-import sys
+import sys, math, os
 from collections import namedtuple, defaultdict
 from HopcroftKarp import HopcroftKarp
+import experiments
 
 # - Generic interface to run benchmark with a configuration
 # - Runner to run experiments remotely
@@ -18,9 +19,10 @@ class InitialPattern(object):
         return [i % self._workers for i in range(2**self._bin_shift)]
 
     def generate_uniform_skew(self):
-        generator = InitialPattern(self._bin_shift, self._workers//2)
+        generator = InitialPattern(self._bin_shift, self._workers)
         map = generator.generate_half()
-        map.extend(generator.generate_uniform())
+        map = map[:len(map)//2]
+        map.extend([i % self._workers for i in range(2**(self._bin_shift - 1), 2**self._bin_shift)])
         return map
 
     def generate_half(self):
@@ -38,7 +40,7 @@ class MigrationPattern(object):
 class SuddenMigrationPattern(MigrationPattern):
 
     def generate(self):
-        yield self._target_map
+        yield ("map", self._target_map)
 
 class FluidMigrationPattern(MigrationPattern):
 
@@ -47,7 +49,7 @@ class FluidMigrationPattern(MigrationPattern):
         for (i, (src, dst)) in enumerate(zip(current_map, self._target_map)):
             if src != dst:
                 current_map[i] = dst
-                yield current_map
+                yield ("diff", {i: dst})
 
 class BatchedFluidMigrationPattern(MigrationPattern):
 
@@ -88,12 +90,7 @@ class BatchedFluidMigrationPattern(MigrationPattern):
             if len(matching) == 0:
                 break
             # Emit diffs
-            yield diffs
-
-
-
-Experiment = namedtuple("Experiment", ["duration", "query", "migration", "bin_shift"])
-
+            yield ("diff", diffs)
 
 class PatternGenerator(object):
 
@@ -101,16 +98,16 @@ class PatternGenerator(object):
         self._migration_pattern = migration_pattern
         self._initial_pattern = initial_pattern
         self._target_pattern = target_pattern
-        print(initial_pattern)
-        print(target_pattern)
 
     def write_pattern(self, file, pattern):
+        file.write("M ")
         for w in pattern:
             file.write(str(w))
             file.write(" ")
         file.write('\n')
 
     def write_diff(self, file, pattern):
+        file.write("D ")
         for b, w in pattern.items():
             file.write(str(b))
             file.write(" ")
@@ -122,26 +119,77 @@ class PatternGenerator(object):
         generator = self._migration_pattern(self._initial_pattern, self._target_pattern)
         i = 1
         self.write_pattern(file, self._initial_pattern)
-        for pattern in generator.generate():
+        for (type, pattern) in generator.generate():
             i += 1
-            self.write_diff(file, pattern)
-        print(i)
+            if type == "diff":
+                self.write_diff(file, pattern)
+            elif type == "map":
+                self.write_pattern(file, pattern)
+            else:
+                raise ValueError("Incorrect type: {}".format(type))
 
-for migration in BatchedFluidMigrationPattern([0,0,2,2], [0,1,2,3]).generate():
-    print(migration)
-for migration in BatchedFluidMigrationPattern([0,1,1,2,3], [0,1,2,2,3]).generate():
-    print(migration)
-for migration in BatchedFluidMigrationPattern([0,1,1,2,2,3], [1,1,2,1,2,3]).generate():
-    print(migration)
-print("---")
-for migration in FluidMigrationPattern([0,1,1,2,2,3], [1,1,2,1,2,3]).generate():
-    print(migration)
+# for migration in BatchedFluidMigrationPattern([0,0,2,2], [0,1,2,3]).generate():
+#     print(migration)
+# for migration in BatchedFluidMigrationPattern([0,1,1,2,3], [0,1,2,2,3]).generate():
+#     print(migration)
+# for migration in BatchedFluidMigrationPattern([0,1,1,2,2,3], [1,1,2,1,2,3]).generate():
+#     print(migration)
+# print("---")
+# for migration in FluidMigrationPattern([0,1,1,2,2,3], [1,1,2,1,2,3]).generate():
+#     print(migration)
+#
+# print(InitialPattern(5, 16).generate_uniform())
+# print(InitialPattern(5, 4).generate_half())
+# # pattern_generator = InitialPattern(20, 32)
+# pattern_generator = InitialPattern(5, 4)
+# print("---")
+# initial_pattern = pattern_generator.generate_uniform()
+# generator = PatternGenerator(BatchedFluidMigrationPattern, initial_pattern, pattern_generator.generate_uniform_skew())
+# generator.write(sys.stdout)
 
-print(InitialPattern(5, 16).generate_uniform())
-print(InitialPattern(5, 4).generate_half())
-# pattern_generator = InitialPattern(20, 32)
-pattern_generator = InitialPattern(5, 4)
-print("---")
-initial_pattern = pattern_generator.generate_uniform()
-generator = PatternGenerator(BatchedFluidMigrationPattern, initial_pattern, pattern_generator.generate_uniform_skew())
-generator.write(sys.stdout)
+class Experiment(object):
+
+    def __init__(self, duration, query, migration, bin_shift, workers, processes):
+        self._duration = duration
+        self._query = query
+        self._migration = migration
+        self._bin_shift = bin_shift
+        self._workers = workers
+        self._processes = processes
+
+    def get_directory_name(self, process):
+        queries = "_".join(sorted(self._query))
+        return "result/bin_shift_{}/{}/{}/duration_{}/proc_{}".format(self._bin_shift, self._migration, queries, self._duration, process)
+
+    def get_file_name(self, name, process=0):
+        return "{}/{}".format(self.get_directory_name(process), name)
+
+    def run_experiment(self):
+        migration_pattern_file_name = self.get_file_name("migration_pattern")
+
+        dir = self.get_directory_name(0)
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+
+        initial_pattern = InitialPattern(self._bin_shift, self._workers)
+
+        if self._migration == "sudden":
+            pattern = SuddenMigrationPattern
+        elif self._migration == "fluid":
+            pattern = FluidMigrationPattern
+        elif self._migration == "batched":
+            pattern = BatchedFluidMigrationPattern
+        else:
+            raise ValueError("Unknown migration pattern: {}".format(self._migration))
+
+        with open(migration_pattern_file_name, "w") as f:
+            print("Writing migration pattern to {}".format(migration_pattern_file_name))
+            PatternGenerator(pattern, initial_pattern.generate_uniform(), initial_pattern.generate_uniform_skew()).write(f)
+
+        commands = ["~/.cargo/bin/cargo run --bin timely --release --no-default-features --features dynamic_scaling_mechanism/bin-{} 1000000 10 {} {}".format(self._bin_shift, migration_pattern_file_name, " ".join(self._query))]
+        processes = [experiments.run_cmd(command) for command in commands]
+
+workers = 32
+for bin_shift in range(int(math.log2(workers)), 16):
+    experiment = Experiment(duration=10, query=["q0"], migration="sudden", bin_shift=bin_shift, workers=workers, processes=1)
+    experiment.run_experiment()

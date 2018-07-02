@@ -3,14 +3,17 @@ name = "nexmark"
 version = "0.1.0"
 authors = ["Frank McSherry <fmcsherry@me.com>"]
 
+[features]
+default = ["dynamic_scaling_mechanism/bin-8"]
+
 [dependencies]
 differential-dataflow = { git = "https://github.com/frankmcsherry/differential-dataflow.git" }
-timely = { git = "https://github.com/frankmcsherry/timely-dataflow.git" }
-timely_communication = "0.5"
+timely = "^0.6"
 abomonation = "0.5"
 abomonation_derive = "*"
 serde = "*"
 serde_json = "*"
 serde_derive = "*"
 rand = "*"
-streaming-harness = { path = "../../streaming-harness", features = ["hdrhist-support", "timely-support"] }
+streaming-harness = { version = "^0.1", features = ["hdrhist-support", "timely-support"] }
+dynamic_scaling_mechanism = { version = "0.0.1", path = "..", default_features = false }

@@ -519,6 +519,8 @@ fn main() {
 
         let duration_ns: u64 = std::env::args().nth(2).expect("duration absent").parse::<u64>().expect("couldn't parse duration") * 1_000_000_000;
 
+        let migrations_file = std::env::args().nth(3).expect("migration file absent");
+
         // Establish a start of the computation.
         let elapsed_ns = timer.elapsed().to_nanos();
         config.base_time_ns = elapsed_ns as usize;
