@@ -649,7 +649,7 @@ fn main() {
                                     for &(_, bin_id, (auction, a_time)) in data.iter() {
                                         // The bid's a_time is always greater or equal to the actual time the event was delivered
                                         bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(a_time)));
-                                        if a_time != slide {
+                                        if a_time != slide { // TODO (john): Should actually be a_time > slide, right?
                                             pending_additions
                                                 .entry(time.delayed(&RootTimestamp::new(a_time)))
                                                 .or_insert(Vec::new())
