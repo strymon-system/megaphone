@@ -107,7 +107,7 @@ enum StateProtocol<T, S> {
 pub struct StateStream<S, V, D, W,> where
     S: Scope, // The containing scope
     V: ExchangeData, // Input data
-    D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
+    D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-bin state (data)
     W: ExchangeData,                            // State format on the wire
 {
     /// The wrapped stream. The stream provides tuples of the form `(usize, u64, V)`. The first two
