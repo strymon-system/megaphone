@@ -9,7 +9,7 @@ use std::hash::Hasher;
 use std::collections::{HashMap, VecDeque, BinaryHeap};
 
 use timely::dataflow::{InputHandle, ProbeHandle};
-use timely::dataflow::operators::{Map, Filter, Probe, Capture, capture::Replay};
+use timely::dataflow::operators::{Map, Filter, Probe, Capture, capture::Replay, FrontierNotificator};
 
 use timely::dataflow::channels::pact::{Pipeline, Exchange};
 use timely::dataflow::operators::Operator;
@@ -795,6 +795,7 @@ fn main() {
             });
         }
 
+
         if std::env::args().any(|x| x == "q7") {
             worker.dataflow(|scope| {
 
@@ -845,41 +846,125 @@ fn main() {
                      })
                      .unary_frontier(Exchange::new(move |x: &(usize, usize)| (x.0 / window_size_ns) as u64), "Q7 All-reduce", |_cap, _info| {
 
-                        use timely::dataflow::operators::Capability;
-                        use timely::progress::nested::product::Product;
-                        use timely::progress::timestamp::RootTimestamp;
+                    use timely::dataflow::operators::Capability;
+                    use timely::progress::nested::product::Product;
+                    use timely::progress::timestamp::RootTimestamp;
 
-                        // Tracks the global maximal bid for each capability.
-                        let mut maxima = Vec::<(Capability<Product<RootTimestamp, usize>>, usize)>::new();
+                    // Tracks the global maximal bid for each capability.
+                    let mut maxima = Vec::<(Capability<Product<RootTimestamp, usize>>, usize)>::new();
 
-                        move |input, output| {
+                    move |input, output| {
 
-                            input.for_each(|time, data| {
+                        input.for_each(|time, data| {
 
-                                for (window, price) in data.drain(..) {
-                                    let new_time = (window + 1) * window_size_ns;
-                                    if let Some(position) = maxima.iter().position(|x| (x.0).time().inner == new_time) {
-                                        if maxima[position].1 < price {
-                                            maxima[position].1 = price;
-                                        }
-                                    }
-                                    else {
-                                        maxima.push((time.delayed(&RootTimestamp::new(new_time)), price));
+                            for (window, price) in data.drain(..) {
+                                if let Some(position) = maxima.iter().position(|x| (x.0).time().inner == window) {
+                                    if maxima[position].1 < price {
+                                        maxima[position].1 = price;
                                     }
                                 }
-
-                            });
-
-                            for &(ref capability, price) in maxima.iter() {
-                                if !input.frontier.less_than(capability.time()) {
-                                    output.session(&capability).give(price);
+                                else {
+                                    maxima.push((time.delayed(&RootTimestamp::new(window)), price));
                                 }
                             }
 
-                            maxima.retain(|(capability, _)| input.frontier.less_than(capability));
+                        });
 
+                        for &(ref capability, price) in maxima.iter() {
+                            if !input.frontier.less_than(capability.time()) {
+                                output.session(&capability).give(price);
+                            }
+                        }
+
+                        maxima.retain(|(capability, _)| input.frontier.less_than(capability));
+
+                    }
+                 })
+                 .probe_with(&mut probe);
+            });
+        }
+
+        if std::env::args().any(|x| x == "q7-flex") {
+            worker.dataflow(|scope| {
+
+                let control = scope.input_from(&mut control_input).broadcast();
+
+                // Window ticks every 10 seconds.
+                let window_size_ns = 1_000_000_000;
+
+                let mut bids = input.to_stream(scope)
+                     .flat_map(|e| nexmark::event::Bid::from(e))
+                     .map(move |b| (b.auction, ((b.date_time / window_size_ns) + 1) * window_size_ns, b.price))
+                     .map(|(a,t,p)| {
+                        let mut v = Vec::new();
+                        v.push((t,p));
+                        (a,v)
+                     })
+                     .stateful::<_,HashMap<u64,Vec<(usize,usize)>>,_>(|(a,_v)| *a as u64, &control);
+
+                let bid_state = bids.state.clone();
+
+                bids.stream
+                     .unary_frontier(Pipeline, "Q7 Pre-reduce", |_cap, _info| 
+                     {
+
+                        // Epoch -> vec of (window,max_price) tuples
+                        let mut pending_maxima: HashMap<_,Vec<_>> = Default::default();
+
+                        move |input, output| {
+
+                            let mut bid_state = bid_state.borrow_mut();
+
+                            input.for_each(|time, data| {
+                                pending_maxima.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                                bid_state.notificator().notify_at(time.retain());
+                            });
+
+                            while let Some(time) = bid_state.notificator().next(&[input.frontier()]) {
+                                let mut windows = HashMap::new();
+                                if let Some(mut maxima) = pending_maxima.remove(&time) {
+                                    for (_t, bin_id, (auction, price_per_window)) in maxima.drain(..) {
+                                        let open_windows = bid_state.get_state(bin_id).entry(auction as u64).or_insert_with(Vec::new);
+                                        if let Some(position) = open_windows.iter().position(|x| x.0 == price_per_window[0].0) {
+                                            if open_windows[position].1 < price_per_window[0].1 {
+                                                open_windows[position].1 = price_per_window[0].1;
+                                                windows.insert(price_per_window[0].0,price_per_window[0].1);
+                                            }
+                                        }
+                                        else {
+                                            open_windows.push((price_per_window[0].0, price_per_window[0].1));
+                                            windows.insert(price_per_window[0].0,price_per_window[0].1);
+                                        }
+                                    }
+                                }
+                                let mut session = output.session(&time);
+                                session.give_iterator(windows.drain());
+                            }
                         }
                      })
+                     .unary_frontier(Exchange::new(move |x: &(usize, usize)| (x.0 / window_size_ns) as u64), "Q7 All-reduce", |_cap, _info| 
+                     {
+                        let mut pending_maxima: HashMap<_,Vec<_>> = Default::default();
+                        let mut notificator = FrontierNotificator::new();
+                        move |input, output| {
+                            input.for_each(|time, data| {
+                                for (window,price) in data.drain(..) {
+                                    let slot = pending_maxima.entry(window).or_insert_with(Vec::new);
+                                    slot.push(price);
+                                    notificator.notify_at(time.delayed(&RootTimestamp::new(window)));
+                                }
+                            });
+                            while let Some(time) = notificator.next(&[input.frontier()]) {
+                                if let Some(mut maxima) = pending_maxima.remove(&time.time().inner) {
+                                    if let Some(max_price) = maxima.drain(..).max(){
+                                        output.session(&time).give(max_price);
+                                    }
+                                }
+                            }
+                        }
+
+                     })
+                     .probe_with(&mut bids.probe)
                      .probe_with(&mut probe);
             });
         }
@@ -954,6 +1039,79 @@ fn main() {
                                 // }
                             }
                         })
+                    .probe_with(&mut probe);
+            });
+        }
+
+        if std::env::args().any(|x| x == "q8-flex") {
+            worker.dataflow(|scope| {
+
+                let control = scope.input_from(&mut control_input).broadcast();
+
+                let events = input.to_stream(scope);
+
+                let mut auctions =
+                events.flat_map(|e| nexmark::event::Auction::from(e))
+                      .map(|a| (a.seller, a.date_time))
+                      .stateful::<_,HashMap<u64,usize>,_>(|(s,_d)| *s as u64, &control);
+
+                let mut people =
+                events.flat_map(|e| nexmark::event::Person::from(e))
+                      .map(|p| (p.id, p.date_time))
+                      .stateful::<_,HashMap<u64,usize>,_>(|(p,_d)| *p as u64, &control);
+                
+                let auctions_state = auctions.state.clone();
+                let people_state = people.state.clone();
+
+                people.stream
+                    .binary_frontier(
+                        &auctions.stream,
+                        Pipeline,
+                        Pipeline,
+                        "Q8 join",
+                        |_capability, _info| {
+
+                            let window_size_ns = 12 * 60 * 60 * 1_000_000_000;
+                            let mut new_people: HashMap<_,Vec<_>> = Default::default();
+                            let mut auctions: HashMap<_,Vec<_>> = Default::default();
+
+                            move |input1, input2, output| {
+
+                                let mut auctions_state = auctions_state.borrow_mut();
+                                let mut people_state = people_state.borrow_mut();
+
+                                // Notice new people.
+                                input1.for_each(|time, data| {
+                                    new_people.entry(time.time().inner).or_insert_with(Vec::new).extend(data.drain(..));
+                                    people_state.notificator().notify_at(time.retain());
+                                });
+
+                                // Notice new auctions.
+                                input2.for_each(|time, data| {
+                                    auctions.entry(time.time().inner).or_insert_with(Vec::new).extend(data.drain(..));
+                                    auctions_state.notificator().notify_at(time.retain());
+                                });
+
+                                while let Some(time) = people_state.notificator().next(&[input1.frontier(),input2.frontier()]) {
+                                    // Update people state
+                                    for (_t, bin_id,(person,date)) in new_people.remove(&time.time().inner).into_iter().flat_map(|v| v.into_iter()) {
+                                        people_state.get_state(bin_id).entry(person as u64).or_insert(date);
+                                    }
+                                }
+
+                                while let Some(time) = auctions_state.notificator().next(&[input1.frontier(),input2.frontier()]) {
+                                    for (_t, bin_id,(seller,date)) in auctions.remove(&time.time().inner).into_iter().flat_map(|v| v.into_iter()) {
+                                        if let Some(p_time) = people_state.get_state(bin_id).get(&(seller as u64)) {
+                                            if (date - p_time) < window_size_ns {
+                                                output.session(&time).give(seller);
+                                            }          
+                                        } 
+                                    }
+                                }
+                            }
+                    })
+                    .probe_with(&mut people.probe)
+                    .probe_with(&mut auctions.probe)
                     .probe_with(&mut probe);
             });
         }
