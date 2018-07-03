@@ -24,7 +24,7 @@ pub struct Control {
 
 /// A bin identifier. Wraps a `usize`.
 #[derive(Abomonation, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Bin(usize);
+pub struct Bin(pub usize);
 
 pub fn key_to_bin(key: u64) -> usize {
     (key >> ::std::mem::size_of::<u64>() * 8 - BIN_SHIFT) as usize
@@ -120,10 +120,14 @@ impl<T: PartialOrder> ControlSetBuilder<T> {
         for inst in self.instructions {
             match inst {
                 ControlInst::Map(ref new_map) => {
+                    assert_eq!(1 << BIN_SHIFT, new_map.len(), "provided map does not have correct len: {} != {}", 1 << BIN_SHIFT, new_map.len());
                     map.clear();
                     map.extend( new_map.iter());
                 },
-                ControlInst::Move(Bin(bin), target) => map[bin] = target,
+                ControlInst::Move(Bin(bin), target) => {
+                    assert!(bin < (1 << BIN_SHIFT));
+                    map[bin] = target
+                },
                 ControlInst::None => {},
             }
         }

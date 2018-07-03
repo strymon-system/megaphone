@@ -2,6 +2,7 @@ extern crate rand;
 extern crate timely;
 extern crate nexmark;
 extern crate streaming_harness;
+extern crate dynamic_scaling_mechanism;
 
 use std::collections::HashMap;
 
@@ -16,15 +17,29 @@ use timely::progress::timestamp::RootTimestamp;
 
 use streaming_harness::util::ToNanos;
 
+use dynamic_scaling_mechanism::{Control, ControlInst};
+
+#[derive(Debug, PartialEq, Eq)]
+enum ExperimentMapMode {
+    Sudden,
+    OneByOne,
+    Fluid,
+    File(String),
+}
+
 fn main() {
 
     // define a new computational scope, in which to run BFS
     let timelines: Vec<_> = timely::execute_from_args(std::env::args(), move |worker| {
 
+        let peers = worker.peers();
+        let index = worker.index();
+
         let timer = ::std::time::Instant::now();
 
         // Declare re-used input and probe handles.
         let mut input = InputHandle::new();
+        let mut control_input = InputHandle::new();
         let mut probe = ProbeHandle::new();
 
         // Q0: Do nothing in particular.
@@ -519,7 +534,63 @@ fn main() {
 
         let duration_ns: u64 = std::env::args().nth(2).expect("duration absent").parse::<u64>().expect("couldn't parse duration") * 1_000_000_000;
 
-        let migrations_file = std::env::args().nth(3).expect("migration file absent");
+        let map_mode = match std::env::args().nth(3).expect("migration file absent").as_str() {
+            "sudden" => ExperimentMapMode::Sudden,
+//            "one-by-one" => ExperimentMapMode::OneByOne,
+//            "fluid" => ExperimentMapMode::Fluid,
+            file_name => ExperimentMapMode::File(file_name.to_string()),
+        };
+
+        let mut instructions: Vec<(u64, Vec<ControlInst>)> = match map_mode {
+            ExperimentMapMode::Sudden => {
+                let mut map = vec![0; 1 << ::dynamic_scaling_mechanism::BIN_SHIFT];
+                // TODO(moritzo) HAAAACCCCKKK
+                if peers != 2 {
+                    for (i, v) in map.iter_mut().enumerate() {
+                        *v = ((i / 2) * 2 + (i % 2) * peers / 2) % peers;
+                    }
+                }
+                let initial_map = map.clone();
+                for i in 0..map.len() {
+                    map[i] = i % peers;
+
+//                    if i % batches_per_migration == batches_per_migration - 1 {
+//                        eprintln!("debug: setting up reconfiguration: {:?}", map);
+//                        control_plan.push((rounds * 1_000_000_000, Control::new(control_counter, 1, ControlInst::Map(map.clone()))));
+//                        control_counter += 1;
+//                    }
+                };
+                vec![(0, vec![ControlInst::Map(initial_map)]), (duration_ns/2, vec![ControlInst::Map(map)])]
+            },
+            ExperimentMapMode::File(migrations_file) => {
+                let f = ::std::fs::File::open(migrations_file).unwrap();
+                let file = ::std::io::BufReader::new(&f);
+                use ::std::io::BufRead;
+                let mut instructions = Vec::new();
+                let mut ts = 0;
+                for line in file.lines() {
+                    let line = line.unwrap();
+                    let mut parts = line.split_whitespace();
+                    let instr = match parts.next().expect("Missing map/diff indicator") {
+                        "M" => (ts, vec![ControlInst::Map(parts.map(|x| x.parse().unwrap()).collect())]),
+                        "D" => {
+                            let parts: Vec<usize> = parts.map(|x| x.parse().unwrap()).collect();
+                            let inst = parts.windows(2).map(|x|ControlInst::Move(::dynamic_scaling_mechanism::Bin(x[0]), x[1])).collect();
+                            (ts, inst)
+                        },
+                        _ => panic!("Incorrect input found in map file"),
+                    };
+                    instructions.push(instr);
+                    ts = duration_ns / 2;
+                }
+                instructions
+            },
+            _ => panic!("unsupported map mode"),
+        };
+
+        for instruction in &instructions {
+            println!("{:?}", instruction);
+        }
 
         // Establish a start of the computation.
         let elapsed_ns = timer.elapsed().to_nanos();
@@ -549,6 +620,10 @@ fn main() {
         loop {
             let elapsed_ns = timer.elapsed().to_nanos();
 
+            if instructions.get(0).map(|&(ts, _)| ts < elapsed_ns).unwrap_or(false) {
+                control_input.send(instructions.remove(0).1);
+            }
+
             output_metric_collector.acknowledge_while(
                 elapsed_ns,
                 |t| {
@@ -571,6 +646,7 @@ fn main() {
                     events_so_far += 1;
                 }
                 input.advance_to(target_ns as usize);
+                control_input.advance_to(target_ns as usize)
             } else {
                 input.take().unwrap();
             }

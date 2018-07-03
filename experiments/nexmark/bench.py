@@ -186,7 +186,7 @@ class Experiment(object):
             print("Writing migration pattern to {}".format(migration_pattern_file_name))
             PatternGenerator(pattern, initial_pattern.generate_uniform(), initial_pattern.generate_uniform_skew()).write(f)
 
-        commands = ["~/.cargo/bin/cargo run --bin timely --release --no-default-features --features dynamic_scaling_mechanism/bin-{} 1000000 10 {} {}".format(self._bin_shift, migration_pattern_file_name, " ".join(self._query))]
+        commands = ["~/.cargo/bin/cargo run --bin timely --release --no-default-features --features dynamic_scaling_mechanism/bin-{} 1000000 10 {}/{} {}".format(self._bin_shift, os.getcwd(), migration_pattern_file_name, " ".join(self._query))]
         processes = [experiments.run_cmd(command) for command in commands]
 
 workers = 32
