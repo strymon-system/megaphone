@@ -18,7 +18,7 @@ use timely::PartialOrder;
 use timely::dataflow::{Stream, Scope, ProbeHandle};
 use timely::dataflow::channels::pact::{Exchange, Pipeline};
 use timely::dataflow::operators::{FrontierNotificator, Probe};
-use timely::dataflow::operators::generic::binary::Binary;
+use timely::dataflow::operators::generic::Operator;
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::progress::Timestamp;
 use timely::progress::frontier::Antichain;
@@ -63,7 +63,7 @@ pub trait StateHandle<T: Timestamp, S> {
     >(&mut self, key: u64, f: F) -> R;
 
     /// Iterate all bins. This might go away.
-    fn scan<F: FnMut(&mut S)>(&mut self, mut f: F);
+    fn scan<F: FnMut(&mut S)>(&mut self, f: F);
 
     /// Obtain a reference to a notificator.
     fn notificator(&mut self) -> &mut FrontierNotificator<T>;
@@ -107,7 +107,7 @@ enum StateProtocol<T, S> {
 pub struct StateStream<S, V, D, W,> where
     S: Scope, // The containing scope
     V: ExchangeData, // Input data
-    D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
+    D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-bin state (data)
     W: ExchangeData,                            // State format on the wire
 {
     /// The wrapped stream. The stream provides tuples of the form `(usize, u64, V)`. The first two

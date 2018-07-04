@@ -276,3 +276,55 @@ impl NEXMarkConfig {
         (event_number / n) * n + (event_number * 953) % n
     }
 }
+
+pub struct NexMarkInputTimes {
+    config: NEXMarkConfig,
+    next: Option<u64>,
+    events_so_far: usize,
+    end: u64,
+}
+
+impl NexMarkInputTimes {
+    pub fn new(config: NEXMarkConfig, end: u64) -> Self {
+        let mut this = Self {
+            config,
+            next: None,
+            events_so_far: 0,
+            end,
+        };
+        this.make_next();
+        this
+    }
+
+    fn make_next(&mut self) {
+        let ts = self.config.event_timestamp_ns(
+            self.config.next_adjusted_event(self.events_so_far)) as u64;
+        if ts < self.end {
+            self.events_so_far += 1;
+            self.next = Some(ts);
+        } else {
+            self.next = None;
+        };
+    }
+}
+
+impl Iterator for NexMarkInputTimes {
+    type Item = u64;
+
+    fn next(&mut self) -> Option<u64> {
+        let s = self.next;
+        self.make_next();
+        s
+    }
+}
+
+impl ::streaming_harness::input::InputTimeResumableIterator<u64> for NexMarkInputTimes {
+    fn peek(&mut self) -> Option<&u64> {
+        self.next.as_ref()
+    }
+
+    fn end(&self) -> bool {
+        self.next.is_none()
+    }
+}
+

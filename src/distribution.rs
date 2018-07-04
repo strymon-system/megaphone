@@ -10,7 +10,7 @@ use timely::{Data, ExchangeData};
 use timely::dataflow::{Stream, Scope, ProbeHandle};
 use timely::dataflow::channels::pact::{Exchange, Pipeline};
 use timely::dataflow::operators::{FrontierNotificator, Probe};
-use timely::dataflow::operators::generic::binary::Binary;
+use timely::dataflow::operators::generic::Operator;
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::order::PartialOrder;
 use timely::progress::frontier::Antichain;

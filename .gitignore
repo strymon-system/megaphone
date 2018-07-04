@@ -1,3 +1,4 @@
 target/
 experiments/plots
 experiments/results
+experiments/*/results

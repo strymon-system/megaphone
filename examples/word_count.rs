@@ -6,7 +6,7 @@ extern crate timely;
 extern crate dynamic_scaling_mechanism;
 use std::hash::{Hash, Hasher};
 use rand::{Rng, SeedableRng, StdRng};
-use rand::distributions::Sample;
+use rand::distributions::Distribution;
 use zipf::ZipfDistribution;
 
 use timely::ExchangeData;
@@ -35,12 +35,12 @@ enum WordGenerator {
 impl WordGenerator {
 
     fn new_uniform(index: usize, keys: usize) -> Self {
-        let seed: &[_] = &[1, 2, 3, index];
+        let seed: [u8; 32] = [1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, index as u8];
         WordGenerator::Uniform(SeedableRng::from_seed(seed), keys)
     }
 
     fn new_zipf(index: usize, keys: usize, s: f64) -> Self {
-        let seed: &[_] = &[1, 2, 3, index];
+        let seed: [u8; 32] = [1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, index as u8];
         WordGenerator::Zipf(SeedableRng::from_seed(seed), ZipfDistribution::new(keys, s).unwrap())
     }
 
@@ -48,7 +48,7 @@ impl WordGenerator {
     pub fn word_rand(&mut self) -> u64 {
         let index = match *self {
             WordGenerator::Uniform(ref mut rng, ref keys) => rng.gen_range(0, *keys),
-            WordGenerator::Zipf(ref mut rng, ref mut zipf) => Sample::<isize>::sample(zipf, rng) as usize,
+            WordGenerator::Zipf(ref mut rng, ref mut zipf) => Distribution::<usize>::sample(zipf, rng),
         };
         self.word_at(index)
     }
@@ -128,12 +128,12 @@ fn duration_to_nanos(duration: ::std::time::Duration) -> u64 {
 }
 
 fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T>, output: &Stream<S, T>) -> Stream<S, ()> {
-    use timely::dataflow::operators::Binary;
+    use timely::dataflow::operators::Operator;
     use timely::dataflow::channels::pact::Exchange;
     use std::collections::HashMap;
     let mut in1_pending: HashMap<_, Vec<_>> = Default::default();
     let mut in2_pending: HashMap<_, Vec<_>> = Default::default();
-    correct.binary_notify::<_, (), _, _, _>(&output, Exchange::new(|_| 0), Exchange::new(|_| 0), "Verify", vec![],
+    correct.binary_notify(&output, Exchange::new(|_| 0), Exchange::new(|_| 0), "Verify", vec![],
         move |in1, in2, _out, not| {
             in1.for_each(|time, data| {
                 in1_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data.drain(..));
@@ -162,6 +162,7 @@ fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T
 
 fn main() {
     println!("args: {:?}", std::env::args());
+    println!("bin-shift: {:?}", ::dynamic_scaling_mechanism::BIN_SHIFT);
 
     let mut args = std::env::args();
     let _cmd = args.next();
@@ -395,7 +396,7 @@ fn main() {
                     let requested = timer.elapsed();
                     let requested_at = requested.as_secs() * 1_000_000_000 + (requested.subsec_nanos() as u64);
 
-                    for i in 0..batch/peers {
+                    for _i in 0..batch/peers {
                         input.send(text_gen.word_rand());
                         request_counter += peers;
                     }

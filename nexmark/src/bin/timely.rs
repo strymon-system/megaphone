@@ -2,16 +2,19 @@ extern crate fnv;
 extern crate rand;
 extern crate timely;
 extern crate nexmark;
+extern crate streaming_harness;
 extern crate dynamic_scaling_mechanism;
 
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::collections::{HashMap, VecDeque, BinaryHeap};
 
+use streaming_harness::util::ToNanos;
+
 use timely::dataflow::{InputHandle, ProbeHandle};
 use timely::dataflow::operators::{Map, Filter, Probe, Capture, capture::Replay, FrontierNotificator};
 
-use timely::dataflow::channels::pact::{Pipeline, Exchange};
+use timely::dataflow::channels::pact::{Exchange, Pipeline};
 use timely::dataflow::operators::Operator;
 use timely::dataflow::operators::Capability;
 use timely::progress::nested::product::Product;
@@ -65,11 +68,21 @@ fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T
     )
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum ExperimentMapMode {
+    Sudden,
+    OneByOne,
+    Fluid,
+    File(String),
+}
 
 fn main() {
 
     // define a new computational scope, in which to run BFS
-    timely::execute_from_args(std::env::args(), move |worker| {
+    let timelines: Vec<_> = timely::execute_from_args(std::env::args(), move |worker| {
+
+        let peers = worker.peers();
+        let index = worker.index();
 
         let timer = ::std::time::Instant::now();
 
@@ -1184,90 +1197,147 @@ fn main() {
         config1.insert("events-per-second", rate);
         let mut config = nexmark::config::NEXMarkConfig::new(&config1);
 
-        let duration_ns: usize = std::env::args().nth(2).expect("duration absent").parse::<usize>().expect("couldn't parse duration") * 1_000_000_000;
+        let duration_ns: u64 = std::env::args().nth(2).expect("duration absent").parse::<u64>().expect("couldn't parse duration") * 1_000_000_000;
+
+        let map_mode = match std::env::args().nth(3).expect("migration file absent").as_str() {
+            "sudden" => ExperimentMapMode::Sudden,
+//            "one-by-one" => ExperimentMapMode::OneByOne,
+//            "fluid" => ExperimentMapMode::Fluid,
+            file_name => ExperimentMapMode::File(file_name.to_string()),
+        };
+
+        let mut instructions: Vec<(u64, Vec<ControlInst>)> = match map_mode {
+            ExperimentMapMode::Sudden => {
+                let mut map = vec![0; 1 << ::dynamic_scaling_mechanism::BIN_SHIFT];
+                // TODO(moritzo) HAAAACCCCKKK
+                if peers != 2 {
+                    for (i, v) in map.iter_mut().enumerate() {
+                        *v = ((i / 2) * 2 + (i % 2) * peers / 2) % peers;
+                    }
+                }
+                let initial_map = map.clone();
+                for i in 0..map.len() {
+                    map[i] = i % peers;
+
+//                    if i % batches_per_migration == batches_per_migration - 1 {
+//                        eprintln!("debug: setting up reconfiguration: {:?}", map);
+//                        control_plan.push((rounds * 1_000_000_000, Control::new(control_counter, 1, ControlInst::Map(map.clone()))));
+//                        control_counter += 1;
+//                    }
+                };
+                vec![(0, vec![ControlInst::Map(initial_map)]), (duration_ns/2, vec![ControlInst::Map(map)])]
+            },
+            ExperimentMapMode::File(migrations_file) => {
+                let f = ::std::fs::File::open(migrations_file).unwrap();
+                let file = ::std::io::BufReader::new(&f);
+                use ::std::io::BufRead;
+                let mut instructions = Vec::new();
+                let mut ts = 0;
+                for line in file.lines() {
+                    let line = line.unwrap();
+                    let mut parts = line.split_whitespace();
+                    let instr = match parts.next().expect("Missing map/diff indicator") {
+                        "M" => (ts, vec![ControlInst::Map(parts.map(|x| x.parse().unwrap()).collect())]),
+                        "D" => {
+                            let parts: Vec<usize> = parts.map(|x| x.parse().unwrap()).collect();
+                            let inst = parts.chunks(2).map(|x|ControlInst::Move(::dynamic_scaling_mechanism::Bin(x[0]), x[1])).collect();
+                            (ts, inst)
+                        },
+                        _ => panic!("Incorrect input found in map file"),
+                    };
+                    instructions.push(instr);
+                    ts = duration_ns / 2;
+                }
+                instructions
+            },
+            _ => panic!("unsupported map mode"),
+        };
+
+        for instruction in &instructions {
+            println!("{:?}", instruction);
+        }
 
         // Establish a start of the computation.
-        let elapsed = timer.elapsed();
-        let elapsed_ns = (elapsed.as_secs() * 1_000_000_000 + (elapsed.subsec_nanos() as u64)) as usize;
-        config.base_time_ns = elapsed_ns;
-        let mut requested_ns = elapsed_ns;
+        let elapsed_ns = timer.elapsed().to_nanos();
+        config.base_time_ns = elapsed_ns as usize;
 
         use rand::{StdRng, SeedableRng};
         let mut rng = StdRng::from_seed([0;32]);
 
-        let mut counts = vec![[0u64; 16]; 64];
+        let input_times = {
+            let config = config.clone();
+            move || nexmark::config::NexMarkInputTimes::new(config.clone(), duration_ns)
+        };
 
-        let mut control_counter = 0;
-        let mut map = vec![0; 1 << BIN_SHIFT];
-        // TODO(moritzo) HAAAACCCCKKK
-        let peers  = worker.peers();
-        if peers != 2 {
-            for (i, v) in map.iter_mut().enumerate() {
-                *v = ((i / 2) * 2 + (i % 2) * peers / 2) % peers;
-            }
-        }
+        let mut output_metric_collector =
+            ::streaming_harness::output::default::hdrhist_timeline_collector(
+                input_times(),
+                0, 2_000_000_000, duration_ns - 2_000_000_000, duration_ns,
+                1_000_000_000);
 
-        let mut event_id = 0;
-        // let duration_ns = 10_000_000_000;
-        while requested_ns < duration_ns {
+        let mut events_so_far = 0;
 
-            if worker.index() == 0 {
-                control_input.send(Control::new(control_counter,  1, ControlInst::Map(map.clone())));
-                control_counter += 1;
-            }
+        let mut input_times_gen =
+            ::streaming_harness::input::SyntheticInputTimeGenerator::new(input_times());
 
-            let elapsed = timer.elapsed();
-            let elapsed_ns = (elapsed.as_secs() * 1_000_000_000 + (elapsed.subsec_nanos() as u64)) as usize;
+        let mut input = Some(input);
 
-            // Determine completed ns.
-            let acknowledged_ns: usize = probe.with_frontier(|frontier| frontier.get(0).map(|x| x.inner).unwrap_or(elapsed_ns));
+        let control_sequence = 0;
 
-            // Record completed measurements.
-            while requested_ns < acknowledged_ns && requested_ns < duration_ns {
-                if requested_ns > duration_ns / 2 {
-                    let count_index = (elapsed_ns - requested_ns).next_power_of_two().trailing_zeros() as usize;
-                    let low_bits = ((elapsed_ns - requested_ns) >> (count_index - 5)) & 0xF;
-                    counts[count_index][low_bits as usize] += 1;
-                }
-                requested_ns += 1_000_000;
-            }
+        loop {
+            let elapsed_ns = timer.elapsed().to_nanos();
 
-            // Insert random events as long as their times precede `elapsed_ns`.
-            let mut next_event = nexmark::event::Event::create(event_id, &mut rng, &mut config);
-            while next_event.time() <= elapsed_ns && next_event.time() <= duration_ns {
-                input.send(next_event);
-                event_id += 1;
-                next_event = nexmark::event::Event::create(event_id, &mut rng, &mut config);
-            }
-
-            // println!("{:?}\tAdvanced", elapsed);
-            input.advance_to(elapsed_ns);
-            control_input.advance_to(elapsed_ns);
-
-            // while probe.less_than(input.time()) { worker.step(); }
-            worker.step();
-        }
-
-        // Once complete, report ccdf measurements.
-        if worker.index() == 0 {
-
-            let mut results = Vec::new();
-            let total = counts.iter().map(|x| x.iter().sum::<u64>()).sum();
-            let mut sum = 0;
-            for index in (10 .. counts.len()).rev() {
-                for sub in (0 .. 16).rev() {
-                    if sum > 0 && sum < total {
-                        let latency = (1 << (index-1)) + (sub << (index-5));
-                        let fraction = (sum as f64) / (total as f64);
-                        results.push((latency, fraction));
+            if index == 0 {
+                if instructions.get(0).map(|&(ts, _)| ts < elapsed_ns).unwrap_or(false) {
+                    let instructions = instructions.remove(0).1;
+                    let count = instructions.len();
+                    for instruction in instructions {
+                        control_input.send(Control::new(control_sequence, count, instruction));
                     }
-                    sum += counts[index][sub];
                 }
             }
-            for (latency, fraction) in results.drain(..).rev() {
-                println!("{}\t{}", latency, fraction);
+
+            output_metric_collector.acknowledge_while(
+                elapsed_ns,
+                |t| {
+                    !probe.less_than(&RootTimestamp::new(t as usize))
+                });
+
+            if input.is_none() {
+                break;
+            }
+
+            let target_ns = (elapsed_ns + 1) / 1_000_000 * 1_000_000;
+            if let Some(it) = input_times_gen.iter_until(target_ns) {
+                let mut input = input.as_mut().unwrap();
+                for _t in it {
+                    input.send(
+                        nexmark::event::Event::create(
+                            events_so_far,
+                            &mut rng,
+                            &mut config));
+                    events_so_far += 1;
+                }
+                input.advance_to(target_ns as usize);
+                control_input.advance_to(target_ns as usize)
+            } else {
+                input.take().unwrap();
+            }
+
+            if let Some(input) = input.as_ref() {
+                while probe.less_than(input.time()) { worker.step(); }
+            } else {
+                while worker.step() { }
             }
         }
 
-    }).expect("timely execution failed");
+        output_metric_collector.into_inner()
+    }).expect("unsuccessful execution").join().into_iter().map(|x| x.unwrap()).collect();
+
+    let ::streaming_harness::timeline::Timeline { timeline, latency_metrics, .. } = ::streaming_harness::output::combine_all(timelines);
+
+    eprintln!("== summary ==\n{}", latency_metrics.into_inner().summary_string());
+    eprintln!("== timeline ==\n{}",
+              timeline.clone().into_iter().map(|::streaming_harness::timeline::TimelineElement { time, metrics, samples }|
+                    format!("-- {} ({} samples) --\n{}", time, samples, metrics.summary_string())).collect::<Vec<_>>().join("\n"));
 }

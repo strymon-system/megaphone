@@ -28,7 +28,7 @@ struct SentenceGenerator {
 impl SentenceGenerator {
 
     fn new(index: usize) -> Self {
-        let seed: &[_] = &[1, 2, 3, index];
+        let seed: [u8; 32] = [1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, index as u8];
         Self {
             rng: SeedableRng::from_seed(seed),
         }
