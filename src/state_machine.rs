@@ -29,7 +29,7 @@ pub trait BinnedStateMachine<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData,
     >(&mut self, fold: F) -> Stream<S, R> where S::Timestamp : Hash+Eq ;
 }
 
-impl<S, K, V, D> BinnedStateMachine<S, K, V, D> for StateStream<S, (K, V), HashMap<K, D>, (K, D)>
+impl<S, K, V, D> BinnedStateMachine<S, K, V, D> for StateStream<S, (K, V), HashMap<K, D>, (K, D), ()>
 where
     S: Scope,
     K: ExchangeData+Hash+Eq,
@@ -53,7 +53,7 @@ where
 
                 // go through each time with data, process each (key, val) pair.
                 let mut states = states.borrow_mut();
-                while let Some(time) = states.notificator().next(&[frontier]) {
+                while let Some((time, _)) = states.notificator().next(&[frontier]) {
                     if let Some(pend) = pending.remove(time.time()) {
                         let mut session = output.session(&time);
                         for (_target, key_id, (key, val)) in pend {
@@ -73,7 +73,7 @@ where
                     // stash if not time yet
                     if frontier.less_than(time.time()) {
                         pending.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                        states.notificator().notify_at(time.retain());
+                        states.notificator().notify_at(time.retain(), vec![]);
                     } else {
                         // else we can process immediately
                         let mut session = output.session(&time);
