@@ -770,7 +770,8 @@ fn main() {
                                     bid_state.scan(move |a| { 
                                                     if let Some((_,(auction,_))) = a.iter().max_by_key(|(_auction_id,(_auction,count))| count) {
                                                          session.give(*auction);
-                                                }}); 
+                                                    }
+                                                }); 
                                 }
                             }
                         })
