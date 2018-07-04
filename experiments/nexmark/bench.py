@@ -108,7 +108,7 @@ class PatternGenerator(object):
 
     def write_diff(self, file, pattern):
         file.write("D ")
-        for b, w in pattern.items():
+        for b, w in sorted(pattern.items()):
             file.write(str(b))
             file.write(" ")
             file.write(str(w))
