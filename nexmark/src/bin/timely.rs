@@ -18,15 +18,54 @@ use timely::progress::nested::product::Product;
 use timely::progress::timestamp::RootTimestamp;
 use timely::dataflow::operators::Input;
 use timely::dataflow::operators::Broadcast;
+use timely::dataflow::Stream;
+use timely::dataflow::Scope;
+use timely::ExchangeData;
 
 use dynamic_scaling_mechanism::stateful::{Stateful, StateHandle};
 use dynamic_scaling_mechanism::{BIN_SHIFT, ControlInst, Control};
+use dynamic_scaling_mechanism::key_to_bin;
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut h: ::fnv::FnvHasher = Default::default();
     t.hash(&mut h);
     h.finish()
 }
+
+/*
+fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T>, output: &Stream<S, T>) -> Stream<S, ()> {
+    use timely::dataflow::operators::Binary;
+    use timely::dataflow::channels::pact::Exchange;
+    use std::collections::HashMap;
+    let mut in1_pending: HashMap<_, Vec<_>> = Default::default();
+    let mut in2_pending: HashMap<_, Vec<_>> = Default::default();
+    correct.binary_notify::<_, (), _, _, _>(&output, Exchange::new(|_| 0), Exchange::new(|_| 0), "Verify", vec![],
+        move |in1, in2, _out, not| {
+            in1.for_each(|time, data| {
+                in1_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data.drain(..));
+                not.notify_at(time.retain());
+            });
+            in2.for_each(|time, data| {
+                in2_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data.drain(..));
+                not.notify_at(time.retain());
+            });
+            not.for_each(|time, _, _| {
+                let mut v1 = in1_pending.remove(time.time()).unwrap_or_default();
+                let mut v2 = in2_pending.remove(time.time()).unwrap_or_default();
+                v1.sort();
+                v2.sort();
+                assert_eq!(v1.len(), v2.len());
+                let i1 = v1.iter();
+                let i2 = v2.iter();
+                for (a, b) in i1.zip(i2) {
+//                    println!("a: {:?}, b: {:?}", a, b);
+                    assert_eq!(a, b, " at {:?}", time.time());
+                }
+            })
+        }
+    )
+}
+*/
 
 fn main() {
 
@@ -38,6 +77,7 @@ fn main() {
         // Declare re-used input, control and probe handles.
         let mut input = InputHandle::new();
         let mut control_input = InputHandle::new();
+        // let mut control_input_2 = InputHandle::new();
         let mut probe = ProbeHandle::new();
 
         // Q0: Do nothing in particular.
@@ -190,12 +230,12 @@ fn main() {
                 let mut auctions =
                 events.flat_map(|e| nexmark::event::Auction::from(e))
                       .filter(|a| a.category == 10)
-                      .stateful::<_, HashMap<u64, nexmark::event::Auction>, _>(|a| calculate_hash(&a.seller), &control);
+                      .stateful::<_, HashMap<u64, nexmark::event::Auction>, _>(|a| a.seller as u64, &control);
 
                 let mut people =
                 events.flat_map(|e| nexmark::event::Person::from(e))
                       .filter(|p| p.state == "OR" || p.state == "ID" || p.state == "CA")
-                      .stateful::<_, HashMap<u64,nexmark::event::Person>, _>(|p| calculate_hash(&p.id), &control);
+                      .stateful::<_, HashMap<u64,nexmark::event::Person>, _>(|p| p.id as u64, &control);
 
                 // The shared state for each input
                 let auction_state = auctions.state.clone();
@@ -399,8 +439,13 @@ fn main() {
                                 // Record each auction.
                                 input2.for_each(|time, data| {
                                     let epoch_auctions = pending_auction_state.entry(time.time().clone()).or_insert_with(BinaryHeap::new);
-                                    auction_state.notificator().notify_at(time.retain());
+                                    // Request notification for the epoch, which is used to look up into pending auctions
+                                    auction_state.notificator().notify_at(time.delayed(&time));
                                     for (target, bin_id, auction) in data.drain(..) {
+                                        let mut new_time = time.time().clone();
+                                        new_time.inner = auction.expires;
+                                        // Request notification for the auction's expiration time, which is used to look into the auctions_state
+                                        auction_state.notificator().notify_at(time.delayed(&new_time));
                                         use std::cmp::Reverse;
                                         epoch_auctions.push((Reverse(auction.expires), (target,bin_id,auction)));
                                     }
@@ -416,6 +461,7 @@ fn main() {
                                 // Process input auctions
                                 while let Some(time) = auction_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
                                     let mut session = output.session(&time);
+                                    // Check pending events
                                     if let Some(mut pending_auctions) = pending_auction_state.remove(&time.time()) {
                                         while pending_auctions.peek().map(|x| (x.0).0 < time.inner) == Some(true) {
                                             // Output the winner for each expired auction
@@ -431,11 +477,28 @@ fn main() {
                                                 }
                                             }
                                         }
+                                        // Keep auctions that haven't expired yet
+                                        for (_, (_, bin_id, auction)) in pending_auctions.drain() {
+                                            auction_state.get_state(bin_id).entry(auction.id as u64).or_insert(auction);
+                                        }
+                                    }
+                                    // Now check the actual state
+                                    let bin_id = key_to_bin(time.time().inner as u64) as u64;
+                                    if let Some(mut expired_auction) = auction_state.get_state(bin_id).remove(&(time.time().inner as u64)) {
+                                        if let Some(mut bids) = bid_state.get_state(bin_id).remove(&(expired_auction.id as u64)) {
+                                            bids.retain(|b|
+                                                expired_auction.date_time <= b.date_time &&
+                                                b.date_time < expired_auction.expires &&
+                                                b.price >= expired_auction.reserve);
+                                            bids.sort_by(|b1,b2| b1.price.cmp(&b2.price));
+                                            if let Some(winner) = bids.pop() {
+                                                session.give((expired_auction.clone(), winner));
+                                            }
+                                        }
                                     }
                                 }
                             }
-                        }
-                    )
+                        })
                     .probe_with(&mut bids.probe)
                     .probe_with(&mut auctions.probe)
                     .capture_into(closed_auctions_flex.clone());
@@ -485,7 +548,7 @@ fn main() {
                     Some(closed_auctions_flex.clone())
                     .replay_into(scope)
                     .map(|(a,b)| (a.category, (b.price, 1usize)))
-                    .stateful::<_,HashMap<u64,(usize,usize)>,_>(|(a,(_price,_count))| calculate_hash(&a), &control);
+                    .stateful::<_,HashMap<u64,(usize,usize)>,_>(|(a,(_price,_count))| *a as u64, &control);
 
                 let state = closed_auctions_by_category.state.clone();
 
@@ -625,7 +688,8 @@ fn main() {
                      // Discretize bid's datetime based on slides
                      .map(move |b| (b.auction, ((b.date_time / window_slide_ns) + 1) * window_slide_ns))
                      // TODO: Could pre-aggregate pre-exchange, if there was reason to do so.
-                     .stateful::<_,HashMap<u64,(usize,usize)>,_>(|(a,_b)| calculate_hash(&a), &control);
+                     // Partitions by auction id
+                     .stateful::<_,HashMap<u64,(usize,usize)>,_>(|(a,_b)| *a as u64, &control);
 
                 let bid_state = bids.state.clone();
 
@@ -688,8 +752,8 @@ fn main() {
                                     // Output results
                                     let mut session = output.session(&time);
                                     bid_state.scan(move |a| { 
-                                                    if let Some((_,(auction,_))) = a.iter().max_by_key(|(_a,(_auction,count))| count) {
-                                                         session.give(*auction);
+                                                    if let Some((_,(auction_id,_))) = a.iter().max_by_key(|(_auction_id,(_auction_id,count))| count) {
+                                                         session.give(*auction_id);
                                                 }}); 
                                 }
                             }
@@ -743,7 +807,7 @@ fn main() {
                         let mut vd = ::nexmark::AbomVecDeque(VecDeque::new());
                         vd.push_front((b.bidder, b.price));
                         (b.bidder as u64,vd)})
-                    .stateful::<_,HashMap<u64,::nexmark::AbomVecDeque<(usize,usize)>>,_>(|(b,_p)| calculate_hash(&b), &control);
+                    .stateful::<_,HashMap<u64,::nexmark::AbomVecDeque<(usize,usize)>>,_>(|(b,_p)| *b as u64, &control);
 
                 let state = winners.state.clone();
 
@@ -764,7 +828,7 @@ fn main() {
                                         for (_, bin_id, (bidder, mut price)) in pend.drain(..) {
                                             let entry = state.get_state(bin_id).entry(bidder).or_insert(::nexmark::AbomVecDeque(VecDeque::new()));
                                             if entry.len() >= 10 { entry.pop_back(); }
-                                            entry.push_front(price.pop_back().unwrap());
+                                            entry.push_front(price.pop_back().expect("No bid price found."));
                                             let mut sum: usize = entry.iter().map(|(_,b)| b).sum();
                                             session.give((bidder, sum / entry.len()));
                                         }
@@ -776,14 +840,14 @@ fn main() {
                                         pending_state.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
                                         state.notificator().notify_at(time.retain());
                                     }
-                                    else {
+                                    else { // Process directly
                                         let mut session = output.session(&time);
                                         // Price is a VecDeque with a single element
                                         for (_, bin_id, (bidder, mut price)) in data.drain(..) {
                                             let entry = state.get_state(bin_id).entry(bidder).or_insert(::nexmark::AbomVecDeque(VecDeque::new()));
                                             if entry.len() >= 10 { entry.pop_back(); }
-                                            entry.push_front(price.pop_back().unwrap());
-                                            let mut sum: usize = entry.iter().map(|(_,b)| b).sum();
+                                            entry.push_front(price.pop_back().expect("No bid price found."));
+                                            let mut sum: usize = entry.iter().map(|(_,p)| p).sum();
                                             session.give((bidder, sum / entry.len()));
                                         }
                                     }
