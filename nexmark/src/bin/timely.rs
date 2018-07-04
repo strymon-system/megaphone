@@ -979,6 +979,7 @@ fn main() {
                         v.push((t,p));
                         (a,v)
                      })
+                     // Partition by auction id to avoid serializing the computation
                      .stateful::<_,HashMap<u64,Vec<(usize,usize)>>,_>(|(a,_v)| *a as u64, &control);
 
                 let bid_state = bids.state.clone();
@@ -1004,15 +1005,17 @@ fn main() {
                                 if let Some(mut maxima) = pending_maxima.remove(&time) {
                                     for (_t, bin_id, (auction, price_per_window)) in maxima.drain(..) {
                                         let open_windows = bid_state.get_state(bin_id).entry(auction as u64).or_insert_with(Vec::new);
-                                        if let Some(position) = open_windows.iter().position(|x| x.0 == price_per_window[0].0) {
-                                            if open_windows[position].1 < price_per_window[0].1 {
-                                                open_windows[position].1 = price_per_window[0].1;
-                                                windows.insert(price_per_window[0].0,price_per_window[0].1);
+                                        for &(window,price) in price_per_window.iter() {// For all open windows for the respective auction
+                                            if let Some(position) = open_windows.iter().position(|x| x.0 == window) {
+                                                if open_windows[position].1 < price {
+                                                    open_windows[position].1 = price;
+                                                    windows.insert(window,price);
+                                                }
                                             }
-                                        }
-                                        else {
-                                            open_windows.push((price_per_window[0].0, price_per_window[0].1));
-                                            windows.insert(price_per_window[0].0,price_per_window[0].1);
+                                            else {
+                                                open_windows.push((window, price));
+                                                windows.insert(window,price);
+                                            }
                                         }
                                     }
                                 }
@@ -1021,6 +1024,7 @@ fn main() {
                             }
                         }
                      })
+                     // Aggregate the partial counts. This doesn't require to be stateful since we request notification upon a window firing time and then we drop the state
                      .unary_frontier(Exchange::new(move |x: &(usize, usize)| (x.0 / window_size_ns) as u64), "Q7 All-reduce", |_cap, _info| 
                      {
                         let mut pending_maxima: HashMap<_,Vec<_>> = Default::default();
