@@ -418,7 +418,7 @@ fn main() {
                                 .stateful::<_,HashMap<u64,Vec<nexmark::event::Bid>>,_>(|(k,_b)| *k,&control);
 
                 let mut auctions = events.flat_map(|e| nexmark::event::Auction::from(e))
-                                .stateful::<_,HashMap<u64,nexmark::event::Auction>,_>(|a| a.id as u64, &control);
+                                .stateful::<_,HashMap<u64,Vec<nexmark::event::Auction>>,_>(|a| a.id as u64, &control);
 
                 // The shared state for each input
                 let bid_state = bids.state.clone();
@@ -491,12 +491,13 @@ fn main() {
                                         }
                                         // Keep auctions that haven't expired yet
                                         for (_, (_, bin_id, auction)) in pending_auctions.drain() {
-                                            auction_state.get_state(bin_id).entry(auction.id as u64).or_insert(auction);
+                                            let slot = auction_state.get_state(bin_id).entry(time.time().inner as u64).or_insert_with(Vec::new);
+                                            slot.push(auction);
                                         }
                                     }
                                     // Now check the actual state
                                     let bin_id = key_to_bin(time.time().inner as u64) as u64;
-                                    if let Some(mut expired_auction) = auction_state.get_state(bin_id).remove(&(time.time().inner as u64)) {
+                                    for expired_auction in auction_state.get_state(bin_id).remove(&(time.time().inner as u64)).into_iter().flat_map(|v| v.into_iter()) {
                                         if let Some(mut bids) = bid_state.get_state(bin_id).remove(&(expired_auction.id as u64)) {
                                             bids.retain(|b|
                                                 expired_auction.date_time <= b.date_time &&
