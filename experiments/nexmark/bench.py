@@ -149,25 +149,37 @@ class PatternGenerator(object):
 
 class Experiment(object):
 
-    def __init__(self, duration, query, migration, bin_shift, workers, processes):
-        self._duration = duration
-        self._query = query
-        self._migration = migration
-        self._bin_shift = bin_shift
-        self._workers = workers
-        self._processes = processes
+    def __init__(self, name, **config):
+        self._name = name
+        self._config = config
+        self._migration = self._config["migration"]
+        self._bin_shift = self._config["bin_shift"]
+        self._workers = self._config["workers"]
+        self._duration = self._config["duration"]
+        self._rate = self._config["rate"]
 
-    def get_directory_name(self, process):
-        queries = "_".join(sorted(self._query))
-        return "result/bin_shift_{}/{}/{}/duration_{}/proc_{}".format(self._bin_shift, self._migration, queries, self._duration, process)
+    def get_directory_name(self):
+        keys = sorted(self._config.keys())
+        kv_pairs = []
+        for key in keys:
+
+            value = self._config[key]
+            if isinstance(value, (str, int)):
+                kv_pairs.append((key, value))
+            else:
+                kv_pairs.append((key, "|".join(value)))
+        queries = "_".join(map(lambda p: "{}={}".format(p[0], p[1]), kv_pairs))
+        print(queries)
+        return "result/{}/{}".format(self._name, queries)
 
     def get_file_name(self, name, process=0):
-        return "{}/{}".format(self.get_directory_name(process), name)
+        return "{}/{}".format(self.get_directory_name(), name)
 
     def run_experiment(self):
+        print(vars(self))
         migration_pattern_file_name = self.get_file_name("migration_pattern")
 
-        dir = self.get_directory_name(0)
+        dir = self.get_directory_name()
         if not os.path.exists(dir):
             os.makedirs(dir)
 
@@ -186,10 +198,10 @@ class Experiment(object):
             print("Writing migration pattern to {}".format(migration_pattern_file_name))
             PatternGenerator(pattern, initial_pattern.generate_uniform(), initial_pattern.generate_uniform_skew()).write(f)
 
-        commands = ["~/.cargo/bin/cargo run --bin timely --release --no-default-features --features dynamic_scaling_mechanism/bin-{} 1000000 10 {}/{} {}".format(self._bin_shift, os.getcwd(), migration_pattern_file_name, " ".join(self._query))]
+        commands = ["~/.cargo/bin/cargo run --bin timely --release --no-default-features --features dynamic_scaling_mechanism/bin-{} {} {} {}/{} {}".format(self._bin_shift, self._rate, self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._config["query"]))]
         processes = [experiments.run_cmd(command) for command in commands]
 
 workers = 32
 for bin_shift in range(int(math.log2(workers)), 16):
-    experiment = Experiment(duration=10, query=["q0"], migration="sudden", bin_shift=bin_shift, workers=workers, processes=1)
+    experiment = Experiment("exp1", duration=10, rate=1000000, query=["q0"], migration="batched", bin_shift=bin_shift, workers=workers, processes=1)
     experiment.run_experiment()
