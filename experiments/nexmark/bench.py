@@ -87,7 +87,7 @@ class BatchedFluidMigrationPattern(MigrationPattern):
                         # remove edge from graph
                         graph[src].remove(dst)
             # We are done if there are no more matchings
-            if len(matching) == 0:
+            if len(diffs) == 0:
                 break
             # Emit diffs
             yield ("diff", diffs)
