@@ -32,14 +32,13 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
     h.finish()
 }
 
-/*
+
 fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T>, output: &Stream<S, T>) -> Stream<S, ()> {
-    use timely::dataflow::operators::Binary;
     use timely::dataflow::channels::pact::Exchange;
     use std::collections::HashMap;
     let mut in1_pending: HashMap<_, Vec<_>> = Default::default();
     let mut in2_pending: HashMap<_, Vec<_>> = Default::default();
-    correct.binary_notify::<_, (), _, _, _>(&output, Exchange::new(|_| 0), Exchange::new(|_| 0), "Verify", vec![],
+    correct.binary_notify(&output, Exchange::new(|_| 0), Exchange::new(|_| 0), "Verify", vec![],
         move |in1, in2, _out, not| {
             in1.for_each(|time, data| {
                 in1_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data.drain(..));
@@ -65,7 +64,7 @@ fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T
         }
     )
 }
-*/
+
 
 fn main() {
 
@@ -752,8 +751,8 @@ fn main() {
                                     // Output results
                                     let mut session = output.session(&time);
                                     bid_state.scan(move |a| { 
-                                                    if let Some((_,(auction_id,_))) = a.iter().max_by_key(|(_auction_id,(_auction_id,count))| count) {
-                                                         session.give(*auction_id);
+                                                    if let Some((_,(auction,_))) = a.iter().max_by_key(|(_auction_id,(_auction,count))| count) {
+                                                         session.give(*auction);
                                                 }}); 
                                 }
                             }
