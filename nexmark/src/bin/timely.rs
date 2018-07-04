@@ -723,8 +723,11 @@ fn main() {
 
                                     // Collect all bids in a different slide.
                                     for &(_, bin_id, (auction, a_time)) in data.iter() {
-                                        // The bid's a_time is always greater or equal to the actual time the event was delivered
+                                        // Request notification to add
                                         bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(a_time)));
+                                        let new_time = a_time + (window_slice_count * window_slide_ns);
+                                        // Request notification to remove
+                                        bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(new_time)));
                                         if a_time != slide { // TODO (john): Should actually be a_time > slide, right?
                                             pending_additions
                                                 .entry(time.delayed(&RootTimestamp::new(a_time)))
