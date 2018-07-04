@@ -617,11 +617,19 @@ fn main() {
 
         let mut input = Some(input);
 
+        let control_sequence = 0;
+
         loop {
             let elapsed_ns = timer.elapsed().to_nanos();
 
-            if instructions.get(0).map(|&(ts, _)| ts < elapsed_ns).unwrap_or(false) {
-                control_input.send(instructions.remove(0).1);
+            if index == 0 {
+                if instructions.get(0).map(|&(ts, _)| ts < elapsed_ns).unwrap_or(false) {
+                    let instructions = instructions.remove(0).1;
+                    let count = instructions.len();
+                    for instruction in instructions {
+                        control_input.send(Control::new(control_sequence, count, instruction));
+                    }
+                }
             }
 
             output_metric_collector.acknowledge_while(
