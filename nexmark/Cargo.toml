@@ -15,5 +15,6 @@ serde = "*"
 serde_json = "*"
 serde_derive = "*"
 rand = "*"
+fnv="1.0"
 streaming-harness = { version = "^0.1", features = ["hdrhist-support", "timely-support"] }
 dynamic_scaling_mechanism = { version = "0.0.1", path = "..", default_features = false }

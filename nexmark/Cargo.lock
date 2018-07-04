@@ -102,6 +102,7 @@ dependencies = [
  "abomonation_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "differential-dataflow 0.6.0 (git+https://github.com/frankmcsherry/differential-dataflow.git)",
  "dynamic_scaling_mechanism 0.0.1",
+ "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.69 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.69 (registry+https://github.com/rust-lang/crates.io-index)",

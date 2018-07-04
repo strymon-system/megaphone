@@ -1,23 +1,72 @@
+extern crate fnv;
 extern crate rand;
 extern crate timely;
 extern crate nexmark;
 extern crate streaming_harness;
 extern crate dynamic_scaling_mechanism;
 
-use std::collections::HashMap;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::collections::{HashMap, VecDeque, BinaryHeap};
+
+use streaming_harness::util::ToNanos;
 
 use timely::dataflow::{InputHandle, ProbeHandle};
-use timely::dataflow::operators::{Map, Filter, Probe, Capture, capture::Replay};
+use timely::dataflow::operators::{Map, Filter, Probe, Capture, capture::Replay, FrontierNotificator};
 
-use timely::dataflow::channels::pact::Exchange;
+use timely::dataflow::channels::pact::{Exchange, Pipeline};
 use timely::dataflow::operators::Operator;
 use timely::dataflow::operators::Capability;
 use timely::progress::nested::product::Product;
 use timely::progress::timestamp::RootTimestamp;
+use timely::dataflow::operators::Input;
+use timely::dataflow::operators::Broadcast;
+use timely::dataflow::Stream;
+use timely::dataflow::Scope;
+use timely::ExchangeData;
 
-use streaming_harness::util::ToNanos;
+use dynamic_scaling_mechanism::stateful::{Stateful, StateHandle};
+use dynamic_scaling_mechanism::{BIN_SHIFT, ControlInst, Control};
+use dynamic_scaling_mechanism::key_to_bin;
 
-use dynamic_scaling_mechanism::{Control, ControlInst};
+fn calculate_hash<T: Hash>(t: &T) -> u64 {
+    let mut h: ::fnv::FnvHasher = Default::default();
+    t.hash(&mut h);
+    h.finish()
+}
+
+
+fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T>, output: &Stream<S, T>) -> Stream<S, ()> {
+    use timely::dataflow::channels::pact::Exchange;
+    use std::collections::HashMap;
+    let mut in1_pending: HashMap<_, Vec<_>> = Default::default();
+    let mut in2_pending: HashMap<_, Vec<_>> = Default::default();
+    correct.binary_notify(&output, Exchange::new(|_| 0), Exchange::new(|_| 0), "Verify", vec![],
+        move |in1, in2, _out, not| {
+            in1.for_each(|time, data| {
+                in1_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data.drain(..));
+                not.notify_at(time.retain());
+            });
+            in2.for_each(|time, data| {
+                in2_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data.drain(..));
+                not.notify_at(time.retain());
+            });
+            not.for_each(|time, _, _| {
+                let mut v1 = in1_pending.remove(time.time()).unwrap_or_default();
+                let mut v2 = in2_pending.remove(time.time()).unwrap_or_default();
+                v1.sort();
+                v2.sort();
+                assert_eq!(v1.len(), v2.len());
+                let i1 = v1.iter();
+                let i2 = v2.iter();
+                for (a, b) in i1.zip(i2) {
+//                    println!("a: {:?}, b: {:?}", a, b);
+                    assert_eq!(a, b, " at {:?}", time.time());
+                }
+            })
+        }
+    )
+}
 
 #[derive(Debug, PartialEq, Eq)]
 enum ExperimentMapMode {
@@ -37,9 +86,10 @@ fn main() {
 
         let timer = ::std::time::Instant::now();
 
-        // Declare re-used input and probe handles.
+        // Declare re-used input, control and probe handles.
         let mut input = InputHandle::new();
         let mut control_input = InputHandle::new();
+        // let mut control_input_2 = InputHandle::new();
         let mut probe = ProbeHandle::new();
 
         // Q0: Do nothing in particular.
@@ -47,6 +97,18 @@ fn main() {
             worker.dataflow(|scope| {
                 input.to_stream(scope)
                      .probe_with(&mut probe);
+            });
+        }
+
+        // Q0-flex: Do nothing in particular.
+        if std::env::args().any(|x| x == "q0-flex") {
+            worker.dataflow(|scope| {
+                let control = scope.input_from(&mut control_input).broadcast();
+                let mut state_stream = input.to_stream(scope)
+                                        .stateful::<_, HashMap<(), ()>, _>(|e: &nexmark::event::Event| calculate_hash(&e.id()), &control);
+                state_stream.stream
+                        .probe_with(&mut state_stream.probe)
+                        .probe_with(&mut probe);
             });
         }
 
@@ -60,6 +122,22 @@ fn main() {
             });
         }
 
+        // Q1-flex: Convert bids to euros.
+        if std::env::args().any(|x| x == "q1-flex") {
+            worker.dataflow(|scope| {
+                let control = scope.input_from(&mut control_input).broadcast();
+                let mut state_stream = input.to_stream(scope)
+                                        .stateful::<_, HashMap<(), ()>, _>(|e: &nexmark::event::Event| calculate_hash(&e.id()), &control);
+                                        
+                                                                             
+                state_stream.stream
+                     .flat_map(|(_,_,e)| nexmark::event::Bid::from(e))
+                     .map_in_place(|b| b.price = (b.price * 89)/100)
+                     .probe_with(&mut state_stream.probe)
+                     .probe_with(&mut probe);
+            });
+        }
+
         // Q2: Filter some auctions.
         if std::env::args().any(|x| x == "q2") {
             worker.dataflow(|scope| {
@@ -68,6 +146,22 @@ fn main() {
                      .flat_map(|e| nexmark::event::Bid::from(e))
                      .filter(move |b| b.auction % auction_skip == 0)
                      .map(|b| (b.auction, b.price))
+                     .probe_with(&mut probe);
+            });
+        }
+
+        // Q2-flex: Filter some auctions.
+        if std::env::args().any(|x| x == "q2-flex") {
+            worker.dataflow(|scope| {
+                let auction_skip = 123;
+                let control = scope.input_from(&mut control_input).broadcast();
+                let mut state_stream = input.to_stream(scope)
+                                        .stateful::<_, HashMap<(), ()>, _>(|e: &nexmark::event::Event| calculate_hash(&e.id()), &control); 
+                state_stream.stream
+                     .flat_map(|(_,_,e)| nexmark::event::Bid::from(e))
+                     .filter(move |b| b.auction % auction_skip == 0)
+                     .map(|b| (b.auction, b.price))
+                     .probe_with(&mut state_stream.probe)
                      .probe_with(&mut probe);
             });
         }
@@ -85,10 +179,6 @@ fn main() {
                 let people =
                 events.flat_map(|e| nexmark::event::Person::from(e))
                       .filter(|p| p.state == "OR" || p.state == "ID" || p.state == "CA");
-
-                use std::collections::HashMap;
-                use timely::dataflow::channels::pact::Exchange;
-                use timely::dataflow::operators::Operator;
 
                 auctions
                     .binary(
@@ -138,6 +228,96 @@ fn main() {
                         }
                     )
                     .probe_with(&mut probe);
+            });
+        }
+
+        // Q3-flex: Join some auctions.
+        if std::env::args().any(|x| x == "q3-flex") {
+            worker.dataflow(|scope| {
+
+                let control = scope.input_from(&mut control_input).broadcast();
+
+                let events = input.to_stream(scope);    
+
+                let mut auctions =
+                events.flat_map(|e| nexmark::event::Auction::from(e))
+                      .filter(|a| a.category == 10)
+                      .stateful::<_, HashMap<u64, nexmark::event::Auction>, _>(|a| a.seller as u64, &control);
+
+                let mut people =
+                events.flat_map(|e| nexmark::event::Person::from(e))
+                      .filter(|p| p.state == "OR" || p.state == "ID" || p.state == "CA")
+                      .stateful::<_, HashMap<u64,nexmark::event::Person>, _>(|p| p.id as u64, &control);
+
+                // The shared state for each input
+                let auction_state = auctions.state.clone();
+                let people_state = people.state.clone();
+
+                auctions.stream.
+                    binary_frontier(
+                        &people.stream,
+                        Pipeline,
+                        Pipeline,
+                        "Q3 Join Flex",
+                        |_capability, _info| {
+
+                            // Stash data till frontiers from both inputs have been advanced
+                            let mut pending_auction_state: HashMap<_, Vec<(_, _, _)>> = Default::default();
+                            let mut pending_people_state: HashMap<_, Vec<(_, _, _)>> = Default::default();
+
+                            move |input1, input2, output| {
+
+                                let mut auction_state = auction_state.borrow_mut();
+                                let mut people_state = people_state.borrow_mut();
+
+                                // Stash each input auction
+                                input1.for_each(|time, data| {
+                                    pending_auction_state.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                                    auction_state.notificator().notify_at(time.retain());
+                                });
+
+                                // Stash each input person
+                                input2.for_each(|time, data| {
+                                    pending_people_state.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                                    people_state.notificator().notify_at(time.retain());
+                                });
+
+                                // Process input auctions
+                                while let Some(time) = auction_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
+                                    let mut session = output.session(&time);
+                                    for (_, bin_id, auction) in pending_auction_state.remove(&time.time()).into_iter().flat_map(|v| v.into_iter()) {
+                                        if let Some(mut person) = people_state.get_state(bin_id).get(&(auction.seller as u64)) {
+                                            session.give((person.name.clone(), 
+                                                        person.city.clone(),
+                                                        person.state.clone(),
+                                                        auction.id));
+                                        }
+                                        // Update auction state
+                                        auction_state.get_state(bin_id).insert(auction.seller as u64, auction);
+                                    };
+
+                                }
+                                // Process input people
+                                while let Some(time) = people_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
+                                    let mut session = output.session(&time);
+                                    for (_, bin_id, person) in pending_people_state.remove(&time.time()).into_iter().flat_map(|v| v.into_iter()) {
+                                        if let Some(mut auction) = auction_state.get_state(bin_id).get(&(person.id as u64)) {
+                                            session.give((person.name.clone(), 
+                                                        person.city.clone(),
+                                                        person.state.clone(),
+                                                        auction.id));
+                                        }
+                                        // Update people state
+                                        people_state.get_state(bin_id).insert(person.id as u64, person);
+                                    };
+                                }
+                            }
+                        }
+                    )
+                    .probe_with(&mut auctions.probe)
+                    .probe_with(&mut people.probe)
+                    .probe_with(&mut probe);
+            
             });
         }
 
@@ -223,6 +403,120 @@ fn main() {
             });
         }
 
+        // Intermission: Close some auctions (using stateful).
+        let closed_auctions_flex = std::rc::Rc::new(timely::dataflow::operators::capture::event::link::EventLink::new());
+        if std::env::args().any(|x| x == "q4-flex" || x == "q6-flex") {
+            worker.dataflow(|scope| {
+                let events = input.to_stream(scope);
+                let control = scope.input_from(&mut control_input).broadcast();
+
+                let mut bids = events.flat_map(|e| nexmark::event::Bid::from(e))
+                                .map(|b| { 
+                                    let mut v = Vec::new(); 
+                                    let auction_id = b.auction as u64; 
+                                    v.push(b); (auction_id,v)})
+                                .stateful::<_,HashMap<u64,Vec<nexmark::event::Bid>>,_>(|(k,_b)| *k,&control);
+
+                let mut auctions = events.flat_map(|e| nexmark::event::Auction::from(e))
+                                .stateful::<_,HashMap<u64,nexmark::event::Auction>,_>(|a| a.id as u64, &control);
+
+                // The shared state for each input
+                let bid_state = bids.state.clone();
+                let auction_state = auctions.state.clone();
+
+                bids.stream
+                        .binary_frontier(
+                        &auctions.stream,
+                        Pipeline,
+                        Pipeline,
+                        "Q4 Auction close",
+                        |_capability, _info| {
+
+                            // Stash data till frontiers from both inputs have been advanced
+                            let mut pending_bid_state: HashMap<_, Vec<(_, _, _)>> = Default::default();
+                            let mut pending_auction_state: HashMap<_,BinaryHeap<(_,(_, _, _))>> = Default::default();
+
+                            move |input1, input2, output| {
+
+                                let mut bid_state = bid_state.borrow_mut();
+                                let mut auction_state = auction_state.borrow_mut();
+
+                                // Record each bid.
+                                // NB: We don't summarize as the max, because we don't know which are valid.
+                                input1.for_each(|time, data| {
+                                    pending_bid_state.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                                    bid_state.notificator().notify_at(time.retain());
+                                });
+
+                                // Record each auction.
+                                input2.for_each(|time, data| {
+                                    let epoch_auctions = pending_auction_state.entry(time.time().clone()).or_insert_with(BinaryHeap::new);
+                                    // Request notification for the epoch, which is used to look up into pending auctions
+                                    auction_state.notificator().notify_at(time.delayed(&time));
+                                    for (target, bin_id, auction) in data.drain(..) {
+                                        let mut new_time = time.time().clone();
+                                        new_time.inner = auction.expires;
+                                        // Request notification for the auction's expiration time, which is used to look into the auctions_state
+                                        auction_state.notificator().notify_at(time.delayed(&new_time));
+                                        use std::cmp::Reverse;
+                                        epoch_auctions.push((Reverse(auction.expires), (target,bin_id,auction)));
+                                    }
+                                });
+
+                                // Process input bids
+                                while let Some(time) = bid_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
+                                    for (_, bin_id, (auction_id, mut bids)) in pending_bid_state.remove(&time.time()).into_iter().flat_map(|v| v.into_iter()) {
+                                        // Update bin state
+                                        bid_state.get_state(bin_id).entry(auction_id).or_insert_with(Vec::new).extend(bids.drain(..));    
+                                    };
+                                }
+                                // Process input auctions
+                                while let Some(time) = auction_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
+                                    let mut session = output.session(&time);
+                                    // Check pending events
+                                    if let Some(mut pending_auctions) = pending_auction_state.remove(&time.time()) {
+                                        while pending_auctions.peek().map(|x| (x.0).0 < time.inner) == Some(true) {
+                                            // Output the winner for each expired auction
+                                            let (_, (_, bin_id, auction)) = pending_auctions.pop().unwrap();
+                                            if let Some(mut bids) = bid_state.get_state(bin_id).remove(&(auction.id as u64)) {
+                                                bids.retain(|b|
+                                                    auction.date_time <= b.date_time &&
+                                                    b.date_time < auction.expires &&
+                                                    b.price >= auction.reserve);
+                                                bids.sort_by(|b1,b2| b1.price.cmp(&b2.price));
+                                                if let Some(winner) = bids.pop() {
+                                                    session.give((auction.clone(), winner));
+                                                }
+                                            }
+                                        }
+                                        // Keep auctions that haven't expired yet
+                                        for (_, (_, bin_id, auction)) in pending_auctions.drain() {
+                                            auction_state.get_state(bin_id).entry(auction.id as u64).or_insert(auction);
+                                        }
+                                    }
+                                    // Now check the actual state
+                                    let bin_id = key_to_bin(time.time().inner as u64) as u64;
+                                    if let Some(mut expired_auction) = auction_state.get_state(bin_id).remove(&(time.time().inner as u64)) {
+                                        if let Some(mut bids) = bid_state.get_state(bin_id).remove(&(expired_auction.id as u64)) {
+                                            bids.retain(|b|
+                                                expired_auction.date_time <= b.date_time &&
+                                                b.date_time < expired_auction.expires &&
+                                                b.price >= expired_auction.reserve);
+                                            bids.sort_by(|b1,b2| b1.price.cmp(&b2.price));
+                                            if let Some(winner) = bids.pop() {
+                                                session.give((expired_auction.clone(), winner));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                    .probe_with(&mut bids.probe)
+                    .probe_with(&mut auctions.probe)
+                    .capture_into(closed_auctions_flex.clone());
+            });
+        }
+
         if std::env::args().any(|x| x == "q4") {
             worker.dataflow(|scope| {
 
@@ -253,6 +547,68 @@ fn main() {
                             }
 
                         })
+                    .probe_with(&mut probe);
+            });
+        }
+
+        if std::env::args().any(|x| x == "q4-flex") {
+            worker.dataflow(|scope| {
+
+                let control = scope.input_from(&mut control_input).broadcast();
+
+                let mut closed_auctions_by_category = 
+                    Some(closed_auctions_flex.clone())
+                    .replay_into(scope)
+                    .map(|(a,b)| (a.category, (b.price, 1usize)))
+                    .stateful::<_,HashMap<u64,(usize,usize)>,_>(|(a,(_price,_count))| *a as u64, &control);
+
+                let state = closed_auctions_by_category.state.clone();
+
+                closed_auctions_by_category.stream
+                    .unary_frontier(Pipeline, "Q4 Average",
+                        |_cap, _info| {
+
+                            let mut pending_state: HashMap<_, Vec<(_, _, (_,(_,_)))>> = Default::default();
+
+                            move |input, output| {
+
+                                let mut state = state.borrow_mut();
+                                let frontier = input.frontier();
+
+                                while let Some(time) = state.notificator().next(&[input.frontier()]) {
+                                    if let Some(mut pend) = pending_state.remove(time.time()) {
+                                        let mut session = output.session(&time);
+                                        for (_, bin_id, (category, (price,count))) in pend.drain(..) {
+                                            let entry = state.get_state(bin_id).entry(category as u64).or_insert((0, 0));
+                                            entry.0 += price;
+                                            entry.1 += count;
+                                            session.give((category, entry.0 / entry.1));
+                                        }
+                                    }   
+                                }
+                                
+                                input.for_each(|time, data| {
+                                    if frontier.less_than(time.time()) {
+                                        pending_state.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                                        state.notificator().notify_at(time.retain());
+                                    }
+                                    else {
+                                        if let Some(mut pend) = pending_state.remove(time.time()) {
+                                            let mut session = output.session(&time);
+                                            for (_, bin_id, (category, (price,count))) in pend.drain(..) {
+                                                let entry = state.get_state(bin_id).entry(category as u64).or_insert((0, 0));
+                                                entry.0 += price;
+                                                entry.1 += count;
+                                                session.give((category, entry.0 / entry.1));
+                                            }
+                                        }  
+                                    }
+                                });
+
+                            }
+
+                        })
+                    .probe_with(&mut closed_auctions_by_category.probe)
                     .probe_with(&mut probe);
             });
         }
@@ -321,12 +677,100 @@ fn main() {
                                             *accumulations.entry(auction).or_insert(0) -= 1;
                                         }
                                     }
-                                    if let Some((count, auction)) = accumulations.iter().map(|(&a,&c)| (c,a)).max() {
+                                    if let Some((_count, auction)) = accumulations.iter().map(|(&a,&c)| (c,a)).max() {
                                         output.session(&time).give(auction);
                                     }
                                 }
                             }
                         })
+                     .probe_with(&mut probe);
+            });
+        }
+
+        if std::env::args().any(|x| x == "q5-flex") {
+            worker.dataflow(|scope| {
+
+                let control = scope.input_from(&mut control_input).broadcast();
+
+                let window_slice_count = 60;
+                let window_slide_ns = 1_000_000_000;
+
+                let mut bids = input.to_stream(scope)
+                     .flat_map(|e| nexmark::event::Bid::from(e))
+                     // Discretize bid's datetime based on slides
+                     .map(move |b| (b.auction, ((b.date_time / window_slide_ns) + 1) * window_slide_ns))
+                     // TODO: Could pre-aggregate pre-exchange, if there was reason to do so.
+                     // Partitions by auction id
+                     .stateful::<_,HashMap<u64,(usize,usize)>,_>(|(a,_b)| *a as u64, &control);
+
+                let bid_state = bids.state.clone();
+
+                bids.stream
+                     .unary_frontier(Pipeline, "Q5 Accumulate",
+                        |_capability, _info| {
+
+                            let mut pending_additions: HashMap<_, Vec<_>> = Default::default();
+                            let mut pending_deletions: HashMap<_, Vec<_>> = Default::default();
+
+                            move |input, output| {
+
+                                let mut bid_state = bid_state.borrow_mut();
+
+                                input.for_each(|time, data| {
+                                    // Slide is the discretized time the bid event was delivered
+                                    let slide = ((time.time().inner / window_slide_ns) + 1) * window_slide_ns;
+                                    let downgrade = time.delayed(&RootTimestamp::new(slide));
+
+                                    // Collect all bids in a different slide.
+                                    for &(_, bin_id, (auction, a_time)) in data.iter() {
+                                        // The bid's a_time is always greater or equal to the actual time the event was delivered
+                                        bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(a_time)));
+                                        if a_time != slide { // TODO (john): Should actually be a_time > slide, right?
+                                            pending_additions
+                                                .entry(time.delayed(&RootTimestamp::new(a_time)))
+                                                .or_insert(Vec::new())
+                                                .push((bin_id, auction));
+                                        }
+                                    }
+                                    data.retain(|&(_, _, (_, a_time))| a_time == slide);
+                                    let mut data = data.drain(..).map(|(_, bin_id, (auction, _))| (bin_id,auction)).collect::<Vec<_>>();
+
+                                    // Collect all bids in the same slide.
+                                    pending_additions
+                                        .entry(downgrade)
+                                        .or_insert(Vec::new())
+                                        .extend(data.drain(..));
+                                });
+
+                                while let Some(time) = bid_state.notificator().next(&[input.frontier()]) {
+                                    // Process additions (if any)
+                                    if let Some(additions) = pending_additions.remove(&time) {
+                                        for (bin_id, auction) in additions.iter() {
+                                            let slot = bid_state.get_state(*bin_id).entry(*auction as u64).or_insert((*auction,0));
+                                            slot.1 += 1;
+                                            
+                                        }
+                                        // Define the time these entries will be out of the window (after 'window_slice_count * window_slide_ns' nsecs)
+                                        let new_time = time.time().inner + (window_slice_count * window_slide_ns);
+                                        pending_deletions.insert(time.delayed(&RootTimestamp::new(new_time)), additions);
+                                    }
+                                    // Process deletions (if any)
+                                    if let Some(deletions) = pending_deletions.remove(&time) {
+                                        for (bin_id, auction) in deletions.into_iter() {
+                                            let slot = bid_state.get_state(bin_id).entry(auction as u64).or_insert((auction,0));
+                                            slot.1 -= 1;
+                                        }
+                                    }
+                                    // Output results
+                                    let mut session = output.session(&time);
+                                    bid_state.scan(move |a| { 
+                                                    if let Some((_,(auction,_))) = a.iter().max_by_key(|(_auction_id,(_auction,count))| count) {
+                                                         session.give(*auction);
+                                                }}); 
+                                }
+                            }
+                        })
+                     .probe_with(&mut bids.probe)
                      .probe_with(&mut probe);
             });
         }
@@ -351,7 +795,7 @@ fn main() {
                                 input.for_each(|time, data| {
                                     let mut session = output.session(&time);
                                     for (bidder, price) in data.drain(..) {
-                                        let entry = state.entry(bidder).or_insert(std::collections::VecDeque::new());
+                                        let entry = state.entry(bidder).or_insert(VecDeque::new());
                                         if entry.len() >= 10 { entry.pop_back(); }
                                         entry.push_front(price);
                                         let mut sum: usize = entry.iter().sum();
@@ -363,6 +807,70 @@ fn main() {
                     .probe_with(&mut probe);
             });
         }
+
+        if std::env::args().any(|x| x == "q6-flex") {
+            worker.dataflow(|scope| {
+
+                let control = scope.input_from(&mut control_input).broadcast();
+
+                let mut winners =  Some(closed_auctions_flex.clone())
+                    .replay_into(scope)
+                    .map(|(_a, b)| {
+                        let mut vd = ::nexmark::AbomVecDeque(VecDeque::new());
+                        vd.push_front((b.bidder, b.price));
+                        (b.bidder as u64,vd)})
+                    .stateful::<_,HashMap<u64,::nexmark::AbomVecDeque<(usize,usize)>>,_>(|(b,_p)| *b as u64, &control);
+
+                let state = winners.state.clone();
+
+                winners.stream
+                    .unary_frontier(Pipeline, "Q6 Average",
+                        |_cap, _info| {
+
+                            let mut pending_state: HashMap<_, Vec<(_, _, (_,::nexmark::AbomVecDeque<(usize,usize)>))>> = Default::default();
+
+                            move |input, output| {
+
+                                let mut state = state.borrow_mut();
+                                let frontier = input.frontier();
+
+                                while let Some(time) = state.notificator().next(&[input.frontier()]) {
+                                    if let Some(mut pend) = pending_state.remove(time.time()) {
+                                        let mut session = output.session(&time);
+                                        for (_, bin_id, (bidder, mut price)) in pend.drain(..) {
+                                            let entry = state.get_state(bin_id).entry(bidder).or_insert(::nexmark::AbomVecDeque(VecDeque::new()));
+                                            if entry.len() >= 10 { entry.pop_back(); }
+                                            entry.push_front(price.pop_back().expect("No bid price found."));
+                                            let mut sum: usize = entry.iter().map(|(_,b)| b).sum();
+                                            session.give((bidder, sum / entry.len()));
+                                        }
+                                    }
+                                }
+
+                                input.for_each(|time, data| {
+                                    if frontier.less_than(time.time()) {
+                                        pending_state.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                                        state.notificator().notify_at(time.retain());
+                                    }
+                                    else { // Process directly
+                                        let mut session = output.session(&time);
+                                        // Price is a VecDeque with a single element
+                                        for (_, bin_id, (bidder, mut price)) in data.drain(..) {
+                                            let entry = state.get_state(bin_id).entry(bidder).or_insert(::nexmark::AbomVecDeque(VecDeque::new()));
+                                            if entry.len() >= 10 { entry.pop_back(); }
+                                            entry.push_front(price.pop_back().expect("No bid price found."));
+                                            let mut sum: usize = entry.iter().map(|(_,p)| p).sum();
+                                            session.give((bidder, sum / entry.len()));
+                                        }
+                                    }
+                                });
+                            }
+                        })
+                    .probe_with(&mut winners.probe)
+                    .probe_with(&mut probe);
+            });
+        }
+
 
         if std::env::args().any(|x| x == "q7") {
             worker.dataflow(|scope| {
@@ -414,41 +922,125 @@ fn main() {
                      })
                      .unary_frontier(Exchange::new(move |x: &(usize, usize)| (x.0 / window_size_ns) as u64), "Q7 All-reduce", |_cap, _info| {
 
-                        use timely::dataflow::operators::Capability;
-                        use timely::progress::nested::product::Product;
-                        use timely::progress::timestamp::RootTimestamp;
+                    use timely::dataflow::operators::Capability;
+                    use timely::progress::nested::product::Product;
+                    use timely::progress::timestamp::RootTimestamp;
 
-                        // Tracks the global maximal bid for each capability.
-                        let mut maxima = Vec::<(Capability<Product<RootTimestamp, usize>>, usize)>::new();
+                    // Tracks the global maximal bid for each capability.
+                    let mut maxima = Vec::<(Capability<Product<RootTimestamp, usize>>, usize)>::new();
 
-                        move |input, output| {
+                    move |input, output| {
 
-                            input.for_each(|time, data| {
+                        input.for_each(|time, data| {
 
-                                for (window, price) in data.drain(..) {
-                                    let new_time = (window + 1) * window_size_ns;
-                                    if let Some(position) = maxima.iter().position(|x| (x.0).time().inner == new_time) {
-                                        if maxima[position].1 < price {
-                                            maxima[position].1 = price;
-                                        }
-                                    }
-                                    else {
-                                        maxima.push((time.delayed(&RootTimestamp::new(new_time)), price));
+                            for (window, price) in data.drain(..) {
+                                if let Some(position) = maxima.iter().position(|x| (x.0).time().inner == window) {
+                                    if maxima[position].1 < price {
+                                        maxima[position].1 = price;
                                     }
                                 }
-
-                            });
-
-                            for &(ref capability, price) in maxima.iter() {
-                                if !input.frontier.less_than(capability.time()) {
-                                    output.session(&capability).give(price);
+                                else {
+                                    maxima.push((time.delayed(&RootTimestamp::new(window)), price));
                                 }
                             }
 
-                            maxima.retain(|(capability, _)| input.frontier.less_than(capability));
+                        });
 
+                        for &(ref capability, price) in maxima.iter() {
+                            if !input.frontier.less_than(capability.time()) {
+                                output.session(&capability).give(price);
+                            }
+                        }
+
+                        maxima.retain(|(capability, _)| input.frontier.less_than(capability));
+
+                    }
+                 })
+                 .probe_with(&mut probe);
+            });
+        }
+
+        if std::env::args().any(|x| x == "q7-flex") {
+            worker.dataflow(|scope| {
+
+                let control = scope.input_from(&mut control_input).broadcast();
+
+                // Window ticks every 10 seconds.
+                let window_size_ns = 1_000_000_000;
+
+                let mut bids = input.to_stream(scope)
+                     .flat_map(|e| nexmark::event::Bid::from(e))
+                     .map(move |b| (b.auction, ((b.date_time / window_size_ns) + 1) * window_size_ns, b.price))
+                     .map(|(a,t,p)| {
+                        let mut v = Vec::new();
+                        v.push((t,p));
+                        (a,v)
+                     })
+                     .stateful::<_,HashMap<u64,Vec<(usize,usize)>>,_>(|(a,_v)| *a as u64, &control);
+
+                let bid_state = bids.state.clone();
+
+                bids.stream
+                     .unary_frontier(Pipeline, "Q7 Pre-reduce", |_cap, _info| 
+                     {
+
+                        // Epoch -> vec of (window,max_price) tuples
+                        let mut pending_maxima: HashMap<_,Vec<_>> = Default::default();
+
+                        move |input, output| {
+
+                            let mut bid_state = bid_state.borrow_mut();
+
+                            input.for_each(|time, data| {
+                                pending_maxima.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
+                                bid_state.notificator().notify_at(time.retain());
+                            });
+
+                            while let Some(time) = bid_state.notificator().next(&[input.frontier()]) {
+                                let mut windows = HashMap::new();
+                                if let Some(mut maxima) = pending_maxima.remove(&time) {
+                                    for (_t, bin_id, (auction, price_per_window)) in maxima.drain(..) {
+                                        let open_windows = bid_state.get_state(bin_id).entry(auction as u64).or_insert_with(Vec::new);
+                                        if let Some(position) = open_windows.iter().position(|x| x.0 == price_per_window[0].0) {
+                                            if open_windows[position].1 < price_per_window[0].1 {
+                                                open_windows[position].1 = price_per_window[0].1;
+                                                windows.insert(price_per_window[0].0,price_per_window[0].1);
+                                            }
+                                        }
+                                        else {
+                                            open_windows.push((price_per_window[0].0, price_per_window[0].1));
+                                            windows.insert(price_per_window[0].0,price_per_window[0].1);
+                                        }
+                                    }
+                                }
+                                let mut session = output.session(&time);
+                                session.give_iterator(windows.drain());
+                            }
                         }
                      })
+                     .unary_frontier(Exchange::new(move |x: &(usize, usize)| (x.0 / window_size_ns) as u64), "Q7 All-reduce", |_cap, _info| 
+                     {
+                        let mut pending_maxima: HashMap<_,Vec<_>> = Default::default();
+                        let mut notificator = FrontierNotificator::new();
+                        move |input, output| {
+                            input.for_each(|time, data| {
+                                for (window,price) in data.drain(..) {
+                                    let slot = pending_maxima.entry(window).or_insert_with(Vec::new);
+                                    slot.push(price);
+                                    notificator.notify_at(time.delayed(&RootTimestamp::new(window)));
+                                }
+                            });
+                            while let Some(time) = notificator.next(&[input.frontier()]) {
+                                if let Some(mut maxima) = pending_maxima.remove(&time.time().inner) {
+                                    if let Some(max_price) = maxima.drain(..).max(){
+                                        output.session(&time).give(max_price);
+                                    }
+                                }
+                            }
+                        }
+
+                     })
+                     .probe_with(&mut bids.probe)
                      .probe_with(&mut probe);
             });
         }
@@ -523,6 +1115,79 @@ fn main() {
                                 // }
                             }
                         })
+                    .probe_with(&mut probe);
+            });
+        }
+
+        if std::env::args().any(|x| x == "q8-flex") {
+            worker.dataflow(|scope| {
+
+                let control = scope.input_from(&mut control_input).broadcast();
+
+                let events = input.to_stream(scope);
+
+                let mut auctions =
+                events.flat_map(|e| nexmark::event::Auction::from(e))
+                      .map(|a| (a.seller, a.date_time))
+                      .stateful::<_,HashMap<u64,usize>,_>(|(s,_d)| *s as u64, &control);
+
+                let mut people =
+                events.flat_map(|e| nexmark::event::Person::from(e))
+                      .map(|p| (p.id, p.date_time))
+                      .stateful::<_,HashMap<u64,usize>,_>(|(p,_d)| *p as u64, &control);
+                
+                let auctions_state = auctions.state.clone();
+                let people_state = people.state.clone();
+
+                people.stream
+                    .binary_frontier(
+                        &auctions.stream,
+                        Pipeline,
+                        Pipeline,
+                        "Q8 join",
+                        |_capability, _info| {
+
+                            let window_size_ns = 12 * 60 * 60 * 1_000_000_000;
+                            let mut new_people: HashMap<_,Vec<_>> = Default::default();
+                            let mut auctions: HashMap<_,Vec<_>> = Default::default();
+
+                            move |input1, input2, output| {
+
+                                let mut auctions_state = auctions_state.borrow_mut();
+                                let mut people_state = people_state.borrow_mut();
+
+                                // Notice new people.
+                                input1.for_each(|time, data| {
+                                    new_people.entry(time.time().inner).or_insert_with(Vec::new).extend(data.drain(..));
+                                    people_state.notificator().notify_at(time.retain());
+                                });
+
+                                // Notice new auctions.
+                                input2.for_each(|time, data| {
+                                    auctions.entry(time.time().inner).or_insert_with(Vec::new).extend(data.drain(..));
+                                    auctions_state.notificator().notify_at(time.retain());
+                                });
+
+                                while let Some(time) = people_state.notificator().next(&[input1.frontier(),input2.frontier()]) {
+                                    // Update people state
+                                    for (_t, bin_id,(person,date)) in new_people.remove(&time.time().inner).into_iter().flat_map(|v| v.into_iter()) {
+                                        people_state.get_state(bin_id).entry(person as u64).or_insert(date);
+                                    }
+                                }
+
+                                while let Some(time) = auctions_state.notificator().next(&[input1.frontier(),input2.frontier()]) {
+                                    for (_t, bin_id,(seller,date)) in auctions.remove(&time.time().inner).into_iter().flat_map(|v| v.into_iter()) {
+                                        if let Some(p_time) = people_state.get_state(bin_id).get(&(seller as u64)) {
+                                            if (date - p_time) < window_size_ns {
+                                                output.session(&time).give(seller);
+                                            }          
+                                        } 
+                                    }
+                                }
+                            }
+                    })
+                    .probe_with(&mut people.probe)
+                    .probe_with(&mut auctions.probe)
                     .probe_with(&mut probe);
             });
         }
@@ -604,7 +1269,7 @@ fn main() {
             move || nexmark::config::NexMarkInputTimes::new(config.clone(), duration_ns)
         };
 
-        let mut output_metric_collector = 
+        let mut output_metric_collector =
             ::streaming_harness::output::default::hdrhist_timeline_collector(
                 input_times(),
                 0, 2_000_000_000, duration_ns - 2_000_000_000, duration_ns,

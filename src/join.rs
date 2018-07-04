@@ -37,10 +37,11 @@ where
         let state1 = self.state.clone();
         let state2 = other.state.clone();
         self.stream.binary_frontier(&other.stream, Pipeline, Pipeline, name, |_cap, _info| {
-            move |input1, input2, output| {
 
-                let mut pending1: HashMap<_, Vec<(_, _, _)>> = Default::default();
-                let mut pending2: HashMap<_, Vec<(_, _, _)>> = Default::default();
+            let mut pending1: HashMap<_, Vec<(_, _, _)>> = Default::default();
+            let mut pending2: HashMap<_, Vec<(_, _, _)>> = Default::default();
+
+            move |input1, input2, output| {
 
                 let mut state1 = state1.borrow_mut();
                 let mut state2 = state2.borrow_mut();
@@ -76,7 +77,6 @@ where
                         }
                     };
                 };
-
             }
         }).probe_with(&mut self.probe).probe_with(&mut other.probe)
     }
