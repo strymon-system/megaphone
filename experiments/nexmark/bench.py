@@ -170,7 +170,7 @@ class Experiment(object):
                 kv_pairs.append((key, "|".join(value)))
         queries = "_".join(map(lambda p: "{}={}".format(p[0], p[1]), kv_pairs))
         print(queries)
-        return "result/{}/{}".format(self._name, queries)
+        return "results/{}/{}".format(self._name, queries)
 
     def get_file_name(self, name, process=0):
         return "{}/{}".format(self.get_directory_name(), name)
