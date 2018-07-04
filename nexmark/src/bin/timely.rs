@@ -575,7 +575,7 @@ fn main() {
                         "M" => (ts, vec![ControlInst::Map(parts.map(|x| x.parse().unwrap()).collect())]),
                         "D" => {
                             let parts: Vec<usize> = parts.map(|x| x.parse().unwrap()).collect();
-                            let inst = parts.windows(2).map(|x|ControlInst::Move(::dynamic_scaling_mechanism::Bin(x[0]), x[1])).collect();
+                            let inst = parts.chunks(2).map(|x|ControlInst::Move(::dynamic_scaling_mechanism::Bin(x[0]), x[1])).collect();
                             (ts, inst)
                         },
                         _ => panic!("Incorrect input found in map file"),
