@@ -116,15 +116,16 @@ class Experiment(object):
 
 workers = 32
 for bin_shift in range(int(math.log2(workers)), 16):
-    experiment = Experiment(
-            "exp1",
-            duration=10,
-            rate=1000000,
-            query=["q0"],
-            migration="batched",
-            bin_shift=bin_shift,
-            workers=workers,
-            processes=2,
-            initial_config="uniform",
-            final_config="half")
-    experiment.run_commands()
+    for migration in ["batched", "sudden", "fluid"]:
+        experiment = Experiment(
+                "exp1",
+                duration=120,
+                rate=10000000 // workers, # Rate is per worker
+                query=["q0"],
+                migration=migration,
+                bin_shift=bin_shift,
+                workers=workers,
+                processes=2,
+                initial_config="uniform",
+                final_config="uniform_skew")
+        experiment.run_commands()
