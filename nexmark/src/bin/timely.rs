@@ -721,32 +721,20 @@ fn main() {
                                 let mut bid_state = bid_state.borrow_mut();
 
                                 input.for_each(|time, data| {
-                                    // Slide is the discretized time the bid event was delivered
-                                    let slide = ((time.time().inner / window_slide_ns) + 1) * window_slide_ns;
-                                    let downgrade = time.delayed(&RootTimestamp::new(slide));
-
-                                    // Collect all bids in a different slide.
                                     for &(_, bin_id, (auction, a_time)) in data.iter() {
-                                        // Request notification to add
-                                        bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(a_time)), vec![]);
-                                        let new_time = a_time + (window_slice_count * window_slide_ns);
-                                        // Request notification to remove
-                                        bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(new_time)),vec![]);
-                                        if a_time != slide { // TODO (john): Should actually be a_time > slide, right?
-                                            pending_additions
-                                                .entry(time.delayed(&RootTimestamp::new(a_time)))
+                                        bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(a_time)), vec![]); // Request notification to add
+                                        // Stash pending additions
+                                        pending_additions.entry(time.delayed(&RootTimestamp::new(a_time)))
                                                 .or_insert(Vec::new())
                                                 .push((bin_id, auction));
-                                        }
-                                    }
-                                    data.retain(|&(_, _, (_, a_time))| a_time == slide);
-                                    let mut data = data.drain(..).map(|(_, bin_id, (auction, _))| (bin_id,auction)).collect::<Vec<_>>();
 
-                                    // Collect all bids in the same slide.
-                                    pending_additions
-                                        .entry(downgrade)
-                                        .or_insert(Vec::new())
-                                        .extend(data.drain(..));
+                                        let new_time = a_time + (window_slice_count * window_slide_ns);
+                                        bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(new_time)),vec![]);  // Request notification to remove
+                                        // Stash pending deletions
+                                        pending_deletions.entry(time.delayed(&RootTimestamp::new(new_time)))
+                                                .or_insert(Vec::new())
+                                                .push((bin_id, auction));
+                                    }
                                 });
 
                                 while let Some((time,_)) = bid_state.notificator().next(&[input.frontier()]) {
@@ -757,9 +745,6 @@ fn main() {
                                             slot.1 += 1;
                                             
                                         }
-                                        // Define the time these entries will be out of the window (after 'window_slice_count * window_slide_ns' nsecs)
-                                        let new_time = time.time().inner + (window_slice_count * window_slide_ns);
-                                        pending_deletions.insert(time.delayed(&RootTimestamp::new(new_time)), additions);
                                     }
                                     // Process deletions (if any)
                                     if let Some(deletions) = pending_deletions.remove(&time) {
@@ -768,7 +753,7 @@ fn main() {
                                             slot.1 -= 1;
                                         }
                                     }
-                                    // Output results
+                                    // Output results (if any)
                                     let mut session = output.session(&time);
                                     bid_state.scan(move |a| { 
                                                     if let Some((_,(auction,_))) = a.iter().max_by_key(|(_auction_id,(_auction,count))| count) {
@@ -990,10 +975,7 @@ fn main() {
                 let bid_state = bids.state.clone();
 
                 bids.stream
-                     .unary_frontier(Pipeline, "Q7 Pre-reduce", |_cap, _info| 
-                     {
-
-                        // Epoch -> vec of (window,max_price) tuples
+                     .unary_frontier(Pipeline, "Q7 Pre-reduce", |_cap, _info| {
                         let mut pending_maxima: HashMap<_,Vec<_>> = Default::default();
 
                         move |input, output| {
@@ -1002,7 +984,9 @@ fn main() {
 
                             input.for_each(|time, data| {
                                 pending_maxima.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                                bid_state.notificator().notify_at(time.retain(),vec![]);
+                                for (t,bin_id,(window,price)) in data.drain(..) {
+                                    bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(window)),vec![]);
+                                } 
                             });
 
                             while let Some((time,_)) = bid_state.notificator().next(&[input.frontier()]) {
@@ -1029,7 +1013,7 @@ fn main() {
                             }
                         }
                      })
-                     // Aggregate the partial counts. This doesn't require to be stateful since we request notification upon a window firing time and then we drop the state
+                     // Aggregate the partial counts. This doesn't need to be stateful since we request notification upon a window firing time and then we drop the state immediately after processing
                      .unary_frontier(Exchange::new(move |x: &(usize, usize)| (x.0 / window_size_ns) as u64), "Q7 All-reduce", |_cap, _info| 
                      {
                         let mut pending_maxima: HashMap<_,Vec<_>> = Default::default();
