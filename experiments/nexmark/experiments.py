@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import sys, os
+import sys, os, datetime
 from executor import execute
 
 is_worktree_clean = execute("cd `git rev-parse --show-toplevel`; git diff-index --quiet HEAD -- src/ Cargo.toml nexmark/src/ nexmark/Cargo.toml", check=False)
@@ -10,12 +10,18 @@ if not is_worktree_clean:
 current_commit = ("dirty-" if not is_worktree_clean else "") + execute("git rev-parse HEAD", capture=True)
 current_commit = current_commit[:16]
 
-def eprint(*args):
-    print(*args, file=sys.stderr)
+def eprint(*args, level=None):
+    attr = []
+    if level == "info":
+        attr.append('1')
+        attr.append('37')
+        attr.append('4')
+    elif level == "run":
+        attr.append('32')
+    print("[" + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "] ", '\x1b[%sm' % ';'.join(attr), *args, '\x1b[0m', file=sys.stderr, sep='')
 
 def ensure_dir(name):
     if not os.path.exists(name):
-        eprint("making directory: {}".format(name))
         os.makedirs(name)
 
 def wait_all(processes):
@@ -31,13 +37,12 @@ cluster_server = None
 
 def run_cmd(cmd, redirect=None, background=False, node="", dryrun=False):
     full_cmd = "cd {}; {}".format(cluster_src_path, cmd)
-    eprint("running on {}{}: {}".format(cluster_server, node, full_cmd))
-    if redirect is not None and os.path.exists(redirect):
-        return execute("echo \"skipping {}\"".format(redirect), async=background)
+    # eprint("running on {}{}: {}".format(cluster_server, node, full_cmd))
+    # if redirect is not None and os.path.exists(redirect):
+    #     return execute("echo \"skipping {}\"".format(redirect), async=background)
+    cmd = "ssh -t {}{} \"{}\"".format(cluster_server, node, full_cmd) + (" > {}".format(redirect) if redirect else "")
+    if dryrun:
+        eprint("$ {}".format(cmd), level="run")
+        return execute("echo dryrun {}".format(node), async=background)
     else:
-        cmd = "ssh -t {}{} \"{}\"".format(cluster_server, node, full_cmd) + (" > {}".format(redirect) if redirect else "")
-        if dryrun:
-            eprint("$ {}".format(cmd))
-            return execute("echo dryrun", async=background)
-        else:
-            return execute(cmd, async=background)
+        return execute(cmd, async=background)

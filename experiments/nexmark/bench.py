@@ -13,10 +13,14 @@ argparser = argparse.ArgumentParser(description='Process some integers.')
 argparser.add_argument("--clusterpath", help='the path of this repo on the cluster machines', required=True)
 argparser.add_argument("--serverprefix", help='an ssh username@server prefix, e.g. andreal@fdr, the server number will be appended', required=True)
 argparser.add_argument("--dryrun", help='don\'t actually do anything', action='store_true')
+argparser.add_argument("--machineid", help='choose a machine for machine-local experiments (can be overridden per-experiment)', type=int)
+argparser.add_argument("--baseid", help='choose the first machine for this experiment (can be overridden per-experiment)', type=int)
 args = argparser.parse_args()
 experiments.cluster_src_path = args.clusterpath
 experiments.cluster_server = args.serverprefix
 dryrun = args.dryrun
+single_machine_id = args.machineid
+base_machine_id = args.baseid
 if dryrun:
     eprint("dry-run")
 
@@ -37,6 +41,10 @@ class Experiment(object):
         self._rate = self._config["rate"]
         self._initial_config = self._config["initial_config"]
         self._final_config = self._config["final_config"]
+        self._machine_local = self._config["machine_local"]
+
+        self.single_machine_id = single_machine_id
+        self.base_machine_id = base_machine_id
 
     def get_directory_name(self):
         keys = sorted(self._config.keys())
@@ -92,29 +100,54 @@ class Experiment(object):
         elif self._final_config == "half":
             final_config = initial_pattern.generate_half()
 
+        ensure_dir(self.get_setup_directory_name())
+
         with open(migration_pattern_file_name, "w") as f:
-            eprint("Writing migration pattern to {}".format(migration_pattern_file_name))
+            eprint("writing migration pattern to {}".format(migration_pattern_file_name))
             PatternGenerator(
                     pattern,
                     initial_pattern.generate_uniform(),
                     initial_pattern.generate_uniform_skew()).write(f)
 
+        hostfile_file_name = self.get_setup_file_name("hostfile")
+        with open(hostfile_file_name, 'w') as f:
+            eprint("writing hostfile to {}".format(hostfile_file_name))
+            if not self._machine_local:
+                assert(self.base_machine_id is not None)
+                for p in range(0, self._processes):
+                    f.write("{}{}:3210\n".format(experiments.cluster_server, self.base_machine_id + p))
+            else:
+                assert(self.single_machine_id is not None)
+                for p in range(0, self._processes):
+                    f.write("{}{}:{}\n".format(experiments.cluster_server, self.single_machine_id, 3210 + p))
+
+
         command_prefix = "~/.cargo/bin/cargo run --bin timely --release --no-default-features"
-        make_command = lambda p: (
-                command_prefix +
-                " --features dynamic_scaling_mechanism/bin-{} {} {} {}/{} {}".format(
-                    self._bin_shift, self._rate, self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._config["query"])) +
-                " -n {} -p {} -w {}".format(self._processes, p, self._workers))
-        commands = [(p, make_command(p), self.get_result_file_name("stdout", p)) for p in range(0, self._processes)]
-        return commands
+        if not self._machine_local:
+            make_command = lambda p: (
+                    command_prefix +
+                    " --features dynamic_scaling_mechanism/bin-{} {} {} {}/{} {}".format(
+                        self._bin_shift, self._rate, self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._config["query"])) +
+                    " --hostfile {} -n {} -p {} -w {}".format(hostfile_file_name, self._processes, p, self._workers))
+            commands = [(self.base_machine_id + p, make_command(p), self.get_result_file_name("stdout", p)) for p in range(0, self._processes)]
+            return commands
+        else:
+            assert(self.single_machine_id is not None)
+            make_command = lambda p: (
+                    command_prefix +
+                    " --features dynamic_scaling_mechanism/bin-{} {} {} {}/{} {}".format(
+                        self._bin_shift, self._rate, self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._config["query"])) +
+                    " --hostfile {} -n {} -p {} -w {}".format(hostfile_file_name, self._processes, p, self._workers))
+            commands = [(self.single_machine_id, make_command(p), self.get_result_file_name("stdout", p)) for p in range(0, self._processes)]
+            return commands
 
     def run_commands(self):
+        eprint("running experiment, results in {}".format(self.get_result_directory_name()), level="info")
         if not dryrun:
-            ensure_dir(self.get_setup_directory_name())
             ensure_dir(self.get_result_directory_name())
         wait_all([run_cmd(c, redirect=r, background=True, node=p, dryrun=dryrun) for p, c, r in self.commands()])
 
-workers = 32
+workers = 8 
 for bin_shift in range(int(math.log2(workers)), 16):
     for migration in ["batched", "sudden", "fluid"]:
         experiment = Experiment(
@@ -127,5 +160,7 @@ for bin_shift in range(int(math.log2(workers)), 16):
                 workers=workers,
                 processes=2,
                 initial_config="uniform",
-                final_config="uniform_skew")
+                final_config="uniform_skew",
+                machine_local=True)
+        experiment.single_machine_id = 1
         experiment.run_commands()
