@@ -154,23 +154,22 @@ class Experiment(object):
             run_cmd(build_cmd, node=self.single_machine_id, dryrun=dryrun)
         wait_all([run_cmd(c, redirect=r, background=True, node=p, dryrun=dryrun) for p, c, r in self.commands()])
 
-def bin_shifting_q0(group):
+def non_migrating(group):
     workers = 8
-    all_bin_shifts = list(range(int(math.log2(workers)), 16))
-    bin_shifts = all_bin_shifts[group * len(all_bin_shifts) // 4:(group + 1) * len(all_bin_shifts) // 4]
-    for bin_shift in bin_shifts:
-        for migration in ["batched", "sudden", "fluid"]:
-            experiment = Experiment(
-                    "bin_shifting_q0",
-                    duration=120,
-                    rate=1000000 // workers, # Rate is per worker
-                    query=["q0"],
-                    migration=migration,
-                    bin_shift=bin_shift,
-                    workers=workers,
-                    processes=2,
-                    initial_config="uniform",
-                    final_config="uniform_skew",
-                    machine_local=True)
-            experiment.single_machine_id = group + 1
-            experiment.run_commands()
+    all_queries = ["q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7"]
+    queries = all_queries[group * len(all_queries) // 4:(group + 1) * len(all_queries) // 4]
+    for query in queries:
+        experiment = Experiment(
+                "non_migrating",
+                duration=60,
+                rate=8000000 // workers, # Rate is per worker
+                query=query,
+                migration="sudden",
+                bin_shift=8,
+                workers=workers,
+                processes=2,
+                initial_config="uniform",
+                final_config="uniform_skew",
+                machine_local=True)
+        experiment.single_machine_id = group + 1
+        experiment.run_commands()
