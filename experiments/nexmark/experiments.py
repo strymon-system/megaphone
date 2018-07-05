@@ -38,7 +38,7 @@ cluster_src_path = None
 cluster_server = None
 
 def run_cmd(cmd, redirect=None, background=False, node="", dryrun=False):
-    full_cmd = "cd {}; {}".format(cluster_src_path, cmd)
+    full_cmd = "cd {}; {} 2>/dev/null".format(cluster_src_path, cmd)
     # eprint("running on {}{}: {}".format(cluster_server, node, full_cmd))
     # if redirect is not None and os.path.exists(redirect):
     #     return execute("echo \"skipping {}\"".format(redirect), async=background)
