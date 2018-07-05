@@ -1250,7 +1250,7 @@ fn main() {
         };
 
         for instruction in &instructions {
-            println!("{:?}", instruction);
+            eprintln!("instructions\t{:?}", instruction);
         }
 
         // Establish a start of the computation.
@@ -1336,4 +1336,5 @@ fn main() {
     eprintln!("== timeline ==\n{}",
               timeline.clone().into_iter().map(|::streaming_harness::timeline::TimelineElement { time, metrics, samples }|
                     format!("-- {} ({} samples) --\n{}", time, samples, metrics.summary_string())).collect::<Vec<_>>().join("\n"));
+    println!("{}", ::streaming_harness::format::format_summary_timeline("timeline_summary".to_string(), timeline.clone()))
 }

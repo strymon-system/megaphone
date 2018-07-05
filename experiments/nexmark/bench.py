@@ -9,8 +9,6 @@ from patterns import InitialPattern, SuddenMigrationPattern, FluidMigrationPatte
 import experiments
 from experiments import eprint, ensure_dir, current_commit, run_cmd, wait_all
 
-print(sys.argv)
-
 argparser = argparse.ArgumentParser(description='Process some integers.')
 argparser.add_argument("--clusterpath", help='the path of this repo on the cluster machines', required=True)
 argparser.add_argument("--serverprefix", help='an ssh username@server prefix, e.g. andreal@fdr, the server number will be appended', required=True)
@@ -126,21 +124,20 @@ class Experiment(object):
 
 
         eth_proxy = ". ~/eth_proxy.sh && "
-        command_prefix = "cargo run --bin timely --release --no-default-features"
         if not self._machine_local:
             make_command = lambda p: (
-                    eth_proxy + command_prefix +
-                    " --features dynamic_scaling_mechanism/bin-{} {} {} {}/{} {}".format(
-                        self._bin_shift, self._rate, self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._config["query"])) +
+                    eth_proxy +
+                    "./target/release/timely {} {} {}/{} {}".format(
+                        self._rate, self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._config["query"])) +
                     " --hostfile {}/{} -n {} -p {} -w {}".format(os.getcwd(), hostfile_file_name, self._processes, p, self._workers))
             commands = [(self.base_machine_id + p, make_command(p), self.get_result_file_name("stdout", p)) for p in range(0, self._processes)]
             return commands
         else:
             assert(self.single_machine_id is not None)
             make_command = lambda p: (
-                    eth_proxy + "hwloc-bind socket:{} -- ".format(p) + command_prefix +
-                    " --features dynamic_scaling_mechanism/bin-{} {} {} {}/{} {}".format(
-                        self._bin_shift, self._rate, self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._config["query"])) +
+                    eth_proxy + "hwloc-bind socket:{} -- ".format(p) +
+                    "./target/release/timely {} {} {}/{} {}".format(
+                        self._rate, self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._config["query"])) +
                     " --hostfile {}/{} -n {} -p {} -w {}".format(os.getcwd(), hostfile_file_name, self._processes, p, self._workers))
             commands = [(self.single_machine_id, make_command(p), self.get_result_file_name("stdout", p)) for p in range(0, self._processes)]
             return commands
@@ -149,6 +146,12 @@ class Experiment(object):
         eprint("running experiment, results in {}".format(self.get_result_directory_name()), level="info")
         if not dryrun:
             ensure_dir(self.get_result_directory_name())
+        build_cmd = "cargo build --bin timely --release --no-default-features --features dynamic_scaling_mechanism/bin-{}".format(
+                self._bin_shift)
+        if not self._machine_local:
+            run_cmd(build_cmd, node=self.base_machine_id, dryrun=dryrun)
+        else:
+            run_cmd(build_cmd, node=self.single_machine_id, dryrun=dryrun)
         wait_all([run_cmd(c, redirect=r, background=True, node=p, dryrun=dryrun) for p, c, r in self.commands()])
 
 def bin_shifting_q0(group):
@@ -160,7 +163,7 @@ def bin_shifting_q0(group):
             experiment = Experiment(
                     "bin_shifting_q0",
                     duration=120,
-                    rate=10000000 // workers, # Rate is per worker
+                    rate=1000000 // workers, # Rate is per worker
                     query=["q0"],
                     migration=migration,
                     bin_shift=bin_shift,
