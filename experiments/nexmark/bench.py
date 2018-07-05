@@ -1,11 +1,24 @@
 #!/usr/bin/env python3
 
 import sys, math, os
+import argparse
 from collections import namedtuple, defaultdict
 from HopcroftKarp import HopcroftKarp
 
 from patterns import InitialPattern, SuddenMigrationPattern, FluidMigrationPattern, BatchedFluidMigrationPattern, PatternGenerator
-from experiments import eprint, ensuredir, current_commit
+import experiments
+from experiments import eprint, ensure_dir, current_commit, run_cmd, wait_all
+
+argparser = argparse.ArgumentParser(description='Process some integers.')
+argparser.add_argument("--clusterpath", help='the path of this repo on the cluster machines', required=True)
+argparser.add_argument("--serverprefix", help='an ssh username@server prefix, e.g. andreal@fdr, the server number will be appended', required=True)
+argparser.add_argument("--dryrun", help='don\'t actually do anything', action='store_true')
+args = argparser.parse_args()
+experiments.cluster_src_path = args.clusterpath
+experiments.cluster_server = args.serverprefix
+dryrun = args.dryrun
+if dryrun:
+    eprint("dry-run")
 
 # - Generic interface to run benchmark with a configuration
 # - Runner to run experiments remotely
@@ -39,28 +52,20 @@ class Experiment(object):
         return "{}/{}".format(current_commit, queries)
 
     def get_setup_directory_name(self):
-        dir_name = "{}/{}".format("setups", self.get_directory_name())
-        ensuredir(dir_name)
-        return dir_name
+        return "{}/{}".format("setups", self.get_directory_name())
 
     def get_result_directory_name(self):
-        dir_name = "{}/{}".format("results", self.get_directory_name())
-        ensuredir(dir_name)
-        return dir_name
+        return "{}/{}".format("results", self.get_directory_name())
 
     def get_setup_file_name(self, name):
         return "{}/{}".format(self.get_setup_directory_name(), name)
 
-    def get_result_file_name(self, name, process = 0):
-        return "{}/{}.{}".format(self.get_result_directory_name(), name, pro)
+    def get_result_file_name(self, name, process):
+        return "{}/{}.{}".format(self.get_result_directory_name(), name, process)
 
     def commands(self):
         print(vars(self))
         migration_pattern_file_name = self.get_setup_file_name("migration_pattern")
-
-        dir = self.get_directory_name()
-        if not os.path.exists(dir):
-            os.makedirs(dir)
 
         initial_pattern = InitialPattern(self._bin_shift, self._workers)
 
@@ -100,9 +105,14 @@ class Experiment(object):
                 " --features dynamic_scaling_mechanism/bin-{} {} {} {}/{} {}".format(
                     self._bin_shift, self._rate, self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._config["query"])) +
                 " -n {} -p {} -w {}".format(self._processes, p, self._workers))
-        commands = [make_command(p) for p in range(0, self._processes)]
+        commands = [(p, make_command(p), self.get_result_file_name("stdout", p)) for p in range(0, self._processes)]
         return commands
-        # processes = [experiments.run_cmd(command) for command in commands]
+
+    def run_commands(self):
+        if not dryrun:
+            ensure_dir(self.get_setup_directory_name())
+            ensure_dir(self.get_result_directory_name())
+        wait_all([run_cmd(c, redirect=r, background=True, node=p, dryrun=dryrun) for p, c, r in self.commands()])
 
 workers = 32
 for bin_shift in range(int(math.log2(workers)), 16):
@@ -117,4 +127,4 @@ for bin_shift in range(int(math.log2(workers)), 16):
             processes=2,
             initial_config="uniform",
             final_config="half")
-    print(experiment.commands())
+    experiment.run_commands()
