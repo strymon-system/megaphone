@@ -2,23 +2,19 @@
 import sys, os
 from executor import execute
 
-is_worktree_clean = execute("cd `git rev-parse --show-toplevel`; git diff-index --quiet HEAD -- src/ Cargo.toml experiments/src/ experiments/Cargo.toml", check=False)
+is_worktree_clean = execute("cd `git rev-parse --show-toplevel`; git diff-index --quiet HEAD -- src/ Cargo.toml nexmark/src/ nexmark/Cargo.toml", check=False)
 
 if not is_worktree_clean:
     shall = input("Work directory dirty. Continue? (y/N) ").lower() == 'y'
 
-# current_commit = ("dirty-" if not is_worktree_clean else "") + execute("git rev-parse HEAD", capture=True)
-current_commit = "may-1"
+current_commit = ("dirty-" if not is_worktree_clean else "") + execute("git rev-parse HEAD", capture=True)
 
 def eprint(*args):
     print(*args, file=sys.stderr)
 
-def experdir(name):
-    return "results/{}/{}".format(current_commit, name)
-
 def ensuredir(name):
-    eprint("making directory: {}".format(experdir(name)))
-    execute("mkdir -p {}".format(experdir(name)))
+    eprint("making directory: {}".format(name))
+    execute("mkdir -p {}".format(name))
 
 def waitall(processes):
     for p in processes:
