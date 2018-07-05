@@ -9,12 +9,15 @@ from patterns import InitialPattern, SuddenMigrationPattern, FluidMigrationPatte
 import experiments
 from experiments import eprint, ensure_dir, current_commit, run_cmd, wait_all
 
+print(sys.argv)
+
 argparser = argparse.ArgumentParser(description='Process some integers.')
 argparser.add_argument("--clusterpath", help='the path of this repo on the cluster machines', required=True)
 argparser.add_argument("--serverprefix", help='an ssh username@server prefix, e.g. andreal@fdr, the server number will be appended', required=True)
 argparser.add_argument("--dryrun", help='don\'t actually do anything', action='store_true')
 argparser.add_argument("--machineid", help='choose a machine for machine-local experiments (can be overridden per-experiment)', type=int)
 argparser.add_argument("--baseid", help='choose the first machine for this experiment (can be overridden per-experiment)', type=int)
+# argparser.add_argument("-c")
 args = argparser.parse_args()
 experiments.cluster_src_path = args.clusterpath
 experiments.cluster_server = args.serverprefix
@@ -115,29 +118,30 @@ class Experiment(object):
             if not self._machine_local:
                 assert(self.base_machine_id is not None)
                 for p in range(0, self._processes):
-                    f.write("{}{}:3210\n".format(experiments.cluster_server, self.base_machine_id + p))
+                    f.write("{}{}.ethz.ch:3210\n".format(experiments.cluster_server.split('@')[1], self.base_machine_id + p))
             else:
                 assert(self.single_machine_id is not None)
                 for p in range(0, self._processes):
-                    f.write("{}{}:{}\n".format(experiments.cluster_server, self.single_machine_id, 3210 + p))
+                    f.write("{}{}.ethz.ch:{}\n".format(experiments.cluster_server.split('@')[1], self.single_machine_id, 3210 + p))
 
 
-        command_prefix = "~/.cargo/bin/cargo run --bin timely --release --no-default-features"
+        eth_proxy = ". ~/eth_proxy.sh && "
+        command_prefix = "cargo run --bin timely --release --no-default-features"
         if not self._machine_local:
             make_command = lambda p: (
-                    command_prefix +
+                    eth_proxy + command_prefix +
                     " --features dynamic_scaling_mechanism/bin-{} {} {} {}/{} {}".format(
                         self._bin_shift, self._rate, self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._config["query"])) +
-                    " --hostfile {} -n {} -p {} -w {}".format(hostfile_file_name, self._processes, p, self._workers))
+                    " --hostfile {}/{} -n {} -p {} -w {}".format(os.getcwd(), hostfile_file_name, self._processes, p, self._workers))
             commands = [(self.base_machine_id + p, make_command(p), self.get_result_file_name("stdout", p)) for p in range(0, self._processes)]
             return commands
         else:
             assert(self.single_machine_id is not None)
             make_command = lambda p: (
-                    command_prefix +
+                    eth_proxy + "hwloc-bind socket:{} -- ".format(p) + command_prefix +
                     " --features dynamic_scaling_mechanism/bin-{} {} {} {}/{} {}".format(
                         self._bin_shift, self._rate, self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._config["query"])) +
-                    " --hostfile {} -n {} -p {} -w {}".format(hostfile_file_name, self._processes, p, self._workers))
+                    " --hostfile {}/{} -n {} -p {} -w {}".format(os.getcwd(), hostfile_file_name, self._processes, p, self._workers))
             commands = [(self.single_machine_id, make_command(p), self.get_result_file_name("stdout", p)) for p in range(0, self._processes)]
             return commands
 
@@ -147,20 +151,23 @@ class Experiment(object):
             ensure_dir(self.get_result_directory_name())
         wait_all([run_cmd(c, redirect=r, background=True, node=p, dryrun=dryrun) for p, c, r in self.commands()])
 
-workers = 8 
-for bin_shift in range(int(math.log2(workers)), 16):
-    for migration in ["batched", "sudden", "fluid"]:
-        experiment = Experiment(
-                "exp1",
-                duration=120,
-                rate=10000000 // workers, # Rate is per worker
-                query=["q0"],
-                migration=migration,
-                bin_shift=bin_shift,
-                workers=workers,
-                processes=2,
-                initial_config="uniform",
-                final_config="uniform_skew",
-                machine_local=True)
-        experiment.single_machine_id = 1
-        experiment.run_commands()
+def bin_shifting_q0(group):
+    workers = 8
+    all_bin_shifts = list(range(int(math.log2(workers)), 16))
+    bin_shifts = all_bin_shifts[group * len(all_bin_shifts) // 4:(group + 1) * len(all_bin_shifts) // 4]
+    for bin_shift in bin_shifts:
+        for migration in ["batched", "sudden", "fluid"]:
+            experiment = Experiment(
+                    "bin_shifting_q0",
+                    duration=120,
+                    rate=10000000 // workers, # Rate is per worker
+                    query=["q0"],
+                    migration=migration,
+                    bin_shift=bin_shift,
+                    workers=workers,
+                    processes=2,
+                    initial_config="uniform",
+                    final_config="uniform_skew",
+                    machine_local=True)
+            experiment.single_machine_id = group + 1
+            experiment.run_commands()

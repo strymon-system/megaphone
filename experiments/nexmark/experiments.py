@@ -6,6 +6,8 @@ is_worktree_clean = execute("cd `git rev-parse --show-toplevel`; git diff-index 
 
 if not is_worktree_clean:
     shall = input("Work directory dirty. Continue? (y/N) ").lower() == 'y'
+    if not shall:
+        sys.exit(0)
 
 current_commit = ("dirty-" if not is_worktree_clean else "") + execute("git rev-parse HEAD", capture=True)
 current_commit = current_commit[:16]
@@ -26,7 +28,7 @@ def ensure_dir(name):
 
 def wait_all(processes):
     for p in processes:
-        p.wait()
+        p.wait(use_spinner=False)
 
 eprint("commit: {}".format(current_commit))
 
@@ -40,9 +42,9 @@ def run_cmd(cmd, redirect=None, background=False, node="", dryrun=False):
     # eprint("running on {}{}: {}".format(cluster_server, node, full_cmd))
     # if redirect is not None and os.path.exists(redirect):
     #     return execute("echo \"skipping {}\"".format(redirect), async=background)
-    cmd = "ssh -t {}{} \"{}\"".format(cluster_server, node, full_cmd) + (" > {}".format(redirect) if redirect else "")
+    cmd = "ssh -t {}{}.ethz.ch \"{}\"".format(cluster_server, node, full_cmd) + (" > {}".format(redirect) if redirect else "")
+    eprint("$ {}".format(cmd), level="run")
     if dryrun:
-        eprint("$ {}".format(cmd), level="run")
         return execute("echo dryrun {}".format(node), async=background)
     else:
         return execute(cmd, async=background)
