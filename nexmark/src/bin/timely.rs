@@ -1279,6 +1279,10 @@ fn main() {
         let mut input = Some(input);
 
         let control_sequence = 0;
+        let mut control_input = Some(control_input);
+        if index != 0 {
+            control_input.take().unwrap().close();
+        }
 
         loop {
             let elapsed_ns = timer.elapsed().to_nanos();
@@ -1288,7 +1292,7 @@ fn main() {
                     let instructions = instructions.remove(0).1;
                     let count = instructions.len();
                     for instruction in instructions {
-                        control_input.send(Control::new(control_sequence, count, instruction));
+                        control_input.as_mut().unwrap().send(Control::new(control_sequence, count, instruction));
                     }
                 }
             }
@@ -1315,9 +1319,12 @@ fn main() {
                     events_so_far += 1;
                 }
                 input.advance_to(target_ns as usize);
-                control_input.advance_to(target_ns as usize)
+                if index == 0 {
+                    control_input.as_mut().unwrap().advance_to(target_ns as usize);
+                }
             } else {
                 input.take().unwrap();
+                control_input.take();
             }
 
             if let Some(input) = input.as_ref() {
