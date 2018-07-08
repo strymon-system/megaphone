@@ -106,7 +106,7 @@ fn main() {
             worker.dataflow(|scope| {
                 let control = scope.input_from(&mut control_input).broadcast();
                 let mut state_stream = input.to_stream(scope)
-                                        .stateful::<_, HashMap<(), ()>, _, ()>(|e: &nexmark::event::Event| e.id() as u64, &control);
+                                        .stateful::<_, HashMap<(), ()>, _, ()>(|e: &nexmark::event::Event| calculate_hash(&e.id()), &control);
                 state_stream.stream
                         .probe_with(&mut state_stream.probe)
                         .probe_with(&mut probe);
@@ -128,7 +128,7 @@ fn main() {
             worker.dataflow(|scope| {
                 let control = scope.input_from(&mut control_input).broadcast();
                 let mut state_stream = input.to_stream(scope)
-                                        .stateful::<_, HashMap<(), ()>, _, ()>(|e: &nexmark::event::Event| e.id() as u64, &control);
+                                        .stateful::<_, HashMap<(), ()>, _, ()>(|e: &nexmark::event::Event| calculate_hash(&e.id()), &control);
                                         
                                                                              
                 state_stream.stream
@@ -157,7 +157,7 @@ fn main() {
                 let auction_skip = 123;
                 let control = scope.input_from(&mut control_input).broadcast();
                 let mut state_stream = input.to_stream(scope)
-                                        .stateful::<_, HashMap<(), ()>, _, ()>(|e: &nexmark::event::Event| e.id() as u64, &control);
+                                        .stateful::<_, HashMap<(), ()>, _, ()>(|e: &nexmark::event::Event| calculate_hash(&e.id()), &control);
                 state_stream.stream
                      .flat_map(|(_,_,e)| nexmark::event::Bid::from(e))
                      .filter(move |b| b.auction % auction_skip == 0)
@@ -243,12 +243,12 @@ fn main() {
                 let mut auctions =
                 events.flat_map(|e| nexmark::event::Auction::from(e))
                       .filter(|a| a.category == 10)
-                      .stateful::<_, HashMap<u64, nexmark::event::Auction>, _, ()>(|a| a.seller as u64, &control);
+                      .stateful::<_, HashMap<u64, nexmark::event::Auction>, _, ()>(|a| calculate_hash(&a.seller), &control);
 
                 let mut people =
                 events.flat_map(|e| nexmark::event::Person::from(e))
                       .filter(|p| p.state == "OR" || p.state == "ID" || p.state == "CA")
-                      .stateful::<_, HashMap<u64,nexmark::event::Person>, _, ()>(|p| p.id as u64, &control);
+                      .stateful::<_, HashMap<u64,nexmark::event::Person>, _, ()>(|p| calculate_hash(&p.id), &control);
 
                 // The shared state for each input
                 let auction_state = auctions.state.clone();
@@ -416,10 +416,10 @@ fn main() {
                                     let mut v = Vec::new(); 
                                     let auction_id = b.auction as u64; 
                                     v.push(b); (auction_id,v)})
-                                .stateful::<_,HashMap<u64,Vec<nexmark::event::Bid>>,_, ()>(|(k,_b)| *k,&control);
+                                .stateful::<_,HashMap<u64,Vec<nexmark::event::Bid>>,_, ()>(|(k,_b)| calculate_hash(k), &control);
 
                 let mut auctions = events.flat_map(|e| nexmark::event::Auction::from(e))
-                                .stateful::<_,HashMap<u64,Vec<nexmark::event::Auction>>,_, _>(|a| a.id as u64, &control);
+                                .stateful::<_,HashMap<u64,Vec<nexmark::event::Auction>>,_, _>(|a| calculate_hash(&a.id), &control);
 
                 // The shared state for each input
                 let bid_state = bids.state.clone();
@@ -564,7 +564,7 @@ fn main() {
                     Some(closed_auctions_flex.clone())
                     .replay_into(scope)
                     .map(|(a,b)| (a.category, (b.price, 1usize)))
-                    .stateful::<_,HashMap<u64,(usize,usize)>,_, ()>(|(a,(_price,_count))| *a as u64, &control);
+                    .stateful::<_,HashMap<u64,(usize,usize)>,_, ()>(|(a,(_price,_count))| calculate_hash(a), &control);
 
                 let state = closed_auctions_by_category.state.clone();
 
@@ -705,7 +705,7 @@ fn main() {
                      .map(move |b| (b.auction, ((b.date_time / window_slide_ns) + 1) * window_slide_ns))
                      // TODO: Could pre-aggregate pre-exchange, if there was reason to do so.
                      // Partitions by auction id
-                     .stateful::<_,HashMap<u64,(usize,usize)>,_, ()>(|(a,_b)| *a as u64, &control);
+                     .stateful::<_,HashMap<u64,(usize,usize)>,_, ()>(|(a,_b)| calculate_hash(a), &control);
 
                 let bid_state = bids.state.clone();
 
@@ -812,7 +812,7 @@ fn main() {
                         let mut vd = ::nexmark::AbomVecDeque(VecDeque::new());
                         vd.push_front((b.bidder, b.price));
                         (b.bidder as u64,vd)})
-                    .stateful::<_,HashMap<u64,::nexmark::AbomVecDeque<(usize,usize)>>,_,()>(|(b,_p)| *b as u64, &control);
+                    .stateful::<_,HashMap<u64,::nexmark::AbomVecDeque<(usize,usize)>>,_,()>(|(b,_p)| calculate_hash(b), &control);
 
                 let state = winners.state.clone();
 
@@ -970,7 +970,7 @@ fn main() {
                         (a,v)
                      })
                      // Partition by auction id to avoid serializing the computation
-                     .stateful::<_,HashMap<u64,Vec<(usize,usize)>>,_, ()>(|(a,_v)| *a as u64, &control);
+                     .stateful::<_,HashMap<u64,Vec<(usize,usize)>>,_, ()>(|(a,_v)| calculate_hash(a), &control);
 
                 let bid_state = bids.state.clone();
 
@@ -1125,12 +1125,12 @@ fn main() {
                 let mut auctions =
                 events.flat_map(|e| nexmark::event::Auction::from(e))
                       .map(|a| (a.seller, a.date_time))
-                      .stateful::<_,HashMap<u64,usize>,_, ()>(|(s,_d)| *s as u64, &control);
+                      .stateful::<_,HashMap<u64,usize>,_, ()>(|(s,_d)| calculate_hash(s), &control);
 
                 let mut people =
                 events.flat_map(|e| nexmark::event::Person::from(e))
                       .map(|p| (p.id, p.date_time))
-                      .stateful::<_,HashMap<u64,usize>,_, ()>(|(p,_d)| *p as u64, &control);
+                      .stateful::<_,HashMap<u64,usize>,_, ()>(|(p,_d)| calculate_hash(p), &control);
                 
                 let auctions_state = auctions.state.clone();
                 let people_state = people.state.clone();
