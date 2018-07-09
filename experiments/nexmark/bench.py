@@ -43,6 +43,8 @@ class Experiment(object):
         self._initial_config = self._config["initial_config"]
         self._final_config = self._config["final_config"]
         self._machine_local = self._config["machine_local"]
+        self._queries = self._config["queries"]
+        assert(isinstance(self._queries, list))
 
         self.single_machine_id = single_machine_id
         self.base_machine_id = base_machine_id
@@ -57,8 +59,8 @@ class Experiment(object):
                 kv_pairs.append((key, value))
             else:
                 kv_pairs.append((key, "|".join(value)))
-        queries = "+".join(map(lambda p: "{}={}".format(p[0], p[1]), kv_pairs))
-        return "{}/{}".format(current_commit, queries)
+        configuration = "+".join(map(lambda p: "{}={}".format(p[0], p[1]), kv_pairs))
+        return "{}/{}".format(current_commit, configuration)
 
     def get_setup_directory_name(self):
         return "{}/{}".format("setups", self.get_directory_name())
@@ -128,7 +130,7 @@ class Experiment(object):
             make_command = lambda p: (
                     eth_proxy +
                     "./target/release/timely {} {} {}/{} {}".format(
-                        self._rate, self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._config["query"])) +
+                        self._rate, self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._queries)) +
                     " --hostfile {}/{} -n {} -p {} -w {}".format(os.getcwd(), hostfile_file_name, self._processes, p, self._workers))
             commands = [(self.base_machine_id + p, make_command(p), self.get_result_file_name("stdout", p)) for p in range(0, self._processes)]
             return commands
@@ -137,7 +139,7 @@ class Experiment(object):
             make_command = lambda p: (
                     eth_proxy + "hwloc-bind socket:{} -- ".format(p) +
                     "./target/release/timely {} {} {}/{} {}".format(
-                        self._rate, self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._config["query"])) +
+                        self._rate, self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._queries)) +
                     " --hostfile {}/{} -n {} -p {} -w {}".format(os.getcwd(), hostfile_file_name, self._processes, p, self._workers))
             commands = [(self.single_machine_id, make_command(p), self.get_result_file_name("stdout", p)) for p in range(0, self._processes)]
             return commands
@@ -164,7 +166,7 @@ def non_migrating(group):
                     "non_migrating",
                     duration=600,
                     rate=rate // workers, # Rate is per worker
-                    query=query,
+                    queries=[query,],
                     migration="sudden",
                     bin_shift=8,
                     workers=workers,
@@ -186,7 +188,7 @@ def exploratory_migrating(group):
                         "migrating",
                         duration=600,
                         rate=rate // workers, # Rate is per worker
-                        query=query,
+                        queries=[query,],
                         migration=migration,
                         bin_shift=8,
                         workers=workers,
