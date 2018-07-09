@@ -57,7 +57,7 @@ class Experiment(object):
                 kv_pairs.append((key, value))
             else:
                 kv_pairs.append((key, "|".join(value)))
-        queries = "_".join(map(lambda p: "{}={}".format(p[0], p[1]), kv_pairs))
+        queries = "-".join(map(lambda p: "{}={}".format(p[0], p[1]), kv_pairs))
         return "{}/{}".format(current_commit, queries)
 
     def get_setup_directory_name(self):
