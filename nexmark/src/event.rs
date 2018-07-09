@@ -173,7 +173,7 @@ pub struct Auction{
     pub initial_bid: usize,
     pub reserve: usize,
     pub date_time: Date,
-    pub expires: usize,
+    pub expires: Date,
     pub seller: Id,
     pub category: Id,
 }

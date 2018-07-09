@@ -4,10 +4,12 @@ extern crate timely;
 extern crate nexmark;
 extern crate streaming_harness;
 extern crate dynamic_scaling_mechanism;
+extern crate abomonation;
+#[macro_use] extern crate abomonation_derive;
 
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::collections::{HashMap, VecDeque, BinaryHeap};
+use std::collections::{HashMap, VecDeque};
 
 use streaming_harness::util::ToNanos;
 
@@ -25,10 +27,8 @@ use timely::dataflow::Stream;
 use timely::dataflow::Scope;
 use timely::ExchangeData;
 
-use dynamic_scaling_mechanism::notificator::*;
 use dynamic_scaling_mechanism::stateful::{Stateful, StateHandle};
-use dynamic_scaling_mechanism::{BIN_SHIFT, ControlInst, Control};
-use dynamic_scaling_mechanism::key_to_bin;
+use dynamic_scaling_mechanism::{ControlInst, Control};
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut h: ::fnv::FnvHasher = Default::default();
@@ -72,8 +72,8 @@ fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T
 #[derive(Debug, PartialEq, Eq)]
 enum ExperimentMapMode {
     Sudden,
-    OneByOne,
-    Fluid,
+//    OneByOne,
+//    Fluid,
     File(String),
 }
 
@@ -243,12 +243,12 @@ fn main() {
                 let mut auctions =
                 events.flat_map(|e| nexmark::event::Auction::from(e))
                       .filter(|a| a.category == 10)
-                      .stateful::<_, HashMap<u64, nexmark::event::Auction>, _, ()>(|a| calculate_hash(&a.seller), &control);
+                      .stateful::<_, HashMap<u64, nexmark::event::Auction>, _, _>(|a| calculate_hash(&a.seller), &control);
 
                 let mut people =
                 events.flat_map(|e| nexmark::event::Person::from(e))
                       .filter(|p| p.state == "OR" || p.state == "ID" || p.state == "CA")
-                      .stateful::<_, HashMap<u64,nexmark::event::Person>, _, ()>(|p| calculate_hash(&p.id), &control);
+                      .stateful::<_, HashMap<u64, nexmark::event::Person>, _, _>(|p| calculate_hash(&p.id), &control);
 
                 // The shared state for each input
                 let auction_state = auctions.state.clone();
@@ -262,10 +262,6 @@ fn main() {
                         "Q3 Join Flex",
                         |_capability, _info| {
 
-                            // Stash data till frontiers from both inputs have been advanced
-                            let mut pending_auction_state: HashMap<_, Vec<(_, _, _)>> = Default::default();
-                            let mut pending_people_state: HashMap<_, Vec<(_, _, _)>> = Default::default();
-
                             move |input1, input2, output| {
 
                                 let mut auction_state = auction_state.borrow_mut();
@@ -273,20 +269,18 @@ fn main() {
 
                                 // Stash each input auction
                                 input1.for_each(|time, data| {
-                                    pending_auction_state.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                                    auction_state.notificator().notify_at(time.retain(), vec![]);
+                                    auction_state.notificator().notify_at(time.retain(), data.drain(..).map(|(_, key_id, d)| (key_id, d)).collect());
                                 });
 
                                 // Stash each input person
                                 input2.for_each(|time, data| {
-                                    pending_people_state.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                                    people_state.notificator().notify_at(time.retain(), vec![]);
+                                    people_state.notificator().notify_at(time.retain(), data.drain(..).map(|(_, key_id, d)| (key_id, d)).collect());
                                 });
 
                                 // Process input auctions
-                                while let Some((time, _)) = auction_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
+                                while let Some((time, data)) = auction_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
                                     let mut session = output.session(&time);
-                                    for (_, bin_id, auction) in pending_auction_state.remove(&time.time()).into_iter().flat_map(|v| v.into_iter()) {
+                                    for (bin_id, auction) in data {
                                         if let Some(mut person) = people_state.get_state(bin_id).get(&(auction.seller as u64)) {
                                             session.give((person.name.clone(), 
                                                         person.city.clone(),
@@ -299,9 +293,9 @@ fn main() {
 
                                 }
                                 // Process input people
-                                while let Some((time,_)) = people_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
+                                while let Some((time, data)) = people_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
                                     let mut session = output.session(&time);
-                                    for (_, bin_id, person) in pending_people_state.remove(&time.time()).into_iter().flat_map(|v| v.into_iter()) {
+                                    for (bin_id, person) in data {
                                         if let Some(mut auction) = auction_state.get_state(bin_id).get(&(person.id as u64)) {
                                             session.give((person.name.clone(), 
                                                         person.city.clone(),
@@ -412,14 +406,10 @@ fn main() {
                 let control = scope.input_from(&mut control_input).broadcast();
 
                 let mut bids = events.flat_map(|e| nexmark::event::Bid::from(e))
-                                .map(|b| { 
-                                    let mut v = Vec::new(); 
-                                    let auction_id = b.auction as u64; 
-                                    v.push(b); (auction_id,v)})
-                                .stateful::<_,HashMap<u64,Vec<nexmark::event::Bid>>,_, ()>(|(k,_b)| calculate_hash(k), &control);
+                                .stateful::<_,HashMap<usize, Vec<nexmark::event::Bid>>,_, _>(|bid| calculate_hash(&bid.auction), &control);
 
                 let mut auctions = events.flat_map(|e| nexmark::event::Auction::from(e))
-                                .stateful::<_,HashMap<u64,Vec<nexmark::event::Auction>>,_, _>(|a| calculate_hash(&a.id), &control);
+                                .stateful::<_,HashMap<(), ()>,_, _>(|a| calculate_hash(&a.id), &control);
 
                 // The shared state for each input
                 let bid_state = bids.state.clone();
@@ -433,10 +423,6 @@ fn main() {
                         "Q4 Auction close",
                         |_capability, _info| {
 
-                            // Stash data till frontiers from both inputs have been advanced
-                            let mut pending_bid_state: HashMap<_, Vec<(_, _, _)>> = Default::default();
-                            let mut pending_auction_state: HashMap<_,BinaryHeap<(_,(_, _, _))>> = Default::default();
-
                             move |input1, input2, output| {
 
                                 let mut bid_state = bid_state.borrow_mut();
@@ -445,70 +431,42 @@ fn main() {
                                 // Record each bid.
                                 // NB: We don't summarize as the max, because we don't know which are valid.
                                 input1.for_each(|time, data| {
-                                    pending_bid_state.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                                    bid_state.notificator().notify_at(time.retain(), vec![]);
+                                    let mut not_time = time.time().clone();
+                                    for (_, key_id, bid) in data.drain(..) {
+                                        not_time.inner = bid.date_time;
+                                        bid_state.notificator().notify_at(time.delayed(&not_time), vec![(key_id, bid)])
+                                    }
                                 });
 
                                 // Record each auction.
                                 input2.for_each(|time, data| {
-                                    let epoch_auctions = pending_auction_state.entry(time.time().clone()).or_insert_with(BinaryHeap::new);
-                                    // Request notification for the epoch, which is used to look up into pending auctions
-                                    auction_state.notificator().notify_at(time.delayed(&time), vec![]);
-                                    for (target, bin_id, auction) in data.drain(..) {
-                                        let mut new_time = time.time().clone();
+                                    let mut new_time = time.time().clone();
+                                    for (_target, key_id, auction) in data.drain(..) {
                                         new_time.inner = auction.expires;
                                         // Request notification for the auction's expiration time, which is used to look into the auctions_state
-                                        auction_state.notificator().notify_at(time.delayed(&new_time), vec![auction.id]);
-                                        use std::cmp::Reverse;
-                                        epoch_auctions.push((Reverse(auction.expires), (target,bin_id,auction)));
+                                        auction_state.notificator().notify_at(time.delayed(&new_time), vec![(key_id, auction)]);
                                     }
                                 });
 
                                 // Process input bids
-                                while let Some((time,_)) = bid_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
-                                    for (_, bin_id, (auction_id, mut bids)) in pending_bid_state.remove(&time.time()).into_iter().flat_map(|v| v.into_iter()) {
+                                while let Some((_time, data)) = bid_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
+                                    for (key_id, bid) in data {
                                         // Update bin state
-                                        bid_state.get_state(bin_id).entry(auction_id).or_insert_with(Vec::new).extend(bids.drain(..));    
+                                        bid_state.get_state(key_id).entry(bid.auction).or_insert_with(Vec::new).push(bid);
                                     };
                                 }
                                 // Process input auctions
-                                while let Some((time, mut auction_ids)) = auction_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
+                                while let Some((time, auction_data)) = auction_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
                                     let mut session = output.session(&time);
-                                    // Check pending events
-                                    if let Some(mut pending_auctions) = pending_auction_state.remove(&time.time()) {
-                                        while pending_auctions.peek().map(|x| (x.0).0 < time.inner) == Some(true) {
-                                            // Output the winner for each expired auction
-                                            let (_, (_, bin_id, auction)) = pending_auctions.pop().unwrap();
-                                            if let Some(mut bids) = bid_state.get_state(bin_id).remove(&(auction.id as u64)) {
-                                                bids.retain(|b|
-                                                    auction.date_time <= b.date_time &&
+                                    for (key_id, auction) in auction_data {
+                                        if let Some(mut bids) = bid_state.get_state(key_id).remove(&auction.id) {
+                                            bids.retain(|b|
+                                                auction.date_time <= b.date_time &&
                                                     b.date_time < auction.expires &&
                                                     b.price >= auction.reserve);
-                                                bids.sort_by(|b1,b2| b1.price.cmp(&b2.price));
-                                                if let Some(winner) = bids.pop() {
-                                                    session.give((auction.clone(), winner));
-                                                }
-                                            }
-                                        }
-                                        // Keep auctions that haven't expired yet
-                                        for (_, (_, bin_id, auction)) in pending_auctions.drain() {
-                                            let slot = auction_state.get_state(bin_id).entry(time.time().inner as u64).or_insert_with(Vec::new);
-                                            slot.push(auction);
-                                        }
-                                    }
-                                    // Now check the actual state
-                                    for auction_id in auction_ids.drain(..){
-                                        let bin_id = key_to_bin(auction_id as u64) as u64;
-                                        for expired_auction in auction_state.get_state(bin_id).remove(&(time.time().inner as u64)).into_iter().flat_map(|v| v.into_iter()) {
-                                            if let Some(mut bids) = bid_state.get_state(bin_id).remove(&(expired_auction.id as u64)) {
-                                                bids.retain(|b|
-                                                    expired_auction.date_time <= b.date_time &&
-                                                    b.date_time < expired_auction.expires &&
-                                                    b.price >= expired_auction.reserve);
-                                                bids.sort_by(|b1,b2| b1.price.cmp(&b2.price));
-                                                if let Some(winner) = bids.pop() {
-                                                    session.give((expired_auction.clone(), winner));
-                                                }
+                                            bids.sort_by(|b1,b2| b1.price.cmp(&b2.price));
+                                            if let Some(winner) = bids.pop() {
+                                                session.give((auction.clone(), winner));
                                             }
                                         }
                                     }
@@ -563,8 +521,8 @@ fn main() {
                 let mut closed_auctions_by_category = 
                     Some(closed_auctions_flex.clone())
                     .replay_into(scope)
-                    .map(|(a,b)| (a.category, (b.price, 1usize)))
-                    .stateful::<_,HashMap<u64,(usize,usize)>,_, ()>(|(a,(_price,_count))| calculate_hash(a), &control);
+                    .map(|(a,b)| (a.category, b.price))
+                    .stateful::<_, HashMap<_, _>, _, _>(|(a, _price)| calculate_hash(a), &control);
 
                 let state = closed_auctions_by_category.state.clone();
 
@@ -572,45 +530,24 @@ fn main() {
                     .unary_frontier(Pipeline, "Q4 Average",
                         |_cap, _info| {
 
-                            let mut pending_state: HashMap<_, Vec<(_, _, (_,(_,_)))>> = Default::default();
-
                             move |input, output| {
 
                                 let mut state = state.borrow_mut();
-                                let frontier = input.frontier();
 
-                                while let Some((time,_)) = state.notificator().next(&[input.frontier()]) {
-                                    if let Some(mut pend) = pending_state.remove(time.time()) {
-                                        let mut session = output.session(&time);
-                                        for (_, bin_id, (category, (price,count))) in pend.drain(..) {
-                                            let entry = state.get_state(bin_id).entry(category as u64).or_insert((0, 0));
-                                            entry.0 += price;
-                                            entry.1 += count;
-                                            session.give((category, entry.0 / entry.1));
-                                        }
-                                    }   
+                                while let Some((time, data)) = state.notificator().next(&[input.frontier()]) {
+                                    let mut session = output.session(&time);
+                                    for (bin_id, (category, price)) in data {
+                                        let entry = state.get_state(bin_id).entry(category).or_insert((0usize, 0));
+                                        entry.0 += price;
+                                        entry.1 += 1;
+                                        session.give((category, entry.0 / entry.1));
+                                    }
                                 }
                                 
                                 input.for_each(|time, data| {
-                                    if frontier.less_than(time.time()) {
-                                        pending_state.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                                        state.notificator().notify_at(time.retain(), vec![]);
-                                    }
-                                    else {
-                                        if let Some(mut pend) = pending_state.remove(time.time()) {
-                                            let mut session = output.session(&time);
-                                            for (_, bin_id, (category, (price,count))) in pend.drain(..) {
-                                                let entry = state.get_state(bin_id).entry(category as u64).or_insert((0, 0));
-                                                entry.0 += price;
-                                                entry.1 += count;
-                                                session.give((category, entry.0 / entry.1));
-                                            }
-                                        }  
-                                    }
+                                    state.notificator().notify_at(time.retain(), data.drain(..).map(|(_, key_id, d)| (key_id, d)).collect());
                                 });
-
                             }
-
                         })
                     .probe_with(&mut closed_auctions_by_category.probe)
                     .probe_with(&mut probe);
@@ -705,16 +642,16 @@ fn main() {
                      .map(move |b| (b.auction, ((b.date_time / window_slide_ns) + 1) * window_slide_ns))
                      // TODO: Could pre-aggregate pre-exchange, if there was reason to do so.
                      // Partitions by auction id
-                     .stateful::<_,HashMap<u64,(usize,usize)>,_, ()>(|(a,_b)| calculate_hash(a), &control);
+                     .stateful::<_,HashMap<_, _>, _, _>(|(a, _b)| calculate_hash(a), &control);
 
                 let bid_state = bids.state.clone();
+
+                #[derive(Abomonation, Eq, PartialEq, Clone)]
+                enum InsDel<T> { Ins(T), Del(T) };
 
                 bids.stream
                      .unary_frontier(Pipeline, "Q5 Accumulate",
                         |_capability, _info| {
-
-                            let mut pending_additions: HashMap<_, Vec<_>> = Default::default();
-                            let mut pending_deletions: HashMap<_, Vec<_>> = Default::default();
 
                             move |input, output| {
 
@@ -722,44 +659,37 @@ fn main() {
 
                                 input.for_each(|time, data| {
                                     for &(_, bin_id, (auction, a_time)) in data.iter() {
-                                        bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(a_time)), vec![]); // Request notification to add
                                         // Stash pending additions
-                                        pending_additions.entry(time.delayed(&RootTimestamp::new(a_time)))
-                                                .or_insert(Vec::new())
-                                                .push((bin_id, auction));
+                                        bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(a_time)), vec![(bin_id, InsDel::Ins(auction))]);
 
-                                        let new_time = a_time + (window_slice_count * window_slide_ns);
-                                        bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(new_time)),vec![]);  // Request notification to remove
                                         // Stash pending deletions
-                                        pending_deletions.entry(time.delayed(&RootTimestamp::new(new_time)))
-                                                .or_insert(Vec::new())
-                                                .push((bin_id, auction));
+                                        let new_time = a_time + (window_slice_count * window_slide_ns);
+                                        bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(new_time)),vec![(bin_id, InsDel::Del(auction))]);
                                     }
                                 });
 
-                                while let Some((time,_)) = bid_state.notificator().next(&[input.frontier()]) {
+                                while let Some((time, data)) = bid_state.notificator().next(&[input.frontier()]) {
                                     // Process additions (if any)
-                                    if let Some(additions) = pending_additions.remove(&time) {
-                                        for (bin_id, auction) in additions.iter() {
-                                            let slot = bid_state.get_state(*bin_id).entry(*auction as u64).or_insert((*auction,0));
-                                            slot.1 += 1;
-                                            
-                                        }
-                                    }
-                                    // Process deletions (if any)
-                                    if let Some(deletions) = pending_deletions.remove(&time) {
-                                        for (bin_id, auction) in deletions.into_iter() {
-                                            let slot = bid_state.get_state(bin_id).entry(auction as u64).or_insert((auction,0));
-                                            slot.1 -= 1;
+                                    for (key_id, action) in data {
+                                        match action {
+                                            InsDel::Ins(auction) => {
+                                                let slot = bid_state.get_state(key_id).entry(auction).or_insert(0);
+                                                *slot += 1;
+                                            },
+                                            InsDel::Del(auction) => {
+                                                let slot = bid_state.get_state(key_id).entry(auction).or_insert(0);
+                                                *slot -= 1;
+                                            }
+
                                         }
                                     }
                                     // Output results (if any)
                                     let mut session = output.session(&time);
                                     bid_state.scan(move |a| { 
-                                                    if let Some((_,(auction,_))) = a.iter().max_by_key(|(_auction_id,(_auction,count))| count) {
-                                                         session.give(*auction);
-                                                    }
-                                                }); 
+                                        if let Some((auction, _count)) = a.iter().max_by_key(|(_auction_id, count)| *count) {
+                                             session.give(*auction);
+                                        }
+                                    });
                                 }
                             }
                         })
@@ -808,11 +738,8 @@ fn main() {
 
                 let mut winners =  Some(closed_auctions_flex.clone())
                     .replay_into(scope)
-                    .map(|(_a, b)| {
-                        let mut vd = ::nexmark::AbomVecDeque(VecDeque::new());
-                        vd.push_front((b.bidder, b.price));
-                        (b.bidder as u64,vd)})
-                    .stateful::<_,HashMap<u64,::nexmark::AbomVecDeque<(usize,usize)>>,_,()>(|(b,_p)| calculate_hash(b), &control);
+                    .map(|(_a, b)| (b.bidder, b.price))
+                    .stateful::<_, HashMap<_, _>, _, _>(|(b,_p)| calculate_hash(b), &control);
 
                 let state = winners.state.clone();
 
@@ -820,43 +747,24 @@ fn main() {
                     .unary_frontier(Pipeline, "Q6 Average",
                         |_cap, _info| {
 
-                            let mut pending_state: HashMap<_, Vec<(_, _, (_,::nexmark::AbomVecDeque<(usize,usize)>))>> = Default::default();
-
                             move |input, output| {
 
                                 let mut state = state.borrow_mut();
-                                let frontier = input.frontier();
-
-                                while let Some((time,_)) = state.notificator().next(&[input.frontier()]) {
-                                    if let Some(mut pend) = pending_state.remove(time.time()) {
-                                        let mut session = output.session(&time);
-                                        for (_, bin_id, (bidder, mut price)) in pend.drain(..) {
-                                            let entry = state.get_state(bin_id).entry(bidder).or_insert(::nexmark::AbomVecDeque(VecDeque::new()));
-                                            if entry.len() >= 10 { entry.pop_back(); }
-                                            entry.push_front(price.pop_back().expect("No bid price found."));
-                                            let mut sum: usize = entry.iter().map(|(_,b)| b).sum();
-                                            session.give((bidder, sum / entry.len()));
-                                        }
-                                    }
-                                }
 
                                 input.for_each(|time, data| {
-                                    if frontier.less_than(time.time()) {
-                                        pending_state.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                                        state.notificator().notify_at(time.retain(), vec![]);
-                                    }
-                                    else { // Process directly
-                                        let mut session = output.session(&time);
-                                        // Price is a VecDeque with a single element
-                                        for (_, bin_id, (bidder, mut price)) in data.drain(..) {
-                                            let entry = state.get_state(bin_id).entry(bidder).or_insert(::nexmark::AbomVecDeque(VecDeque::new()));
-                                            if entry.len() >= 10 { entry.pop_back(); }
-                                            entry.push_front(price.pop_back().expect("No bid price found."));
-                                            let mut sum: usize = entry.iter().map(|(_,p)| p).sum();
-                                            session.give((bidder, sum / entry.len()));
-                                        }
-                                    }
+                                    state.notificator().notify_at(time.retain(), data.drain(..).map(|(_, key_id, d)| (key_id, d)).collect());
                                 });
+
+                                while let Some((time, data)) = state.notificator().next(&[input.frontier()]) {
+                                    let mut session = output.session(&time);
+                                    for (bin_id, (bidder, price)) in data {
+                                        let entry = state.get_state(bin_id).entry(bidder).or_insert(::nexmark::AbomVecDeque(VecDeque::new()));
+                                        if entry.len() >= 10 { entry.pop_back(); }
+                                        entry.push_front(price);
+                                        let mut sum: usize = entry.iter().sum();
+                                        session.give((bidder, sum / entry.len()));
+                                    }
+                                }
                             }
                         })
                     .probe_with(&mut winners.probe)
@@ -1125,12 +1033,12 @@ fn main() {
                 let mut auctions =
                 events.flat_map(|e| nexmark::event::Auction::from(e))
                       .map(|a| (a.seller, a.date_time))
-                      .stateful::<_,HashMap<u64,usize>,_, ()>(|(s,_d)| calculate_hash(s), &control);
+                      .stateful::<_, HashMap<(), ()>, _, _>(|(s,_d)| calculate_hash(s), &control);
 
                 let mut people =
                 events.flat_map(|e| nexmark::event::Person::from(e))
                       .map(|p| (p.id, p.date_time))
-                      .stateful::<_,HashMap<u64,usize>,_, ()>(|(p,_d)| calculate_hash(p), &control);
+                      .stateful::<_, HashMap<_, _>, _, _>(|(p,_d)| calculate_hash(p), &control);
                 
                 let auctions_state = auctions.state.clone();
                 let people_state = people.state.clone();
@@ -1144,8 +1052,6 @@ fn main() {
                         |_capability, _info| {
 
                             let window_size_ns = 12 * 60 * 60 * 1_000_000_000;
-                            let mut new_people: HashMap<_,Vec<_>> = Default::default();
-                            let mut auctions: HashMap<_,Vec<_>> = Default::default();
 
                             move |input1, input2, output| {
 
@@ -1154,25 +1060,23 @@ fn main() {
 
                                 // Notice new people.
                                 input1.for_each(|time, data| {
-                                    new_people.entry(time.time().inner).or_insert_with(Vec::new).extend(data.drain(..));
-                                    people_state.notificator().notify_at(time.retain(),vec![]);
+                                    people_state.notificator().notify_at(time.retain(), data.drain(..).map(|(_, key_id, d)| (key_id, d)).collect());
                                 });
 
                                 // Notice new auctions.
                                 input2.for_each(|time, data| {
-                                    auctions.entry(time.time().inner).or_insert_with(Vec::new).extend(data.drain(..));
-                                    auctions_state.notificator().notify_at(time.retain(),vec![]);
+                                    auctions_state.notificator().notify_at(time.retain(), data.drain(..).map(|(_, key_id, d)| (key_id, d)).collect());
                                 });
 
-                                while let Some((time,_)) = people_state.notificator().next(&[input1.frontier(),input2.frontier()]) {
+                                while let Some((_time, data)) = people_state.notificator().next(&[input1.frontier(),input2.frontier()]) {
                                     // Update people state
-                                    for (_t, bin_id,(person,date)) in new_people.remove(&time.time().inner).into_iter().flat_map(|v| v.into_iter()) {
+                                    for (bin_id, (person, date)) in data {
                                         people_state.get_state(bin_id).entry(person as u64).or_insert(date);
                                     }
                                 }
 
-                                while let Some((time,_)) = auctions_state.notificator().next(&[input1.frontier(),input2.frontier()]) {
-                                    for (_t, bin_id,(seller,date)) in auctions.remove(&time.time().inner).into_iter().flat_map(|v| v.into_iter()) {
+                                while let Some((time, data)) = auctions_state.notificator().next(&[input1.frontier(),input2.frontier()]) {
+                                    for (bin_id, (seller, date)) in data {
                                         if let Some(p_time) = people_state.get_state(bin_id).get(&(seller as u64)) {
                                             if (date - p_time) < window_size_ns {
                                                 output.session(&time).give(seller);
@@ -1246,7 +1150,7 @@ fn main() {
                 }
                 instructions
             },
-            _ => panic!("unsupported map mode"),
+//            _ => panic!("unsupported map mode"),
         };
 
         for instruction in &instructions {
