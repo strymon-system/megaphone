@@ -71,6 +71,7 @@ fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T
 
 #[derive(Debug, PartialEq, Eq)]
 enum ExperimentMapMode {
+    None,
     Sudden,
 //    OneByOne,
 //    Fluid,
@@ -1100,6 +1101,7 @@ fn main() {
         let duration_ns: u64 = std::env::args().nth(2).expect("duration absent").parse::<u64>().expect("couldn't parse duration") * 1_000_000_000;
 
         let map_mode = match std::env::args().nth(3).expect("migration file absent").as_str() {
+            "none" => ExperimentMapMode::None,
             "sudden" => ExperimentMapMode::Sudden,
 //            "one-by-one" => ExperimentMapMode::OneByOne,
 //            "fluid" => ExperimentMapMode::Fluid,
@@ -1107,6 +1109,13 @@ fn main() {
         };
 
         let mut instructions: Vec<(u64, Vec<ControlInst>)> = match map_mode {
+            ExperimentMapMode::None => {
+                let mut map = vec![0; 1 << ::dynamic_scaling_mechanism::BIN_SHIFT];
+                for i in 0..map.len() {
+                    map[i] = i % peers;
+                };
+                vec![(0, vec![ControlInst::Map(map)])]
+            }
             ExperimentMapMode::Sudden => {
                 let mut map = vec![0; 1 << ::dynamic_scaling_mechanism::BIN_SHIFT];
                 // TODO(moritzo) HAAAACCCCKKK
