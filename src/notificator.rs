@@ -247,7 +247,7 @@ impl<T: Timestamp, D: ExchangeData+Eq+PartialEq> FrontierNotificator<T, D> {
     /// Allocates a new `FrontierNotificator` with initial capabilities.
     pub fn from<I: IntoIterator<Item=Capability<T>>>(iter: I) -> Self {
         FrontierNotificator {
-            pending: iter.into_iter().map(|x| (x,vec![])).collect(),
+            pending: iter.into_iter().map(|x| (x, vec![])).collect(),
             available: ::std::collections::BinaryHeap::new(),
         }
     }
@@ -310,17 +310,16 @@ impl<T: Timestamp, D: ExchangeData+Eq+PartialEq> FrontierNotificator<T, D> {
         // in that the sequence of capabilities in self.available will remain non-decreasing.
 
         if !self.pending.is_empty() {
-
-            self.pending.sort_by(|x,y| x.0.time().cmp(y.0.time()));
-            for i in 0 .. self.pending.len() - 1 {
-                if self.pending[i].0.time() == self.pending[i+1].0.time() {
+            self.pending.sort_by(|x, y| x.0.time().cmp(y.0.time()));
+            for i in 0..self.pending.len() - 1 {
+                if self.pending[i].0.time() == self.pending[i + 1].0.time() {
                     let data = ::std::mem::replace(&mut self.pending[i].1, vec![]);
-                    self.pending[i+1].1.extend(data);
+                    self.pending[i + 1].1.extend(data);
                 }
             }
             self.pending.retain(|x| x.1.len() > 0);
 
-            for i in 0 .. self.pending.len() {
+            for i in 0..self.pending.len() {
                 if frontiers.iter().all(|f| !f.less_equal(&self.pending[i].0)) {
                     // TODO : This clones a capability, whereas we could move it instead.
                     let data = ::std::mem::replace(&mut self.pending[i].1, vec![]);
@@ -401,6 +400,10 @@ impl<T: Timestamp, D: ExchangeData+Eq+PartialEq> FrontierNotificator<T, D> {
     /// ```
     pub fn pending<'a>(&'a self) -> ::std::slice::Iter<'a, (Capability<T>, Vec<D>)> {
         self.pending.iter()
+    }
+
+    pub fn pending_mut<'a>(&'a mut self) -> &'a mut Vec<(Capability<T>, Vec<D>)> {
+        &mut self.pending
     }
 }
 

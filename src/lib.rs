@@ -27,8 +27,11 @@ pub struct Control {
 #[derive(Abomonation, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Bin(pub usize);
 
-pub fn key_to_bin(key: u64) -> usize {
-    (key >> ::std::mem::size_of::<u64>() * 8 - BIN_SHIFT) as usize
+#[derive(Abomonation, Clone, Copy, Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct Key(u64);
+
+pub fn key_to_bin(key: Key) -> usize {
+    (key.0 >> ::std::mem::size_of::<u64>() * 8 - BIN_SHIFT) as usize
 }
 
 impl ::std::ops::Deref for Bin {

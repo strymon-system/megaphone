@@ -23,7 +23,7 @@ use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::progress::Timestamp;
 use timely::progress::frontier::Antichain;
 
-use ::{BIN_SHIFT, Bin, Control, ControlSetBuilder, ControlSet, key_to_bin};
+use ::{BIN_SHIFT, Bin, Control, ControlSetBuilder, ControlSet, Key, key_to_bin};
 use ::notificator::FrontierNotificator;
 
 const BUFFER_CAP: usize = 16;
@@ -41,7 +41,7 @@ const BUFFER_CAP: usize = 16;
 /// State abstraction. It encapsulates state assorted by bins and a notificator.
 pub struct State<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> {
     bins: Vec<S>,
-    notificator: FrontierNotificator<T, D>,
+    notificator: FrontierNotificator<T, (Key, D)>,
 }
 
 impl<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> State<T, S, D> {
@@ -55,32 +55,32 @@ impl<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> State<T, S, D> {
 pub trait StateHandle<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> {
 
     /// Obtain a mutable reference to the state associated with a bin.
-    fn get_state(&mut self, key: u64) -> &mut S;
+    fn get_state(&mut self, key: Key) -> &mut S;
 
     /// Call-back to get state and a notificator.
     fn with_state_frontier<
         R,
-        F: Fn(&mut S, &FrontierNotificator<T, D>) -> R
-    >(&mut self, key: u64, f: F) -> R;
+        F: Fn(&mut S, &FrontierNotificator<T, (Key, D)>) -> R
+    >(&mut self, key: Key, f: F) -> R;
 
     /// Iterate all bins. This might go away.
     fn scan<F: FnMut(&mut S)>(&mut self, f: F);
 
     /// Obtain a reference to a notificator.
-    fn notificator(&mut self) -> &mut FrontierNotificator<T, D>;
+    fn notificator(&mut self) -> &mut FrontierNotificator<T, (Key, D)>;
 }
 
 impl<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> StateHandle<T, S, D> for State<T, S, D> {
 
-    fn get_state(&mut self, key: u64) -> &mut S {
+    fn get_state(&mut self, key: Key) -> &mut S {
         &mut self.bins[key_to_bin(key)]
     }
 
     #[inline(always)]
     fn with_state_frontier<
         R,
-        F: Fn(&mut S, &FrontierNotificator<T, D>) -> R
-    >(&mut self, key: u64, f: F) -> R {
+        F: Fn(&mut S, &FrontierNotificator<T, (Key, D)>) -> R
+    >(&mut self, key: Key, f: F) -> R {
         f(&mut self.bins[key_to_bin(key)], &mut self.notificator)
     }
 
@@ -90,7 +90,7 @@ impl<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> StateHandle<T, S, D> for Sta
         }
     }
 
-    fn notificator(&mut self) -> &mut FrontierNotificator<T, D> {
+    fn notificator(&mut self) -> &mut FrontierNotificator<T, (Key, D)> {
         &mut self.notificator
     }
 }
@@ -101,7 +101,7 @@ enum StateProtocol<T, S, D> {
     /// Provide a piece of state for a bin
     State(Bin, S),
     /// Announce an outstanding time stamp
-    Pending(T, Vec<D>),
+    Pending(T, (Key, D)),
 }
 
 /// A timely `Stream` with an additional state handle and a probe.
@@ -112,13 +112,13 @@ pub struct StateStream<S, V, D, W, M> where
     W: ExchangeData,                            // State format on the wire
     M: ExchangeData+Eq+PartialEq,
 {
-    /// The wrapped stream. The stream provides tuples of the form `(usize, u64, V)`. The first two
+    /// The wrapped stream. The stream provides tuples of the form `(usize, Key, V)`. The first two
     /// parameters are the target worker and the key identifier. Implementations are encouraged to
     /// ignore the target worker. The key identifier has to be used to obtain the associated state
     /// from [`StateHandle`].
     ///
     /// [`StateHandle`]: trait.StateHandle.html
-    pub stream: Stream<S, (usize, u64, V)>,
+    pub stream: Stream<S, (usize, Key, V)>,
     /// A handle to the shared state object
     pub state: Rc<RefCell<State<S::Timestamp, D, M>>>,
     /// The probe `stateful` uses to determine completion.
@@ -134,7 +134,7 @@ impl<S, V, D, W, M> StateStream<S, V, D, W, M>
         W: ExchangeData,
         M: ExchangeData+Eq+PartialEq,
 {
-    pub fn new(stream: Stream<S, (usize, u64, V)>, state: Rc<RefCell<State<S::Timestamp, D, M>>>, probe: ProbeHandle<S::Timestamp>) -> Self {
+    pub fn new(stream: Stream<S, (usize, Key, V)>, state: Rc<RefCell<State<S::Timestamp, D, M>>>, probe: ProbeHandle<S::Timestamp>) -> Self {
         StateStream {
             stream,
             state,
@@ -296,7 +296,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                         for mut data in vec {
                             {
                                 let data_iter = data.drain(..).map(|d| {
-                                    let key = key(&d);
+                                    let key = Key(key(&d));
                                     (map[key_to_bin(key)], key, d)
                                 });
                                 session.give_iterator(data_iter);
@@ -340,11 +340,22 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                     let state = ::std::mem::replace(&mut states.bins[bin], Default::default());
                                     session.give_iterator(state.into_iter().map(|s| (*new, StateProtocol::State(Bin(bin), s))));
 
-                                    // Pass pending notifications to the new owner
-                                    // Note: The receiver will get *all* notifications, so an
-                                    // operator can experience spurious wake-ups
-                                    session.give_iterator(states.notificator.pending().map(|c| (*new, StateProtocol::Pending(c.0.time().clone(), c.1.clone()))))
                                 }
+                            }
+                            for (cap, data) in states.notificator.pending_mut().iter_mut() {
+                                data.retain(|(key_id, meta)| {
+                                    let old_worker = old_map[key_to_bin(*key_id)];
+                                    let new_worker = new_map[key_to_bin(*key_id)];
+                                    if old_worker != new_worker {
+                                        // Pass pending notifications to the new owner
+                                        // Note: The receiver will get *all* notifications, so an
+                                        // operator can experience spurious wake-ups
+                                        session.give((new_worker, StateProtocol::Pending(cap.time().clone(), (*key_id, meta.clone()))));
+                                        false
+                                    } else {
+                                        true
+                                    }
+                                });
                             }
                         }
 
@@ -377,7 +388,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                         let mut session = data_out.session(&time);
 
                         let data_iter = data.drain(..).into_iter().map(|d| {
-                            let key = key(&d);
+                            let key = Key(key(&d));
                             (map[key_to_bin(key)], key, d)
                         });
                         session.give_iterator(data_iter);
@@ -415,7 +426,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                     states.bins[*bin].extend(Some(s)),
                                 // Request notification
                                 StateProtocol::Pending(t, data) =>
-                                    states.notificator.notify_at(time.delayed(&t), data),
+                                    states.notificator.notify_at(time.delayed(&t), vec![data]),
                             }
 
                         }
