@@ -198,3 +198,26 @@ def exploratory_migrating(group):
                         machine_local=True)
                 experiment.single_machine_id = group + 1
                 experiment.run_commands()
+
+def exploratory_bin_shift(group):
+    workers = 8
+    processes = 4
+    all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
+    queries = all_queries[group * len(all_queries) // 4:(group + 1) * len(all_queries) // 4]
+    for rate in [x * 100000 for x in [2, 4, 8, 16, 32]]:
+        for bin_shift in range(int(math.log2(workers * processes)), 21):
+            for query in queries:
+                experiment = Experiment(
+                    "bin_shift",
+                    duration=600,
+                    rate=rate // workers, # Rate is per worker
+                    queries=[query,],
+                    migration="fluid",
+                    bin_shift=bin_shift,
+                    workers=workers,
+                    processes=processes,
+                    initial_config="uniform",
+                    final_config="uniform_skew",
+                    machine_local=True)
+                experiment.single_machine_id = group + 1
+                experiment.run_commands()
