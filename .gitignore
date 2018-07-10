@@ -3,3 +3,5 @@ experiments/plots
 experiments/results
 experiments/*/results
 experiments/*/setups
+experiments/nexmark/package-lock.json
+experiments/nexmark/node_modules
