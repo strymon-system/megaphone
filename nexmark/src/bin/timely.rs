@@ -1078,6 +1078,8 @@ fn main() {
             });
         }
 
+        println!("bin_shift\t{}", ::dynamic_scaling_mechanism::BIN_SHIFT);
+
         let rate = std::env::args().nth(1).expect("rate absent").parse().expect("couldn't parse rate");
         let mut config1 = nexmark::config::Config::new();
         config1.insert("events-per-second", rate);
