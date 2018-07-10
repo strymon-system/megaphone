@@ -164,7 +164,7 @@ def non_migrating(group):
                     duration=300,
                     rate=rate,
                     queries=[query,],
-                    migration="none",
+                    migration="fluid",
                     bin_shift=8,
                     workers=workers,
                     processes=4,
