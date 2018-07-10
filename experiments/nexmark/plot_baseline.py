@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sys, shutil, json #, tempfile
+import sys, shutil, json
 from os import listdir
 
 import parse_filename
@@ -23,8 +23,6 @@ def kv_to_string(config):
 
 assert(len(sys.argv) >= 2)
 results_dir = sys.argv[1]
-
-# tempdir = tempfile.mkdtemp(results_dir.replace("/", "-"))
 
 files = [parse_filename.parse_name(x) for x in listdir(results_dir)]
 print("all params:", parse_filename.all_params(list(zip(*files))[1]), file=sys.stderr)
@@ -51,8 +49,8 @@ for query in ['q{}'.format(x) for x in range(0, 7)]:
             experiment_data = [{"query": query, "latency": int(x), "ccdf": float(y), "experiment": experiment} for x, y in
                     [x.split('\t')[1:3] for x in f.readlines() if x.startswith('latency_ccdf')]]
             data.extend(experiment_data)
-            if len(experiment_data) > 0:
-                print(query, experiment_dict['rate'], max(x["latency"] for x in experiment_data), file=sys.stderr)
+            # if len(experiment_data) > 0:
+            #     print(query, experiment_dict['rate'], max(x["latency"] for x in experiment_data), file=sys.stderr)
 
 chart = {
     "$schema": "https://vega.github.io/schema/vega-lite/v2.json",
@@ -84,6 +82,6 @@ chart = {
     ]
 }
 
-print(json.dumps(chart))
+# python3 plot_baseline.py results/5dbfec2533ed5432/ | ./node_modules/vega-lite/bin/vl2vg | ./node_modules/vega/bin/vg2svg > baseline.svg
 
-# shutil.rmtree(tempdir)
+print(json.dumps(chart))
