@@ -99,9 +99,11 @@ impl<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> StateHandle<T, S, D> for Sta
 #[derive(Abomonation, Clone, Ord, PartialOrd, Eq, PartialEq)]
 enum StateProtocol<T, S, D> {
     /// Provide a piece of state for a bin
-    State(Bin, bool, S),
+    State(Bin, S),
     /// Announce an outstanding time stamp
     Pending(T, (Key, D)),
+    /// Prepare for receiving state
+    Prepare(Bin),
 }
 
 /// A timely `Stream` with an additional state handle and a probe.
@@ -343,8 +345,8 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                 if (*old % peers == index) && (old != new) {
                                     // Capture bin's values as a stream of data
                                     let state = states.bins[bin].take().expect("Instructed to move bin but it is None");
-                                    let first_iter = ::std::iter::once(true).chain(::std::iter::repeat(false));
-                                    session.give_iterator(state.into_iter().zip(first_iter).map(|(s, first)| (*new, StateProtocol::State(Bin(bin), first,s))));
+                                    session.give((*new, StateProtocol::Prepare(Bin(bin))));
+                                    session.give_iterator(state.into_iter().map(|s| (*new, StateProtocol::State(Bin(bin), s))));
 
                                 }
                             }
@@ -427,12 +429,12 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                     for state_update in state_updates {
                         for (_target, state) in state_update {
                             match state {
+                                StateProtocol::Prepare(bin) => {
+                                    assert!(states.bins[*bin].is_none());
+                                    states.bins[*bin] = Some(Default::default());
+                                }
                                 // Extend state
-                                StateProtocol::State(bin, first, s) => {
-                                    if first {
-                                        assert!(states.bins[*bin].is_none());
-                                        states.bins[*bin] = Some(Default::default());
-                                    }
+                                StateProtocol::State(bin, s) => {
                                     states.bins[*bin].as_mut().map(|bin| bin.extend(Some(s)));
                                 },
                                 // Request notification
