@@ -17,7 +17,7 @@ use timely::ExchangeData;
 use timely::PartialOrder;
 use timely::dataflow::{Stream, Scope, ProbeHandle};
 use timely::dataflow::channels::pact::{Exchange, Pipeline};
-use timely::dataflow::operators::{FrontierNotificator as TFN, Probe};
+use timely::dataflow::operators::{FrontierNotificator as TFN};
 use timely::dataflow::operators::generic::Operator;
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::progress::Timestamp;
@@ -40,13 +40,13 @@ const BUFFER_CAP: usize = 16;
 
 /// State abstraction. It encapsulates state assorted by bins and a notificator.
 pub struct State<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> {
-    bins: Vec<S>,
+    bins: Vec<Option<S>>,
     notificator: FrontierNotificator<T, (Key, D)>,
 }
 
 impl<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> State<T, S, D> {
     /// Construct a new `State` with the provided vector of bins and a default `FrontierNotificator`.
-    fn new(bins: Vec<S>) -> Self {
+    fn new(bins: Vec<Option<S>>) -> Self {
         Self { bins, notificator: FrontierNotificator::new() }
     }
 }
@@ -73,7 +73,7 @@ pub trait StateHandle<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> {
 impl<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> StateHandle<T, S, D> for State<T, S, D> {
 
     fn get_state(&mut self, key: Key) -> &mut S {
-        &mut self.bins[key_to_bin(key)]
+        self.bins[key_to_bin(key)].as_mut().expect("Trying to access non-available bin")
     }
 
     #[inline(always)]
@@ -81,12 +81,12 @@ impl<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> StateHandle<T, S, D> for Sta
         R,
         F: Fn(&mut S, &FrontierNotificator<T, (Key, D)>) -> R
     >(&mut self, key: Key, f: F) -> R {
-        f(&mut self.bins[key_to_bin(key)], &mut self.notificator)
+        f(self.bins[key_to_bin(key)].as_mut().expect("Trying to access non-available bin"), &mut self.notificator)
     }
 
     fn scan<F: FnMut(&mut S)>(&mut self, mut f: F) {
         for state in &mut self.bins {
-            f(state)
+            state.as_mut().map(|state| f(state));
         }
     }
 
@@ -99,7 +99,7 @@ impl<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> StateHandle<T, S, D> for Sta
 #[derive(Abomonation, Clone, Ord, PartialOrd, Eq, PartialEq)]
 enum StateProtocol<T, S, D> {
     /// Provide a piece of state for a bin
-    State(Bin, S),
+    State(Bin, bool, S),
     /// Announce an outstanding time stamp
     Pending(T, (Key, D)),
 }
@@ -187,7 +187,12 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         let peers = self.scope().peers();
 
         // worker-local state, maps bins to state
-        let states: Rc<RefCell<State<S::Timestamp, D, M>>> = Rc::new(RefCell::new(State::new(vec![Default::default(); 1 << BIN_SHIFT])));
+        let default_element: Option<D> = if self.scope().index() == 0 {
+            Some(Default::default())
+        } else {
+            None
+        };
+        let states: Rc<RefCell<State<S::Timestamp, D, M>>> = Rc::new(RefCell::new(State::new(vec![default_element; 1 << BIN_SHIFT])));
         let states_f = Rc::clone(&states);
         let states_op = Rc::clone(&states);
 
@@ -337,8 +342,9 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                 // actually contains data. Also, we must be the current owner of the bin.
                                 if (*old % peers == index) && (old != new) {
                                     // Capture bin's values as a stream of data
-                                    let state = ::std::mem::replace(&mut states.bins[bin], Default::default());
-                                    session.give_iterator(state.into_iter().map(|s| (*new, StateProtocol::State(Bin(bin), s))));
+                                    let state = states.bins[bin].take().expect("Instructed to move bin but it is None");
+                                    let first_iter = ::std::iter::once(true).chain(::std::iter::repeat(false));
+                                    session.give_iterator(state.into_iter().zip(first_iter).map(|(s, first)| (*new, StateProtocol::State(Bin(bin), first,s))));
 
                                 }
                             }
@@ -422,8 +428,13 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                         for (_target, state) in state_update {
                             match state {
                                 // Extend state
-                                StateProtocol::State(bin, s) =>
-                                    states.bins[*bin].extend(Some(s)),
+                                StateProtocol::State(bin, first, s) => {
+                                    if first {
+                                        assert!(states.bins[*bin].is_none());
+                                        states.bins[*bin] = Some(Default::default());
+                                    }
+                                    states.bins[*bin].as_mut().map(|bin| bin.extend(Some(s)));
+                                },
                                 // Request notification
                                 StateProtocol::Pending(t, data) =>
                                     states.notificator.notify_at(time.delayed(&t), vec![data]),
