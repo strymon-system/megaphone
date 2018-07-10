@@ -36,7 +36,7 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
     h.finish()
 }
 
-
+#[allow(dead_code)]
 fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T>, output: &Stream<S, T>) -> Stream<S, ()> {
     use timely::dataflow::channels::pact::Exchange;
     use std::collections::HashMap;
