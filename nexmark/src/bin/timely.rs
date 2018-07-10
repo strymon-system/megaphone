@@ -619,6 +619,7 @@ fn main() {
                                             *accumulations.entry(auction).or_insert(0) -= 1;
                                         }
                                     }
+                                    // TODO: This only accumulates per *worker*, not globally!
                                     if let Some((_count, auction)) = accumulations.iter().map(|(&a,&c)| (c,a)).max() {
                                         output.session(&time).give(auction);
                                     }
@@ -686,7 +687,8 @@ fn main() {
                                     }
                                     // Output results (if any)
                                     let mut session = output.session(&time);
-                                    bid_state.scan(move |a| { 
+                                    // TODO: This only accumulates per *bin*, not globally!
+                                    bid_state.scan(move |a| {
                                         if let Some((auction, _count)) = a.iter().max_by_key(|(_auction_id, count)| *count) {
                                              session.give(*auction);
                                         }
