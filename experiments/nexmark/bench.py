@@ -107,10 +107,7 @@ class Experiment(object):
 
         with open(migration_pattern_file_name, "w") as f:
             eprint("writing migration pattern to {}".format(migration_pattern_file_name))
-            PatternGenerator(
-                    pattern,
-                    initial_pattern.generate_uniform(),
-                    initial_pattern.generate_uniform_skew()).write(f)
+            PatternGenerator(pattern, initial_config, final_config).write(f)
 
         hostfile_file_name = self.get_setup_file_name("hostfile")
         with open(hostfile_file_name, 'w') as f:
