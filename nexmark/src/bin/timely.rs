@@ -873,48 +873,31 @@ fn main() {
                 let mut bids = input.to_stream(scope)
                      .flat_map(|e| nexmark::event::Bid::from(e))
                      .map(move |b| (b.auction, ((b.date_time / window_size_ns) + 1) * window_size_ns, b.price))
-                     .map(|(a,t,p)| {
-                        let mut v = Vec::new();
-                        v.push((t,p));
-                        (a,v)
-                     })
                      // Partition by auction id to avoid serializing the computation
-                     .stateful::<_,HashMap<u64,Vec<(usize,usize)>>,_, ()>(|(a,_v)| calculate_hash(a), &control);
+                     .stateful::<_, HashMap<_, _>, _, _>(|(a, _window, _price)| calculate_hash(a), &control);
 
                 let bid_state = bids.state.clone();
 
                 bids.stream
                      .unary_frontier(Pipeline, "Q7 Pre-reduce", |_cap, _info| {
-                        let mut pending_maxima: HashMap<_,Vec<_>> = Default::default();
 
                         move |input, output| {
 
                             let mut bid_state = bid_state.borrow_mut();
 
                             input.for_each(|time, data| {
-                                pending_maxima.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                                for (t,bin_id,(window,price)) in data.drain(..) {
-                                    bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(window)),vec![]);
+                                for (_, key_id, (_auction, window, price)) in data.drain(..) {
+                                    bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(window)),vec![(key_id, (window, price))]);
                                 } 
                             });
 
-                            while let Some((time,_)) = bid_state.notificator().next(&[input.frontier()]) {
+                            while let Some((time, maxima)) = bid_state.notificator().next(&[input.frontier()]) {
                                 let mut windows = HashMap::new();
-                                if let Some(mut maxima) = pending_maxima.remove(&time) {
-                                    for (_t, bin_id, (auction, price_per_window)) in maxima.drain(..) {
-                                        let open_windows = bid_state.get_state(bin_id).entry(auction as u64).or_insert_with(Vec::new);
-                                        for &(window,price) in price_per_window.iter() {// For all open windows for the respective auction
-                                            if let Some(position) = open_windows.iter().position(|x| x.0 == window) {
-                                                if open_windows[position].1 < price {
-                                                    open_windows[position].1 = price;
-                                                    windows.insert(window,price);
-                                                }
-                                            }
-                                            else {
-                                                open_windows.push((window, price));
-                                                windows.insert(window,price);
-                                            }
-                                        }
+                                for (key_id, (window, price)) in maxima {
+                                    let open_windows = bid_state.get_state(key_id).entry(window).or_insert(0);
+                                    if *open_windows < price {
+                                        *open_windows = price;
+                                        windows.insert(window, price);
                                     }
                                 }
                                 let mut session = output.session(&time);
