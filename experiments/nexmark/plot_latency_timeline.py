@@ -12,19 +12,20 @@ results_dir = sys.argv[1]
 files = plot.get_files(results_dir)
 filtering = eval(sys.argv[2])
 
-graph_filtering, data = plot.memory_timeline_plots(results_dir, files, filtering)
+graph_filtering, data = plot.latency_timeline_plots(results_dir, files, filtering)
 
 vega_lite = {
   "$schema": "https://vega.github.io/schema/vega-lite/v2.json",
   "title": ", ".join("{}: {}".format(k, v) for k, v in sorted(graph_filtering, key=lambda t: t[0])),
   "width": 600,
   "mark": {
-      "type": "line",
-      "clip": True,
+    "type": "line",
+    "clip": True,
   },
   "encoding": {
     "x": { "field": "time", "type": "quantitative", "axis": { "labelAngle": -90 }, "scale": {"domain": [0,450]} },
-    "y": { "field": "RSS", "type": "quantitative", "axis": { "format": "s", "labelAngle": 0 }, "scale": { "type": "log" }},
+    "y": { "field": "latency", "type": "quantitative", "axis": { "format": "e", "labelAngle": 0 }, "scale": { "type": "log" }},
+    "color": { "field": "p", "type": "nominal" },
     "row": { "field": "experiment", "type": "nominal" },
   },
   "data": {

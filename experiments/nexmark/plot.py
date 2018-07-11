@@ -60,7 +60,7 @@ def latency_plots(results_dir, files, filtering):
 
     return (filtering, data)
 
-def timeline_plots(results_dir, files, filtering):
+def memory_timeline_plots(results_dir, files, filtering):
     filtering = _filtering_params(files, filtering)
 
     data = []
@@ -74,6 +74,25 @@ def timeline_plots(results_dir, files, filtering):
             }.items()) + list(experiment_dict.items())) for x, y in
                     [x.split('\t')[1:3] for x in f.readlines() if x.startswith('statm_RSS')]]
             data.extend(experiment_data[0::10])
+
+    return (filtering, data)
+
+def latency_timeline_plots(results_dir, files, filtering):
+    filtering = _filtering_params(files, filtering)
+    # [0.75, 0.50, 0.25, 0.05, 0.01, 0.001, 0.0]
+
+    data = []
+    for filename, config in [x for x in files if set(x[1]).issuperset(set(filtering))]:
+        experiment_dict = dict(set(config).difference(set(filtering)))
+        with open("{}/{}/stdout.0".format(results_dir, filename), 'r') as f:
+            for vals in [x.split('\t')[1:] for x in f.readlines() if x.startswith('summary_timeline')]:
+                for p, l in [(.25, 1), (.5, 2), (.75, 3), (.99, 4), (.999, 5), (1, 6)]:
+                    data.append(dict(list({
+                        "time": float(vals[0]) / 1000000000,
+                        "latency": int(vals[l]),
+                        "p": p,
+                        "experiment": "m: {}, q: {}, r: {}".format(experiment_dict['migration'], experiment_dict['queries'], experiment_dict['rate']),
+                    }.items()) + list(experiment_dict.items())))
 
     return (filtering, data)
 
