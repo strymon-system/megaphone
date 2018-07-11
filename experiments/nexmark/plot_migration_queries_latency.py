@@ -2,7 +2,7 @@
 
 # ./plot_migration_queries_latency.py results/98f4e2fa2e8bc839/ "[ ('bin_shift', 8), ('duration', 300), ('machine_local', True), ('processes', 4), ('workers', 8), ]"
 
-import sys, shutil, json
+import sys, os, shutil, json
 import argparse
 from os import listdir
 import plot
@@ -72,5 +72,9 @@ commit = results_dir.rstrip('/').split('/')[-1]
 print("commit:", commit, file=sys.stderr)
 
 plot.ensure_dir("charts/{}".format(commit))
-with open("charts/{}/{}".format(commit, graph_filename), 'w') as c:
+chart_filename = "charts/{}/{}".format(commit, graph_filename)
+with open(chart_filename, 'w') as c:
     print(html, file=c)
+
+print(chart_filename)
+print(os.getcwd() + "/" + chart_filename, file=sys.stderr)
