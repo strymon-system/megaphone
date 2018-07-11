@@ -5,3 +5,4 @@ experiments/*/results
 experiments/*/setups
 experiments/nexmark/package-lock.json
 experiments/nexmark/node_modules
+experiments/nexmark/charts
