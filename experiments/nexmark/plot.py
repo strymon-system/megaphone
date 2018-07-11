@@ -39,12 +39,16 @@ def get_files(results_dir):
     # print("all params:", get_all_params(list(zip(*files))[1]), file=sys.stderr)
     return files
 
-def latency_plots(results_dir, files, filtering):
+def _filtering_params(files, filtering):
     all_params = get_all_params(x[1] for x in files)
     single_params_value = set(x[0] for x in all_params.items() if len(x[1]) == 1)
     filtering_params = set(x[0] for x in filtering)
     for additional_filtering_param in single_params_value.difference(filtering_params):
         filtering.append((additional_filtering_param, all_params[additional_filtering_param][0]))
+    return filtering
+
+def latency_plots(results_dir, files, filtering):
+    filtering = _filtering_params(files, filtering)
 
     data = []
     for filename, config in [x for x in files if set(x[1]).issuperset(set(filtering))]:
@@ -56,15 +60,22 @@ def latency_plots(results_dir, files, filtering):
 
     return (filtering, data)
 
-    # for query in ['q{}'.format(x) for x in range(0, 7)]:
-    # row_str = ", ".join("{}: {}".format(k, v) for k, v in sorted(experiment_dict.items(), key=lambda t: t[0]))
-    # column = ", ".join("{}: {}".format(k, v) for k, v in sorted(experiment_dict.items(), key=lambda t: t[0]))
-    # # for k in ['final_config', 'initial_config', 'migration']: del experiment_dict[k]
-    # experiment = ", ".join("{}: {}".format(k, v) for k, v in sorted(experiment_dict.items(), key=lambda t: t[0]))
-    # found_series.add(([experiment_dict[x] for x in series], experiment))
-    # print(experiment, file=sys.stderr)
-    # if len(experiment_data) > 0:
-    #     print(query, experiment_dict['rate'], max(x["latency"] for x in experiment_data), file=sys.stderr)
+def timeline_plots(results_dir, files, filtering):
+    filtering = _filtering_params(files, filtering)
+
+    data = []
+    for filename, config in [x for x in files if set(x[1]).issuperset(set(filtering))]:
+        experiment_dict = dict(set(config).difference(set(filtering)))
+        with open("{}/{}/stdout.0".format(results_dir, filename), 'r') as f:
+            experiment_data = [dict(list({
+                "time": float(x) / 1000000000,
+                "RSS": float(y),
+                "experiment": "m: {}, q: {}, r: {}".format(experiment_dict['migration'], experiment_dict['queries'], experiment_dict['rate']),
+            }.items()) + list(experiment_dict.items())) for x, y in
+                    [x.split('\t')[1:3] for x in f.readlines() if x.startswith('statm_RSS')]]
+            data.extend(experiment_data[0::10])
+
+    return (filtering, data)
 
 if __name__ == "__main__" and len(sys.argv) >= 3 and sys.argv[1] == '--list-params':
     results_dir = sys.argv[2]
