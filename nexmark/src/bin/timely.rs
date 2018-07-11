@@ -429,76 +429,52 @@ fn main() {
                 let events = input.to_stream(scope);
                 let control = scope.input_from(&mut control_input).broadcast();
 
-                let mut bids = events.flat_map(|e| nexmark::event::Bid::from(e))
-                                .stateful::<_,HashMap<usize, Vec<nexmark::event::Bid>>,_, _>(|bid| calculate_hash(&bid.auction), &control);
+                let bids = events.flat_map(|e| nexmark::event::Bid::from(e));
+                let auctions = events.flat_map(|e| nexmark::event::Auction::from(e));
 
-                let mut auctions = events.flat_map(|e| nexmark::event::Auction::from(e))
-                                .stateful::<_,HashMap<(), ()>,_, _>(|a| calculate_hash(&a.id), &control);
-
-                // The shared state for each input
-                let bid_state = bids.state.clone();
-                let auction_state = auctions.state.clone();
-
-                bids.stream
-                        .binary_frontier(
-                        &auctions.stream,
-                        Pipeline,
-                        Pipeline,
+                bids.stateful_binary_input(&control,
+                        &auctions,
+                        |bid| calculate_hash(&bid.auction),
+                        |a| calculate_hash(&a.id),
                         "Q4 Auction close",
-                        |_capability, _info| {
-
-                            move |input1, input2, output| {
-
-                                let mut bid_state = bid_state.borrow_mut();
-                                let mut auction_state = auction_state.borrow_mut();
-
-                                // Record each bid.
-                                // NB: We don't summarize as the max, because we don't know which are valid.
-                                input1.for_each(|time, data| {
-                                    let mut not_time = time.time().clone();
-                                    for (_, key_id, bid) in data.drain(..) {
-                                        not_time.inner = bid.date_time;
-                                        bid_state.notificator().notify_at(time.delayed(&not_time), vec![(key_id, bid)])
-                                    }
-                                });
-
-                                // Record each auction.
-                                input2.for_each(|time, data| {
-                                    let mut new_time = time.time().clone();
-                                    for (_target, key_id, auction) in data.drain(..) {
-                                        new_time.inner = auction.expires;
-                                        // Request notification for the auction's expiration time, which is used to look into the auctions_state
-                                        auction_state.notificator().notify_at(time.delayed(&new_time), vec![(key_id, auction)]);
-                                    }
-                                });
-
-                                // Process input bids
-                                while let Some((_time, data)) = bid_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
-                                    for (key_id, bid) in data {
-                                        // Update bin state
-                                        bid_state.get_state(key_id).entry(bid.auction).or_insert_with(Vec::new).push(bid);
-                                    };
-                                }
-                                // Process input auctions
-                                while let Some((time, auction_data)) = auction_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
-                                    let mut session = output.session(&time);
-                                    for (key_id, auction) in auction_data {
-                                        if let Some(mut bids) = bid_state.get_state(key_id).remove(&auction.id) {
-                                            bids.retain(|b|
-                                                auction.date_time <= b.date_time &&
-                                                    b.date_time < auction.expires &&
-                                                    b.price >= auction.reserve);
-                                            bids.sort_by(|b1,b2| b1.price.cmp(&b2.price));
-                                            if let Some(winner) = bids.pop() {
-                                                session.give((auction.clone(), winner));
-                                            }
-                                        }
+                        |not, time, data| {
+                            let mut not_time = time.time().clone();
+                            for (_, key_id, bid) in data.drain(..) {
+                                not_time.inner = bid.date_time;
+                                not.notify_at(time.delayed(&not_time), vec![(key_id, bid)])
+                            }
+                        },
+                        |not, time, data| {
+                            let mut new_time = time.time().clone();
+                            for (_target, key_id, auction) in data.drain(..) {
+                                new_time.inner = auction.expires;
+                                // Request notification for the auction's expiration time, which is used to look into the auctions_state
+                                not.notify_at(time.delayed(&new_time), vec![(key_id, auction)]);
+                            }
+                        },
+                        |_time, data, bid_state, _auction_state, _output| {
+                            for (key_id, bid) in data {
+                                // Update bin state
+                                let bin: &mut HashMap<_, _> = bid_state.get_state(key_id);
+                                bin.entry(bid.auction).or_insert_with(Vec::new).push(bid);
+                            };
+                        },
+                        |time, auction_data, bid_state, _auction_state: &mut ::dynamic_scaling_mechanism::stateful::State<_, HashMap<(), ()>, _>, output| {
+                            let mut session = output.session(&time);
+                            for (key_id, auction) in auction_data {
+                                if let Some(mut bids) = bid_state.get_state(key_id).remove(&auction.id) {
+                                    bids.retain(|b|
+                                        auction.date_time <= b.date_time &&
+                                            b.date_time < auction.expires &&
+                                            b.price >= auction.reserve);
+                                    bids.sort_by(|b1,b2| b1.price.cmp(&b2.price));
+                                    if let Some(winner) = bids.pop() {
+                                        session.give((auction.clone(), winner));
                                     }
                                 }
                             }
-                        })
-                    .probe_with(&mut bids.probe)
-                    .probe_with(&mut auctions.probe)
+                        },
+                    )
                     .capture_into(closed_auctions_flex.clone());
             });
         }
@@ -545,19 +521,17 @@ fn main() {
                 Some(closed_auctions_flex.clone())
                     .replay_into(scope)
                     .map(|(a,b)| (a.category, b.price))
-                    .stateful_unary("Q4 Average",
-                        |(a, _price)| calculate_hash(a),
+                    .stateful_unary(&control, |x| calculate_hash(&x.0), "Q4 Average",
                         |time, data, state, output| {
                             let mut session = output.session(&time);
                             for (key_id, (category, price)) in data {
-                                let object: &mut HashMap<_, _> = state.get_state(key_id);
-                                let entry = object.entry(category).or_insert((0usize, 0));
+                                let bin: &mut HashMap<_, _> = state.get_state(key_id);
+                                let entry = bin.entry(category).or_insert((0usize, 0));
                                 entry.0 += price;
                                 entry.1 += 1;
                                 session.give((category, entry.0 / entry.1));
                             }
-                        },
-                        &control)
+                        })
                     .probe_with(&mut probe);
             });
         }
