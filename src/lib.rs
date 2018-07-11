@@ -9,6 +9,7 @@ pub mod stateful;
 pub mod state_machine;
 pub mod join;
 pub mod notificator;
+pub mod operator;
 
 use timely::order::PartialOrder;
 use timely::progress::frontier::Antichain;
