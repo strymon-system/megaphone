@@ -24,7 +24,7 @@ pub struct Control {
 }
 
 /// A bin identifier. Wraps a `usize`.
-#[derive(Abomonation, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Abomonation, Clone, Copy, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Bin(pub usize);
 
 #[derive(Abomonation, Clone, Copy, Debug, Ord, PartialOrd, Eq, PartialEq)]
