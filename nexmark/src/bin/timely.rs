@@ -1159,7 +1159,7 @@ fn main() {
 
         let mut input = Some(input);
 
-        let control_sequence = 0;
+        let mut control_sequence = 0;
         let mut control_input = Some(control_input);
         if index != 0 {
             control_input.take().unwrap().close();
@@ -1175,6 +1175,7 @@ fn main() {
                     for instruction in instructions {
                         control_input.as_mut().unwrap().send(Control::new(control_sequence, count, instruction));
                     }
+                    control_sequence += 1;
                 }
             }
 
