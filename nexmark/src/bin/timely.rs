@@ -1228,10 +1228,10 @@ fn main() {
     let ::streaming_harness::timeline::Timeline { timeline, latency_metrics, .. } = ::streaming_harness::output::combine_all(timelines);
 
     let latency_metrics = latency_metrics.into_inner();
-    eprintln!("== summary ==\n{}", latency_metrics.summary_string());
-    eprintln!("== timeline ==\n{}",
+    println!("DEBUG_summary\t{}", latency_metrics.summary_string().replace("\n", "\nDEBUG_summary\t"));
+    println!("{}",
               timeline.clone().into_iter().map(|::streaming_harness::timeline::TimelineElement { time, metrics, samples }|
-                    format!("-- {} ({} samples) --\n{}", time, samples, metrics.summary_string())).collect::<Vec<_>>().join("\n"));
+                    format!("DEBUG_timeline\t-- {} ({} samples) --\nDEBUG_timeline\t{}", time, samples, metrics.summary_string().replace("\n", "\nDEBUG_timeline\t"))).collect::<Vec<_>>().join("\n"));
 
     for (value, prob, count) in latency_metrics.ccdf() {
         println!("latency_ccdf\t{}\t{}\t{}", value, prob, count);
