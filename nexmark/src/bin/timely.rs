@@ -88,7 +88,7 @@ fn main() {
         ::std::thread::spawn(move || {
             use std::io::Read;
             let timer = ::std::time::Instant::now();
-            while (statm_reporter_running.load(::std::sync::atomic::Ordering::SeqCst)) {
+            while statm_reporter_running.load(::std::sync::atomic::Ordering::SeqCst) {
                 let mut stat_s = String::new();
                 let mut statm_f = ::std::fs::File::open("/proc/self/statm").expect("can't open /proc/self/statm");
                 statm_f.read_to_string(&mut stat_s).expect("can't read /proc/self/statm");
