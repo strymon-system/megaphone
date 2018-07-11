@@ -1165,17 +1165,21 @@ fn main() {
             control_input.take().unwrap().close();
         }
 
+        let mut last_migrated = None;
+
         loop {
             let elapsed_ns = timer.elapsed().to_nanos();
 
-            if index == 0 {
-                if instructions.get(0).map(|&(ts, _)| ts < elapsed_ns).unwrap_or(false) {
+            if index == 0 && control_input.is_some() {
+                if last_migrated.as_ref().map_or(true, |time| control_input.as_ref().unwrap().time().inner != *time)
+                    && instructions.get(0).map(|&(ts, _)| ts < elapsed_ns).unwrap_or(false) {
                     let instructions = instructions.remove(0).1;
                     let count = instructions.len();
                     for instruction in instructions {
                         control_input.as_mut().unwrap().send(Control::new(control_sequence, count, instruction));
                     }
                     control_sequence += 1;
+                    last_migrated = Some(control_input.as_ref().unwrap().time().inner);
                 }
             }
 
