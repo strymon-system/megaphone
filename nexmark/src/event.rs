@@ -1,4 +1,5 @@
-use rand::{Rng, StdRng};
+use rand::Rng;
+use rand::rngs::SmallRng;
 use std::cmp::{max, min};
 
 use config::NEXMarkConfig;
@@ -8,17 +9,17 @@ trait NEXMarkRng {
     fn gen_price(&mut self) -> usize;
 }
 
-impl NEXMarkRng for StdRng {
+impl NEXMarkRng for SmallRng {
     fn gen_string(&mut self, max: usize) -> String {
-
-        use std::iter;
-        use rand::distributions::Alphanumeric;
-
-        let len = self.gen_range(MIN_STRING_LENGTH, max);
-        iter::repeat(())
-            .map(|()| self.sample(Alphanumeric))
-            .take(len)
-            .collect()
+        "string".to_string()
+//        use std::iter;
+//        use rand::distributions::Alphanumeric;
+//
+//        let len = self.gen_range(MIN_STRING_LENGTH, max);
+//        iter::repeat(())
+//            .map(|()| self.sample(Alphanumeric))
+//            .take(len)
+//            .collect()
     }
 
     fn gen_price(&mut self) -> usize {
@@ -60,7 +61,7 @@ impl Event {
         }
     }
 
-    pub fn create(events_so_far: usize, rng: &mut StdRng, nex: &mut NEXMarkConfig) -> Self {
+    pub fn create(events_so_far: usize, rng: &mut SmallRng, nex: &mut NEXMarkConfig) -> Self {
         let rem = nex.next_adjusted_event(events_so_far) % nex.proportion_denominator;
         let timestamp = nex.event_timestamp_ns(nex.next_adjusted_event(events_so_far));
         let id = nex.first_event_id + nex.next_adjusted_event(events_so_far);
@@ -137,7 +138,7 @@ impl Person {
         }
     }
 
-    fn new(id: usize, time: Date, rng: &mut StdRng, nex: &NEXMarkConfig) -> Self {
+    fn new(id: usize, time: Date, rng: &mut SmallRng, nex: &NEXMarkConfig) -> Self {
         Person {
             id: Self::last_id(id, nex) + nex.first_person_id,
             name: format!("{} {}",
@@ -151,7 +152,7 @@ impl Person {
         }
     }
 
-    fn next_id(id: usize, rng: &mut StdRng, nex: &NEXMarkConfig) -> Id {
+    fn next_id(id: usize, rng: &mut SmallRng, nex: &NEXMarkConfig) -> Id {
         let people = Self::last_id(id, nex) + 1;
         let active = min(people, nex.active_people);
         people - active + rng.gen_range(0, active + nex.person_id_lead)
@@ -187,7 +188,7 @@ impl Auction {
         }
     }
 
-    fn new(events_so_far: usize, id: usize, time: Date, rng: &mut StdRng, nex: &NEXMarkConfig) -> Self {
+    fn new(events_so_far: usize, id: usize, time: Date, rng: &mut SmallRng, nex: &NEXMarkConfig) -> Self {
         let initial_bid = rng.gen_price();
         let seller = if rng.gen_range(0, nex.hot_seller_ratio) > 0 {
             (Person::last_id(id, nex) / nex.hot_seller_ratio_2) * nex.hot_seller_ratio_2
@@ -207,7 +208,7 @@ impl Auction {
         }
     }
 
-    fn next_id(id: usize, rng: &mut StdRng, nex: &NEXMarkConfig) -> Id {
+    fn next_id(id: usize, rng: &mut SmallRng, nex: &NEXMarkConfig) -> Id {
         let max_auction = Self::last_id(id, nex);
         let min_auction = if max_auction < nex.in_flight_auctions { 0 } else { max_auction - nex.in_flight_auctions };
         min_auction + rng.gen_range(0, max_auction - min_auction + 1 + nex.auction_id_lead)
@@ -227,7 +228,7 @@ impl Auction {
         epoch * nex.auction_proportion + offset
     }
 
-    fn next_length(events_so_far: usize, rng: &mut StdRng, time: Date, nex: &NEXMarkConfig) -> Date {
+    fn next_length(events_so_far: usize, rng: &mut SmallRng, time: Date, nex: &NEXMarkConfig) -> Date {
         let current_event = nex.next_adjusted_event(events_so_far);
         let events_for_auctions = (nex.in_flight_auctions * nex.proportion_denominator) / nex.auction_proportion;
         let future_auction = nex.event_timestamp_ns(current_event+events_for_auctions);
@@ -254,7 +255,7 @@ impl Bid {
         }
     }
 
-    fn new(id: usize, time: Date, rng: &mut StdRng, nex: &NEXMarkConfig) -> Self {
+    fn new(id: usize, time: Date, rng: &mut SmallRng, nex: &NEXMarkConfig) -> Self {
         let auction = if 0 < rng.gen_range(0, nex.hot_auction_ratio){
             (Auction::last_id(id, nex) / nex.hot_auction_ratio_2) * nex.hot_auction_ratio_2
         } else {

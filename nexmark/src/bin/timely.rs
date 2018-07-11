@@ -1138,8 +1138,9 @@ fn main() {
         let elapsed_ns = timer.elapsed().to_nanos();
         config.base_time_ns = elapsed_ns as usize;
 
-        use rand::{StdRng, SeedableRng};
-        let mut rng = StdRng::from_seed([0;32]);
+        use rand::SeedableRng;
+        use rand::rngs::SmallRng;
+        let mut rng = SmallRng::from_seed([0;16]);
 
         let input_times = {
             let config = config.clone();
