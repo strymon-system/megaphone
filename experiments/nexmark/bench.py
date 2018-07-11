@@ -122,10 +122,8 @@ class Experiment(object):
                     f.write("{}{}.ethz.ch:{}\n".format(experiments.cluster_server.split('@')[1], self.single_machine_id, 3210 + p))
 
 
-        eth_proxy = ". ~/eth_proxy.sh && "
         if not self._machine_local:
             make_command = lambda p: (
-                    eth_proxy +
                     "./target/release/timely {} {} {}/{} {}".format(
                         self._rate // (self._processes * self._workers), self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._queries)) +
                     " --hostfile {}/{} -n {} -p {} -w {}".format(os.getcwd(), hostfile_file_name, self._processes, p, self._workers))
@@ -134,7 +132,7 @@ class Experiment(object):
         else:
             assert(self.single_machine_id is not None)
             make_command = lambda p: (
-                    eth_proxy + "hwloc-bind socket:{} -- ".format(p) +
+                    "hwloc-bind socket:{} -- ".format(p) +
                     "./target/release/timely {} {} {}/{} {}".format(
                         self._rate // (self._processes * self._workers), self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._queries)) +
                     " --hostfile {}/{} -n {} -p {} -w {}".format(os.getcwd(), hostfile_file_name, self._processes, p, self._workers))
@@ -145,7 +143,7 @@ class Experiment(object):
         eprint("running experiment, results in {}".format(self.get_result_directory_name()), level="info")
         if not dryrun:
             ensure_dir(self.get_result_directory_name())
-        build_cmd = "cargo build --bin timely --release --no-default-features --features dynamic_scaling_mechanism/bin-{}".format(
+        build_cmd = ". ~/eth_proxy.sh && cargo build --bin timely --release --no-default-features --features dynamic_scaling_mechanism/bin-{}".format(
                 self._bin_shift)
         if not self._machine_local:
             run_cmd(build_cmd, node=self.base_machine_id, dryrun=dryrun)

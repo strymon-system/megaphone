@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
 
-# usage:
-# ./plot_p4_w8_latency.py results/98f4e2fa2e8bc839/ "[ ('bin_shift', 8), ('duration', 300), ('machine_local', True), ('processes', 4), ('workers', 8), ]"
-
 import sys, shutil, json
 import argparse
 from os import listdir
@@ -12,6 +9,8 @@ assert(len(sys.argv) >= 3)
 results_dir = sys.argv[1]
 files = plot.get_files(results_dir)
 filtering = eval(sys.argv[2])
+
+# filtering = [ ('bin_shift', 8), ('duration', 300), ('machine_local', True), ('processes', 4), ('workers', 8), ]
 
 graph_filtering, data = plot.latency_plots(results_dir, files, filtering)
 
