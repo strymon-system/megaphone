@@ -155,7 +155,7 @@ def non_migrating(group):
     workers = 8
     all_queries = ["q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8"]
     queries = all_queries[group * len(all_queries) // 4:(group + 1) * len(all_queries) // 4]
-    for rate in [x * 100000 for x in [2, 4]]:
+    for rate in [x * 1000000 for x in [2, 4, 6, 8]]:
         for query in queries:
             experiment = Experiment(
                     "non_migrating",
@@ -165,7 +165,7 @@ def non_migrating(group):
                     migration="fluid",
                     bin_shift=8,
                     workers=workers,
-                    processes=4,
+                    processes=1,
                     initial_config="uniform",
                     final_config="uniform",
                     machine_local=True)
