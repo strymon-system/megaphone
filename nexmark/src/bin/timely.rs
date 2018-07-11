@@ -29,6 +29,7 @@ use timely::ExchangeData;
 
 use dynamic_scaling_mechanism::stateful::{Stateful, StateHandle};
 use dynamic_scaling_mechanism::{ControlInst, Control};
+use dynamic_scaling_mechanism::operator::StatefulOperator;
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut h: ::fnv::FnvHasher = Default::default();
@@ -541,38 +542,22 @@ fn main() {
 
                 let control = scope.input_from(&mut control_input).broadcast();
 
-                let mut closed_auctions_by_category = 
-                    Some(closed_auctions_flex.clone())
+                Some(closed_auctions_flex.clone())
                     .replay_into(scope)
                     .map(|(a,b)| (a.category, b.price))
-                    .stateful::<_, HashMap<_, _>, _, _>(|(a, _price)| calculate_hash(a), &control);
-
-                let state = closed_auctions_by_category.state.clone();
-
-                closed_auctions_by_category.stream
-                    .unary_frontier(Pipeline, "Q4 Average",
-                        |_cap, _info| {
-
-                            move |input, output| {
-
-                                let mut state = state.borrow_mut();
-
-                                while let Some((time, data)) = state.notificator().next(&[input.frontier()]) {
-                                    let mut session = output.session(&time);
-                                    for (bin_id, (category, price)) in data {
-                                        let entry = state.get_state(bin_id).entry(category).or_insert((0usize, 0));
-                                        entry.0 += price;
-                                        entry.1 += 1;
-                                        session.give((category, entry.0 / entry.1));
-                                    }
-                                }
-                                
-                                input.for_each(|time, data| {
-                                    state.notificator().notify_at(time.retain(), data.drain(..).map(|(_, key_id, d)| (key_id, d)).collect());
-                                });
+                    .stateful_unary("Q4 Average",
+                        |(a, _price)| calculate_hash(a),
+                        |time, data, state, output| {
+                            let mut session = output.session(&time);
+                            for (key_id, (category, price)) in data {
+                                let object: &mut HashMap<_, _> = state.get_state(key_id);
+                                let entry = object.entry(category).or_insert((0usize, 0));
+                                entry.0 += price;
+                                entry.1 += 1;
+                                session.give((category, entry.0 / entry.1));
                             }
-                        })
-                    .probe_with(&mut closed_auctions_by_category.probe)
+                        },
+                        &control)
                     .probe_with(&mut probe);
             });
         }
