@@ -129,7 +129,8 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
         let mut stateful = self.stateful(move |v| key(&v), control);
         let states = stateful.state.clone();
 
-        stateful.stream.unary_frontier(Pipeline, name, |_cap, _info| {
+        stateful.stream.unary_frontier(Pipeline, name, |cap, _info| {
+            states.borrow_mut().notificator().init_cap(&cap);
             move |input, output| {
                 let mut states = states.borrow_mut();
                 // stash each input and request a notification when ready
