@@ -45,7 +45,8 @@ where
 
         let states = self.state.clone();
 
-        self.stream.unary_frontier(Pipeline, "StateMachine", |_cap, _info| {
+        self.stream.unary_frontier(Pipeline, "StateMachine", |cap, _info| {
+            states.borrow_mut().notificator().init_cap(&cap);
             move |input, output| {
 
                 let frontier = input.frontier();
