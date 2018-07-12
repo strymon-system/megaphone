@@ -286,7 +286,9 @@ fn main() {
                         Pipeline,
                         Pipeline,
                         "Q3 Join Flex",
-                        |_capability, _info| {
+                        |capability, _info| {
+                            auction_state.borrow_mut().notificator().init_cap(&capability);
+                            people_state.borrow_mut().notificator().init_cap(&capability);
 
                             move |input1, input2, output| {
 
@@ -636,7 +638,8 @@ fn main() {
 
                 bids.stream
                      .unary_frontier(Pipeline, "Q5 Accumulate",
-                        |_capability, _info| {
+                        |capability, _info| {
+                            bid_state.borrow_mut().notificator().init_cap(&capability);
 
                             move |input, output| {
 
@@ -731,7 +734,8 @@ fn main() {
 
                 winners.stream
                     .unary_frontier(Pipeline, "Q6 Average",
-                        |_cap, _info| {
+                        |cap, _info| {
+                            state.borrow_mut().notificator().init_cap(&cap);
 
                             move |input, output| {
 
@@ -864,7 +868,8 @@ fn main() {
                 let bid_state = bids.state.clone();
 
                 bids.stream
-                     .unary_frontier(Pipeline, "Q7 Pre-reduce", |_cap, _info| {
+                     .unary_frontier(Pipeline, "Q7 Pre-reduce", |cap, _info| {
+                         bid_state.borrow_mut().notificator().init_cap(&cap);
 
                         move |input, output| {
 
@@ -1018,7 +1023,9 @@ fn main() {
                         Pipeline,
                         Pipeline,
                         "Q8 join",
-                        |_capability, _info| {
+                        |capability, _info| {
+                            auctions_state.borrow_mut().notificator().init_cap(&capability);
+                            people_state.borrow_mut().notificator().init_cap(&capability);
 
                             let window_size_ns = 12 * 60 * 60 * 1_000_000_000;
 
