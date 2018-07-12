@@ -197,12 +197,14 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
             CapabilityRef<G::Timestamp>, &mut Content<(usize, Key, D2)>) + 'static,
     >(&self, control: &Stream<G, Control>, other: &Stream<G, D2>, key1: B1, key2: B2, name: &str, consume1: C1, consume2: C2, fold1: F1, fold2: F2) -> Stream<G, D3> where G::Timestamp: Hash + Eq
     {
-        let mut stateful1 = self.stateful(move |d1| key1(&d1), control);
-        let mut stateful2 = other.stateful(move |d2| key2(&d2), control);
+        let mut stateful1 = self.stateful(move |d1| key1(&d1), &control);
+        let mut stateful2 = other.stateful(move |d2| key2(&d2), &control);
         let states1 = stateful1.state.clone();
         let states2 = stateful2.state.clone();
 
-        stateful1.stream.binary_frontier(&stateful2.stream, Pipeline, Pipeline, name, |_cap, _info| {
+        stateful1.stream.binary_frontier(&stateful2.stream, Pipeline, Pipeline, name, |cap, _info| {
+            states1.borrow_mut().notificator().init_cap(&cap);
+            states2.borrow_mut().notificator().init_cap(&cap);
             move |input1, input2, output| {
                 let mut states1 = states1.borrow_mut();
                 let mut states2 = states2.borrow_mut();

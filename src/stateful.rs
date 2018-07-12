@@ -326,49 +326,52 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
                     // If the next configuration to install is no longer at all ahead of the state machine output,
                     // then there can be no more records or state updates for any configuration prior to the next.
-                    if pending_configurations.get(0).is_some() && pending_configurations[0].frontier.elements().iter().all(|t| !probe2.less_than(t)) {
+                    if pending_configurations.get(0).is_some() {
+                        if pending_configurations[0].frontier.elements().iter().all(|t| !probe2.less_than(t)) {
 
-                        // We should now install `pending_configurations[0]` into `active_configuration`!
-                        let to_install = pending_configurations.remove(0);
+                            // We should now install `pending_configurations[0]` into `active_configuration`!
+                            let to_install = pending_configurations.remove(0);
 
-                        {   // Scoped to let `old_map` and `new_map` borrows drop.
-                            let old_map = active_configuration.map();
-                            let new_map = to_install.map();
+                            {   // Scoped to let `old_map` and `new_map` borrows drop.
+                                let old_map = active_configuration.map();
+                                let new_map = to_install.map();
 
-                            // Grab states
-                            let mut states = states_f.borrow_mut();
-                            let mut session = state_out.session(&time);
-                            // Determine if we're to move state
-                            for (bin, (old, new)) in old_map.iter().zip(new_map.iter()).enumerate() {
-                                // Migration is needed if a bin is to be moved (`old != new`) and the state
-                                // actually contains data. Also, we must be the current owner of the bin.
-                                if (*old % peers == index) && (old != new) {
-                                    // Capture bin's values as a stream of data
-                                    let state = states.bins[bin].take().expect("Instructed to move bin but it is None");
-                                    session.give((*new, StateProtocol::Prepare(Bin(bin))));
-                                    session.give_iterator(state.into_iter().map(|s| (*new, StateProtocol::State(Bin(bin), s))));
-
+                                // Grab states
+                                let mut states = states_f.borrow_mut();
+                                let mut session = state_out.session(&time);
+                                // Determine if we're to move state
+                                for (bin, (old, new)) in old_map.iter().zip(new_map.iter()).enumerate() {
+                                    // Migration is needed if a bin is to be moved (`old != new`) and the state
+                                    // actually contains data. Also, we must be the current owner of the bin.
+                                    if (*old % peers == index) && (old != new) {
+                                        // Capture bin's values as a stream of data
+                                        let state = states.bins[bin].take().expect("Instructed to move bin but it is None");
+                                        session.give((*new, StateProtocol::Prepare(Bin(bin))));
+                                        session.give_iterator(state.into_iter().map(|s| (*new, StateProtocol::State(Bin(bin), s))));
+                                    }
+                                }
+                                for (cap, data) in states.notificator.pending_mut().iter_mut() {
+                                    data.retain(|(key_id, meta)| {
+                                        let old_worker = old_map[key_to_bin(*key_id)];
+                                        let new_worker = new_map[key_to_bin(*key_id)];
+                                        if old_worker != new_worker {
+                                            // Pass pending notifications to the new owner
+                                            // Note: The receiver will get *all* notifications, so an
+                                            // operator can experience spurious wake-ups
+                                            session.give((new_worker, StateProtocol::Pending(cap.time().clone(), (*key_id, meta.clone()))));
+                                            false
+                                        } else {
+                                            true
+                                        }
+                                    });
                                 }
                             }
-                            for (cap, data) in states.notificator.pending_mut().iter_mut() {
-                                data.retain(|(key_id, meta)| {
-                                    let old_worker = old_map[key_to_bin(*key_id)];
-                                    let new_worker = new_map[key_to_bin(*key_id)];
-                                    if old_worker != new_worker {
-                                        // Pass pending notifications to the new owner
-                                        // Note: The receiver will get *all* notifications, so an
-                                        // operator can experience spurious wake-ups
-                                        session.give((new_worker, StateProtocol::Pending(cap.time().clone(), (*key_id, meta.clone()))));
-                                        false
-                                    } else {
-                                        true
-                                    }
-                                });
-                            }
-                        }
 
-                        // Promote the pending config to active
-                        active_configuration = to_install;
+                            // Promote the pending config to active
+                            active_configuration = to_install;
+                        } else {
+                            _not.notify_at(time);
+                        }
                     }
                 });
 
@@ -439,7 +442,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                 },
                                 // Request notification
                                 StateProtocol::Pending(t, data) =>
-                                    states.notificator.notify_at(time.delayed(&t), vec![data]),
+                                    states.notificator.enqueue(t, vec![data]),
                             }
 
                         }

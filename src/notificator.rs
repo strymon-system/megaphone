@@ -232,7 +232,9 @@ fn notificator_delivers_notifications_in_topo_order() {
 /// ```
 pub struct FrontierNotificator<T: Timestamp, D: ExchangeData+Eq+PartialEq> {
     pending: Vec<(Capability<T>, Vec<D>)>,
+    enqueued: Vec<(T, Vec<D>)>,
     available: ::std::collections::BinaryHeap<OrderReversed<T, D>>,
+    capability: Option<Capability<T>>,
 }
 
 impl<T: Timestamp, D: ExchangeData+Eq+PartialEq> FrontierNotificator<T, D> {
@@ -240,7 +242,9 @@ impl<T: Timestamp, D: ExchangeData+Eq+PartialEq> FrontierNotificator<T, D> {
     pub fn new() -> Self {
         FrontierNotificator {
             pending: Vec::new(),
+            enqueued: Vec::new(),
             available: ::std::collections::BinaryHeap::new(),
+            capability: None,
         }
     }
 
@@ -248,7 +252,9 @@ impl<T: Timestamp, D: ExchangeData+Eq+PartialEq> FrontierNotificator<T, D> {
     pub fn from<I: IntoIterator<Item=Capability<T>>>(iter: I) -> Self {
         FrontierNotificator {
             pending: iter.into_iter().map(|x| (x, vec![])).collect(),
+            enqueued: Vec::new(),
             available: ::std::collections::BinaryHeap::new(),
+            capability: None,
         }
     }
 
@@ -328,6 +334,28 @@ impl<T: Timestamp, D: ExchangeData+Eq+PartialEq> FrontierNotificator<T, D> {
             }
             self.pending.retain(|x| x.1.len() > 0);
         }
+
+        // We can only reconstruct capabilities if we have one. This is true after `init_cap` has
+        // been called.
+        if self.capability.is_some() {
+            // Move everything of `enqueued` to `pending` while converting the times to capabilities
+            for (time, data) in self.enqueued.drain(..) {
+                self.pending.push((self.capability.as_ref().unwrap().delayed(&time), data));
+            }
+
+            // Check if we can downgrade our capability.
+            // Calculate lower bound of frontiers (TODO FIXME HACK - required total order!)
+            let new_time = frontiers.iter().map(|f| f.frontier().iter().next().cloned()).flat_map(|c| c).min();
+            // If the capability is less than the lower bound, downgrade to lower bound
+            if new_time.as_ref().map_or(false, |t| self.capability.as_ref().unwrap().time() < t) {
+                self.capability.as_mut().map(|c| c.downgrade(&new_time.unwrap()));
+            }
+
+            // Check if all frontiers are empty and drop our capability.
+            if frontiers.iter().all(|f| f.frontier().is_empty()) {
+                self.capability.take();
+            }
+        }
     }
 
     /// Returns the next available capability with respect to the supplied frontiers, if one exists.
@@ -405,6 +433,17 @@ impl<T: Timestamp, D: ExchangeData+Eq+PartialEq> FrontierNotificator<T, D> {
     pub fn pending_mut<'a>(&'a mut self) -> &'a mut Vec<(Capability<T>, Vec<D>)> {
         &mut self.pending
     }
+
+    pub fn enqueue(&mut self, time: T, data: Vec<D>) {
+        self.enqueued.push((time, data));
+    }
+
+    pub fn init_cap(&mut self, cap: &Capability<T>) {
+        if self.capability.is_none() {
+            self.capability = Some(cap.clone());
+        }
+    }
+
 }
 
 #[derive(PartialEq, Eq)]
