@@ -168,7 +168,7 @@ impl NEXMarkConfig {
         let person_id_lead = config.get_as_or("person-id-lead", 10);
         let sine_approx_steps = config.get_as_or("sine-approx-steps", 10);
         let base_time_ns = config.get_as_or("base-time", BASE_TIME);
-        let us_states = split_string_arg(config.get_or("us-states", "az,ca,id,or,wa,wy"));
+        let us_states = split_string_arg(config.get_or("us-states", "AZ,CA,ID,OR,WA,WY"));
         let us_cities = split_string_arg(config.get_or("us-cities", "phoenix,los angeles,san francisco,boise,portland,bend,redmond,seattle,kent,cheyenne"));
         let first_names = split_string_arg(config.get_or("first-names", "peter,paul,luke,john,saul,vicky,kate,julie,sarah,deiter,walter"));
         let last_names = split_string_arg(config.get_or("last-names", "shultz,abrams,spencer,white,bartels,walton,smith,jones,noris"));
