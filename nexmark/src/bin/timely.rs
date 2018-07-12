@@ -88,6 +88,7 @@ fn main() {
         ::std::thread::spawn(move || {
             use std::io::Read;
             let timer = ::std::time::Instant::now();
+            let mut iteration = 0;
             while statm_reporter_running.load(::std::sync::atomic::Ordering::SeqCst) {
                 let mut stat_s = String::new();
                 let mut statm_f = ::std::fs::File::open("/proc/self/statm").expect("can't open /proc/self/statm");
@@ -98,7 +99,8 @@ fn main() {
                 let elapsed_ns = timer.elapsed().to_nanos();
                 println!("statm_RSS\t{}\t{}", elapsed_ns, rss);
                 #[allow(deprecated)]
-                ::std::thread::sleep_ms(100);
+                ::std::thread::sleep_ms(100 - (elapsed_ns / 1_000_000 - iteration * 100) as u32);
+                iteration += 1;
             }
         });
     }
