@@ -977,7 +977,7 @@ fn main() {
                                         for &(person, time) in auctions.iter() {
                                             if time < complete {
                                                 if let Some(p_time) = new_people.get(&person) {
-                                                    if (time - p_time) < window_size_ns {
+                                                    if (time as i64 - *p_time as i64).abs() < window_size_ns {
                                                         session.give(person);
                                                     }
                                                 }
@@ -1054,7 +1054,7 @@ fn main() {
                                 while let Some((time, data)) = auctions_state.notificator().next(&[input1.frontier(),input2.frontier()]) {
                                     for (bin_id, (seller, date)) in data {
                                         if let Some(p_time) = people_state.get_state(bin_id).get(&(seller as u64)) {
-                                            if (date - p_time) < window_size_ns {
+                                            if (date as i64 - *p_time as i64).abs() < window_size_ns {
                                                 output.session(&time).give(seller);
                                             }          
                                         } 
