@@ -44,6 +44,7 @@ class Experiment(object):
         self._final_config = self._config["final_config"]
         self._machine_local = self._config["machine_local"]
         self._queries = self._config["queries"]
+        self._fake_stateful = self._config.get("fake_stateful", False)
         assert(isinstance(self._queries, list))
 
         self.single_machine_id = single_machine_id
@@ -62,11 +63,23 @@ class Experiment(object):
         configuration = "+".join(map(lambda p: "{}={}".format(p[0], p[1]), kv_pairs))
         return "{}/{}".format(current_commit, configuration)
 
+    def get_features(self):
+        features = ["dynamic_scaling_mechanism/bin-{}".format(self._bin_shift)]
+        if self._fake_stateful:
+            features.push("fake_stateful")
+        return features
+
+    def get_features_encoded(self):
+        return "+".join(map(lambda s: s.replace("/", "@"), sorted(self.get_features())))
+
     def get_setup_directory_name(self):
         return "{}/{}".format("setups", self.get_directory_name())
 
     def get_result_directory_name(self):
         return "{}/{}".format("results", self.get_directory_name())
+
+    def get_build_directory_name(self):
+        return "{}/{}".format("build", self.get_features_encoded())
 
     def get_setup_file_name(self, name):
         return "{}/{}".format(self.get_setup_directory_name(), name)
@@ -124,7 +137,8 @@ class Experiment(object):
 
         if not self._machine_local:
             make_command = lambda p: (
-                    "./target/release/timely {} {} {}/{} {}".format(
+                    "./{}/release/timely {} {} {}/{} {}".format(
+                        self.get_build_directory_name(),
                         self._rate // (self._processes * self._workers), self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._queries)) +
                     " --hostfile {}/{} -n {} -p {} -w {}".format(os.getcwd(), hostfile_file_name, self._processes, p, self._workers))
             commands = [(self.base_machine_id + p, make_command(p), self.get_result_file_name("stdout", p)) for p in range(0, self._processes)]
@@ -132,8 +146,9 @@ class Experiment(object):
         else:
             assert(self.single_machine_id is not None)
             make_command = lambda p: (
-                    "hwloc-bind socket:{} -- ".format(p) +
-                    "./target/release/timely {} {} {}/{} {}".format(
+                    # "hwloc-bind socket:{} -- ".format(p) +
+                    "./{}/release/timely {} {} {}/{} {}".format(
+                        self.get_build_directory_name(),
                         self._rate // (self._processes * self._workers), self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._queries)) +
                     " --hostfile {}/{} -n {} -p {} -w {}".format(os.getcwd(), hostfile_file_name, self._processes, p, self._workers))
             commands = [(self.single_machine_id, make_command(p), self.get_result_file_name("stdout", p)) for p in range(0, self._processes)]
@@ -143,8 +158,8 @@ class Experiment(object):
         eprint("running experiment, results in {}".format(self.get_result_directory_name()), level="info")
         if not dryrun:
             ensure_dir(self.get_result_directory_name())
-        build_cmd = ". ~/eth_proxy.sh && cargo build --bin timely --release --no-default-features --features dynamic_scaling_mechanism/bin-{}".format(
-                self._bin_shift)
+        build_cmd = ". ~/eth_proxy.sh && cargo rustc --target-dir {} --bin timely --release --no-default-features --features \\\"{}\\\"".format(
+            self.get_build_directory_name(), " ".join(self.get_features()))
         if not self._machine_local:
             run_cmd(build_cmd, node=self.base_machine_id, dryrun=dryrun)
         else:

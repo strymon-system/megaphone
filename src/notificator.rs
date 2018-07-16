@@ -311,16 +311,56 @@ impl<T: Timestamp, D: ExchangeData+Eq+PartialEq> FrontierNotificator<T, D> {
     /// Enables pending notifications not in advance of any element of `frontiers`.
     pub fn make_available<'a>(&mut self, frontiers: &'a [&'a MutableAntichain<T>]) {
 
+        // We can only reconstruct capabilities if we have one. This is true after `init_cap` has
+        // been called.
+        assert!(self.enqueued.is_empty() || self.capability.is_some(), "Notificator's capability needs to be initialized");
+
+        // Move everything of `enqueued` to `pending` while converting the times to capabilities
+        for (time, data) in self.enqueued.drain(..) {
+            self.pending.push((self.capability.as_ref().unwrap().delayed(&time), data));
+        }
+
+        // Check if we can downgrade our capability.
+        // Calculate lower bound of frontiers (TODO FIXME HACK - required total order!)
+        let new_time = frontiers.iter().map(|f| f.frontier().iter().next().cloned()).flat_map(|c| c).min();
+        // If the capability is less than the lower bound, downgrade to lower bound
+        if new_time.as_ref().map_or(false, |t| self.capability.as_ref().unwrap().time() < t) {
+            self.capability.as_mut().map(|c| c.downgrade(&new_time.unwrap()));
+        }
+
+        // Check if all frontiers are empty and drop our capability.
+        if frontiers.iter().all(|f| f.frontier().is_empty()) {
+            self.capability.take();
+        }
+
         // By invariant, nothing in self.available is greater_equal anything in self.pending.
         // It should be safe to append any ordered subset of self.pending to self.available,
         // in that the sequence of capabilities in self.available will remain non-decreasing.
+//        if !self.pending.is_empty() {
+//            println!("pending: {}", self.pending.len());
+//        }
 
         if !self.pending.is_empty() {
             self.pending.sort_by(|x, y| x.0.time().cmp(y.0.time()));
             for i in 0..self.pending.len() - 1 {
-                if self.pending[i].0.time() == self.pending[i + 1].0.time() {
-                    let data = ::std::mem::replace(&mut self.pending[i].1, vec![]);
-                    self.pending[i + 1].1.extend(data);
+                let mut count = 0;
+                {
+                    let mut j = 1;
+                    while i + j < self.pending.len() && self.pending[i].0.time() == self.pending[i + j].0.time() {
+                        count += self.pending[i + j].1.len();
+                        j += 1;
+                    }
+                }
+                if count > 0 {
+                    println!("count: {}", count);
+                }
+                self.pending[i].1.reserve(count);
+                {
+                    let mut j = 1;
+                    while i + j < self.pending.len() && self.pending[i].0.time() == self.pending[i + j].0.time() {
+                        let data = ::std::mem::replace(&mut self.pending[i + j].1, vec![]);
+                        self.pending[i].1.extend(data);
+                    }
                 }
             }
             self.pending.retain(|x| x.1.len() > 0);
@@ -333,28 +373,6 @@ impl<T: Timestamp, D: ExchangeData+Eq+PartialEq> FrontierNotificator<T, D> {
                 }
             }
             self.pending.retain(|x| x.1.len() > 0);
-        }
-
-        // We can only reconstruct capabilities if we have one. This is true after `init_cap` has
-        // been called.
-        if self.capability.is_some() {
-            // Move everything of `enqueued` to `pending` while converting the times to capabilities
-            for (time, data) in self.enqueued.drain(..) {
-                self.pending.push((self.capability.as_ref().unwrap().delayed(&time), data));
-            }
-
-            // Check if we can downgrade our capability.
-            // Calculate lower bound of frontiers (TODO FIXME HACK - required total order!)
-            let new_time = frontiers.iter().map(|f| f.frontier().iter().next().cloned()).flat_map(|c| c).min();
-            // If the capability is less than the lower bound, downgrade to lower bound
-            if new_time.as_ref().map_or(false, |t| self.capability.as_ref().unwrap().time() < t) {
-                self.capability.as_mut().map(|c| c.downgrade(&new_time.unwrap()));
-            }
-
-            // Check if all frontiers are empty and drop our capability.
-            if frontiers.iter().all(|f| f.frontier().is_empty()) {
-                self.capability.take();
-            }
         }
     }
 

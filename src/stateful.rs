@@ -125,7 +125,7 @@ pub struct StateStream<S, V, D, W, M> where
     pub state: Rc<RefCell<State<S::Timestamp, D, M>>>,
     /// The probe `stateful` uses to determine completion.
     pub probe: ProbeHandle<S::Timestamp>,
-    _phantom: PhantomData<(W)>,
+    _phantom: PhantomData<(*const W)>,
 }
 
 impl<S, V, D, W, M> StateStream<S, V, D, W, M>
@@ -414,82 +414,36 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
         // Now, construct the S operator
 
-        let mut pending: HashMap<_, Vec<Vec<(_, _, _)>>> = Default::default();   // times -> Vec<Vec<(keys -> state)>>
-        let mut pending_states: HashMap<_,_> = Default::default();
-        let mut data_return_buffer = vec![];
-
         // Read data input and state input
         // Route each according to the encoded target worker
         let stream = stream.binary_notify(&state, Exchange::new(move |&(target, _key, _)| target as u64), Exchange::new(move |&(target, _)| target as u64), "State", vec![], move |input, state, output, notificator| {
 
-            // go through each time with data, process each (key, val) pair.
-            notificator.for_each(|time,_,_| {
-                // Check for pending state updates. Needs to be *before* checking for pending data
-                if let Some(state_updates) = pending_states.remove(time.time()) {
-                    let mut states = states.borrow_mut();
-
-                    // Apply each state update
-                    for state_update in state_updates {
-                        for (_target, state) in state_update {
-                            match state {
-                                StateProtocol::Prepare(bin) => {
-                                    assert!(states.bins[*bin].is_none());
-                                    states.bins[*bin] = Some(Default::default());
-                                }
-                                // Extend state
-                                StateProtocol::State(bin, s) => {
-                                    states.bins[*bin].as_mut().map(|bin| bin.extend(Some(s)));
-                                },
-                                // Request notification
-                                StateProtocol::Pending(t, data) =>
-                                    states.notificator.enqueue(t, vec![data]),
-                            }
-
-                        }
-                    }
-                }
-
-                // Check for pending data
-                if let Some(pend) = pending.remove(time.time()) {
-                    let mut session = output.session(&time);
-                    for mut chunk in pend {
-                        session.give_iterator(chunk.drain(..));
-                        if data_return_buffer.len() < BUFFER_CAP {
-                            data_return_buffer.push(chunk);
-                        }
-                    }
-                }
-            });
-
             // Handle data input
             input.for_each(|time, data| {
-                // Do we need to wait for frontiers to advance?
-                if notificator.frontier(0).iter().any(|x| x.less_equal(time.time()))
-                    || notificator.frontier(1).iter().any(|x| x.less_equal(time.time())) {
-                    // Yes -> the data is not less than both frontiers. This is important as state
-                    // updates might not have been received yet.
-                    if !pending.contains_key(time.time()) {
-                        pending.insert(time.time().clone(), Vec::new());
-                    }
-                    // Stash input
-                    pending.get_mut(time.time()).unwrap().push(data.replace_with(data_return_buffer.pop().unwrap_or_else(Vec::new)));
-                    // Request notification
-                    notificator.notify_at(time.retain());
-                } else {
-                    // No, we can just pass-through the data
-                    let mut session = output.session(&time);
-                    session.give_content(data);
-                }
+                output.session(&time).give_content(data);
             });
 
             // Handle state updates
             state.for_each(|time, data| {
-                // Just stash, we could add a fast-path later
-                if !pending_states.contains_key(time.time()) {
-                    pending_states.insert(time.time().clone(), Vec::new());
+                let mut states = states.borrow_mut();
+
+                // Apply each state update
+                for (_target, state) in data.drain(..) {
+                    match state {
+                        StateProtocol::Prepare(bin) => {
+                            assert!(states.bins[*bin].is_none());
+                            states.bins[*bin] = Some(Default::default());
+                        }
+                        // Extend state
+                        StateProtocol::State(bin, s) => {
+                            states.bins[*bin].as_mut().map(|bin| bin.extend(Some(s)));
+                        },
+                        // Request notification
+                        StateProtocol::Pending(t, data) =>
+                            states.notificator.enqueue(t, vec![data]),
+                    }
+
                 }
-                pending_states.get_mut(time.time()).unwrap().push(data.replace_with(Vec::new()));
-                notificator.notify_at(time.retain());
             });
         });
 
