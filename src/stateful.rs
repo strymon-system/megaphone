@@ -172,6 +172,7 @@ pub trait Stateful<S: Scope, V: ExchangeData> {
     ;
 }
 
+#[cfg(not(feature = "fake_stateful"))]
 impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
     fn stateful<W, D, B, M>(&self, key: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W, M>
@@ -449,5 +450,33 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
         // `stream` is the stateful output stream where data is already correctly partitioned.
         StateStream::new(stream, states_op, probe1)
+    }
+}
+
+#[cfg(feature = "fake_stateful")]
+impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
+    fn stateful<W, D, B, M>(&self, key: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W, M>
+        where
+            S::Timestamp : Hash+Eq,
+        // State format on the wire
+            W: ExchangeData,
+        // per-key state (data)
+            D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,
+        // "hash" function for values
+            B: Fn(&V)->u64+'static,
+            M: ExchangeData+Eq+PartialEq,
+    {
+        let states: Rc<RefCell<State<S::Timestamp, D, M>>> = Rc::new(RefCell::new(State::new(vec![Some(Default::default()); 1 << BIN_SHIFT])));
+        let states_op = Rc::clone(&states);
+        // Probe to be attached after the last stateful operator
+        let probe1 = ProbeHandle::new();
+
+        use timely::dataflow::operators::{Map, Exchange};
+
+        // `stream` is the stateful output stream where data is already correctly partitioned.
+        StateStream::new(self.map(move |d| {
+            let key = Key(key(&d));
+            (key.0 as usize, key, d)
+        }).exchange(|d| d.0 as u64), states_op, probe1)
     }
 }
