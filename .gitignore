@@ -1,4 +1,5 @@
 target/
+build
 experiments/plots
 experiments/results
 experiments/*/results
