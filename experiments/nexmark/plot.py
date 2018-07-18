@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-import sys, os, json
+import sys, os, json, itertools
+from collections import defaultdict
 
 def parse_filename(name):
     kvs = name.rstrip().split('+')
@@ -16,7 +17,10 @@ def parse_filename(name):
     return (name, list(parsekv(kv) for kv in kvs))
 
 def get_all_params(ps):
-    return dict((x[0][0], list(set(list(zip(*x))[1]))) for x in zip(*list(ps)))
+    result = defaultdict(set)
+    for k, v in list(itertools.chain.from_iterable(ps)):
+        result[k].add(v)
+    return {k: sorted(v) for k, v in result.items()}
 
 def ensure_dir(name):
     if not os.path.exists(name):
