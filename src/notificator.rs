@@ -342,7 +342,8 @@ impl<T: Timestamp, D: ExchangeData+Eq+PartialEq> FrontierNotificator<T, D> {
 
         if !self.pending.is_empty() {
             self.pending.sort_by(|x, y| x.0.time().cmp(y.0.time()));
-            for i in 0..self.pending.len() - 1 {
+            let mut i = 0;
+            while i < self.pending.len() - 1 {
                 let mut count = 0;
                 {
                     let mut j = 1;
@@ -360,7 +361,9 @@ impl<T: Timestamp, D: ExchangeData+Eq+PartialEq> FrontierNotificator<T, D> {
                     while i + j < self.pending.len() && self.pending[i].0.time() == self.pending[i + j].0.time() {
                         let data = ::std::mem::replace(&mut self.pending[i + j].1, vec![]);
                         self.pending[i].1.extend(data);
+                        j += 1;
                     }
+                    i += j;
                 }
             }
             self.pending.retain(|x| x.1.len() > 0);
