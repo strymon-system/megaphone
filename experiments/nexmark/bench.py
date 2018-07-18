@@ -141,7 +141,7 @@ class Experiment(object):
                         self.get_build_directory_name(),
                         self._rate // (self._processes * self._workers), self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._queries)) +
                     " --hostfile {}/{} -n {} -p {} -w {}".format(os.getcwd(), hostfile_file_name, self._processes, p, self._workers))
-            commands = [(self.base_machine_id + p, make_command(p), self.get_result_file_name("stdout", p)) for p in range(0, self._processes)]
+            commands = [(self.base_machine_id + p, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
             return commands
         else:
             assert(self.single_machine_id is not None)
@@ -151,7 +151,7 @@ class Experiment(object):
                         self.get_build_directory_name(),
                         self._rate // (self._processes * self._workers), self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._queries)) +
                     " --hostfile {}/{} -n {} -p {} -w {}".format(os.getcwd(), hostfile_file_name, self._processes, p, self._workers))
-            commands = [(self.single_machine_id, make_command(p), self.get_result_file_name("stdout", p)) for p in range(0, self._processes)]
+            commands = [(self.single_machine_id, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
             return commands
 
     def run_commands(self):
@@ -164,7 +164,7 @@ class Experiment(object):
             run_cmd(build_cmd, node=self.base_machine_id, dryrun=dryrun)
         else:
             run_cmd(build_cmd, node=self.single_machine_id, dryrun=dryrun)
-        wait_all([run_cmd(c, redirect=r, background=True, node=p, dryrun=dryrun) for p, c, r in self.commands()])
+        wait_all([run_cmd(c, redirect=r, stderr=stderr, background=True, node=p, dryrun=dryrun) for p, c, r, stderr in self.commands()])
 
 def non_migrating(group):
     workers = 8

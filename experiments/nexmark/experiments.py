@@ -37,12 +37,14 @@ cluster_src_path = None
 # cluster_server = "username@server"
 cluster_server = None
 
-def run_cmd(cmd, redirect=None, background=False, node="", dryrun=False):
-    full_cmd = "cd {}; {} 2>/dev/null".format(cluster_src_path, cmd)
+def run_cmd(cmd, redirect=None, stderr=False, background=False, node="", dryrun=False):
+    full_cmd = "cd {}; {}".format(cluster_src_path, cmd)
     # eprint("running on {}{}: {}".format(cluster_server, node, full_cmd))
     # if redirect is not None and os.path.exists(redirect):
     #     return execute("echo \"skipping {}\"".format(redirect), async=background)
-    cmd = "ssh -t {}{}.ethz.ch \"{}\"".format(cluster_server, node, full_cmd) + (" > {}".format(redirect) if redirect else "")
+    cmd = "ssh -T {}{}.ethz.ch \"{}\"".format(cluster_server, node, full_cmd)\
+          + (" > {}".format(redirect) if redirect else "")\
+          + (" 2> {}".format(stderr) if stderr else "")
     eprint("$ {}".format(cmd), level="run")
     if dryrun:
         return execute("echo dryrun {}".format(node), async=background)
