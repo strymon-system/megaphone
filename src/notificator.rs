@@ -352,9 +352,6 @@ impl<T: Timestamp, D: ExchangeData+Eq+PartialEq> FrontierNotificator<T, D> {
                         j += 1;
                     }
                 }
-                if count > 0 {
-                    println!("count: {}", count);
-                }
                 self.pending[i].1.reserve(count);
                 {
                     let mut j = 1;
