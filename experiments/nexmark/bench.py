@@ -66,7 +66,7 @@ class Experiment(object):
     def get_features(self):
         features = ["dynamic_scaling_mechanism/bin-{}".format(self._bin_shift)]
         if self._fake_stateful:
-            features.push("fake_stateful")
+            features.append("fake_stateful")
         return features
 
     def get_features_encoded(self):
