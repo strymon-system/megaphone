@@ -56,7 +56,7 @@ html = """
 </html>
 """
 
-graph_filename = "latency+{}.html".format(plot.kv_to_string(dict(graph_filtering)))
+graph_filename = "{}+{}.html".format(plot.plot_name(__file__), plot.kv_to_string(dict(graph_filtering)))
 
 commit = results_dir.rstrip('/').split('/')[-1]
 print("commit:", commit, file=sys.stderr)

@@ -100,6 +100,9 @@ def latency_timeline_plots(results_dir, files, filtering):
 
     return (filtering, data)
 
+def plot_name(base_name):
+    return os.path.basename(base_name)[:-3]
+
 if __name__ == "__main__" and len(sys.argv) >= 3 and sys.argv[1] == '--list-params':
     results_dir = sys.argv[2]
     print(json.dumps(get_all_params(x[1] for x in get_files(results_dir))))
