@@ -54,11 +54,21 @@ def _filtering_params(files, filtering):
 def latency_plots(results_dir, files, filtering):
     filtering = _filtering_params(files, filtering)
 
+    def experiment_name(experiment_dict):
+        if experiment_dict['fake_stateful']:
+            return "Non-stateful"
+        else:
+            return experiment_dict['migration']
+
     data = []
     for filename, config in [x for x in files if set(x[1]).issuperset(set(filtering))]:
         experiment_dict = dict(set(config).difference(set(filtering)))
         with open("{}/{}/stdout.0".format(results_dir, filename), 'r') as f:
-            experiment_data = [dict(list({"latency": int(x), "ccdf": float(y)}.items()) + list(experiment_dict.items())) for x, y in
+            experiment_data = [dict(list({
+                     "latency": int(x),
+                     "ccdf": float(y),
+                     "experiment": experiment_name(experiment_dict),
+                 }.items()) + list(experiment_dict.items())) for x, y in
                     [x.split('\t')[1:3] for x in f.readlines() if x.startswith('latency_ccdf')]]
             data.extend(experiment_data)
 
@@ -83,6 +93,7 @@ def memory_timeline_plots(results_dir, files, filtering):
 
 def latency_timeline_plots(results_dir, files, filtering):
     filtering = _filtering_params(files, filtering)
+    print(filtering)
     # [0.75, 0.50, 0.25, 0.05, 0.01, 0.001, 0.0]
 
     data = []
@@ -95,7 +106,7 @@ def latency_timeline_plots(results_dir, files, filtering):
                         "time": float(vals[0]) / 1000000000,
                         "latency": int(vals[l]),
                         "p": p,
-                        "experiment": "m: {}, q: {}, r: {}".format(experiment_dict['migration'], experiment_dict['queries'], experiment_dict['rate']),
+                        "experiment": "m: {}, q: {}, r: {}, f: {}".format(experiment_dict['migration'], experiment_dict['queries'], experiment_dict['rate'], experiment_dict.get('fake_stateful', False)),
                     }.items()) + list(experiment_dict.items())))
 
     return (filtering, data)
