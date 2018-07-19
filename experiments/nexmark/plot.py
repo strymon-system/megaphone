@@ -55,7 +55,9 @@ def latency_plots(results_dir, files, filtering):
     filtering = _filtering_params(files, filtering)
 
     def experiment_name(experiment_dict):
-        if experiment_dict['fake_stateful']:
+        if not experiment_dict["queries"].endswith("-flex"):
+            return "Optimized"
+        elif experiment_dict['fake_stateful']:
             return "Non-stateful"
         else:
             return experiment_dict['migration']
