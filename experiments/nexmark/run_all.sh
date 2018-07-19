@@ -7,7 +7,7 @@ group=4
 
 function run { # command index groups
 #    xterm +hold -e
-    echo python3 -c "import bench; bench.$1($2, $3)" --clusterpath "${clusterpath}" --serverprefix "${serverprefix}" &
+    python3 -c "import bench; bench.$1($2, $3)" --clusterpath "${clusterpath}" --serverprefix "${serverprefix}" &
 }
 
 function run_group { # name
