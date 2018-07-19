@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys, os, datetime
 from executor import execute
+import time
 
 is_worktree_clean = execute("cd `git rev-parse --show-toplevel`; git diff-index --quiet HEAD -- src/ Cargo.toml nexmark/src/ nexmark/Cargo.toml", check=False)
 
@@ -28,7 +29,9 @@ def ensure_dir(name):
 
 def wait_all(processes):
     for p in processes:
-        p.wait(use_spinner=False)
+        # p.wait(use_spinner=False)
+        while p.is_running:
+            time.sleep(1)
 
 eprint("commit: {}".format(current_commit))
 
