@@ -166,15 +166,17 @@ class Experiment(object):
             run_cmd(build_cmd, node=self.single_machine_id, dryrun=dryrun)
         wait_all([run_cmd(c, redirect=r, stderr=stderr, background=True, node=p, dryrun=dryrun) for p, c, r, stderr in self.commands()])
 
+duration=30
+
 def non_migrating(group, groups=4):
     workers = 8
     all_queries = ["q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7"]
     queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
-    for rate in [x * 1000000 for x in [2, 4, 6, 8]]:
+    for rate in [x * 25000 for x in [1, 2, 4, 8]]:
         for query in queries:
             experiment = Experiment(
                     "non_migrating",
-                    duration=300,
+                    duration=duration,
                     rate=rate,
                     queries=[query,],
                     migration="fluid",
@@ -192,12 +194,12 @@ def exploratory_migrating(group, groups=4):
     workers = 8
     all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
     queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
-    for rate in [x * 100000 for x in [2, 4]]:
+    for rate in [x * 25000 for x in [1, 2, 4, 8]]:
         for migration in ["sudden", "fluid", "batched"]:
             for query in queries:
                 experiment = Experiment(
                     "migrating",
-                    duration=300,
+                    duration=duration,
                     rate=rate,
                     queries=[query,],
                     migration=migration,
@@ -215,12 +217,12 @@ def exploratory_baseline(group, groups=4):
     workers = 8
     all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
     queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
-    for rate in [x * 100000 for x in [2, 4]]:
+    for rate in [x * 25000 for x in [1, 2, 4, 8]]:
         for migration in ["sudden"]:
             for query in queries:
                 experiment = Experiment(
                     "migrating",
-                    duration=300,
+                    duration=duration,
                     rate=rate,
                     queries=[query,],
                     migration=migration,
@@ -238,12 +240,12 @@ def exploratory_migrating_single_process(group, groups=4):
     workers = 8
     all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
     queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
-    for rate in [x * 25000 for x in [2, 4]]:
+    for rate in [x * 25000 for x in [1, 2, 4, 8]]:
         for migration in ["sudden", "fluid", "batched"]:
             for query in queries:
                 experiment = Experiment(
                         "migrating",
-                        duration=300,
+                        duration=duration,
                         rate=rate,
                         queries=[query,],
                         migration=migration,
@@ -262,12 +264,12 @@ def exploratory_bin_shift(group, groups=4):
     processes = 4
     all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
     queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
-    for rate in [x * 100000 for x in [2, 4]]:
+    for rate in [x * 25000 for x in [1, 2, 4, 8]]:
         for bin_shift in range(int(math.log2(workers * processes)), 21):
             for query in queries:
                 experiment = Experiment(
                     "bin_shift",
-                    duration=300,
+                    duration=duration,
                     rate=rate,
                     queries=[query,],
                     migration="fluid",
