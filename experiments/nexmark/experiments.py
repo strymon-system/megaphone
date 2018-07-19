@@ -7,7 +7,7 @@ is_worktree_clean = execute("cd `git rev-parse --show-toplevel`; git diff-index 
 if not is_worktree_clean:
     shall = input("Work directory dirty. Continue? (y/N) ").lower() == 'y'
     if not shall:
-        sys.exit(0)
+        sys.exit(1)
 
 current_commit = ("dirty-" if not is_worktree_clean else "") + execute("git rev-parse HEAD", capture=True)
 current_commit = current_commit[:16]
