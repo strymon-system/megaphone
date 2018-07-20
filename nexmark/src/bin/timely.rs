@@ -155,8 +155,8 @@ fn main() {
                 let control = scope.input_from(&mut control_input).broadcast();
                 let mut state_stream = input.to_stream(scope)
                                         .stateful::<_, HashMap<(), ()>, _, ()>(|e: &nexmark::event::Event| calculate_hash(&e.id()), &control);
-                                        
-                                                                             
+
+
                 state_stream.stream
                      .flat_map(|(_,_,e)| nexmark::event::Bid::from(e))
                      .map_in_place(|b| b.price = (b.price * 89)/100)
@@ -264,7 +264,7 @@ fn main() {
 
                 let control = scope.input_from(&mut control_input).broadcast();
 
-                let events = input.to_stream(scope);    
+                let events = input.to_stream(scope);
 
                 let mut auctions =
                 events.flat_map(|e| nexmark::event::Auction::from(e))
@@ -310,7 +310,7 @@ fn main() {
                                     let mut session = output.session(&time);
                                     for (bin_id, auction) in data {
                                         if let Some(mut person) = people_state.get_state(bin_id).get(&(auction.seller as u64)) {
-                                            session.give((person.name.clone(), 
+                                            session.give((person.name.clone(),
                                                         person.city.clone(),
                                                         person.state.clone(),
                                                         auction.id));
@@ -325,7 +325,7 @@ fn main() {
                                     let mut session = output.session(&time);
                                     for (bin_id, person) in data {
                                         if let Some(mut auction) = auction_state.get_state(bin_id).get(&(person.id as u64)) {
-                                            session.give((person.name.clone(), 
+                                            session.give((person.name.clone(),
                                                         person.city.clone(),
                                                         person.state.clone(),
                                                         auction.id));
@@ -340,7 +340,7 @@ fn main() {
                     .probe_with(&mut auctions.probe)
                     .probe_with(&mut people.probe)
                     .probe_with(&mut probe);
-            
+
             });
         }
 
@@ -878,7 +878,7 @@ fn main() {
                             input.for_each(|time, data| {
                                 for (_, key_id, (_auction, window, price)) in data.drain(..) {
                                     bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(window)),vec![(key_id, (window, price))]);
-                                } 
+                                }
                             });
 
                             while let Some((time, maxima)) = bid_state.notificator().next(&[input.frontier()]) {
@@ -896,7 +896,7 @@ fn main() {
                         }
                      })
                      // Aggregate the partial counts. This doesn't need to be stateful since we request notification upon a window firing time and then we drop the state immediately after processing
-                     .unary_frontier(Exchange::new(move |x: &(usize, usize)| (x.0 / window_size_ns) as u64), "Q7 All-reduce", |_cap, _info| 
+                     .unary_frontier(Exchange::new(move |x: &(usize, usize)| (x.0 / window_size_ns) as u64), "Q7 All-reduce", |_cap, _info|
                      {
                         let mut pending_maxima: HashMap<_,Vec<_>> = Default::default();
                         let mut notificator = FrontierNotificator::new();
@@ -973,17 +973,22 @@ fn main() {
 
                                 for (capability, auctions) in auctions.iter_mut() {
                                     if capability.time().inner < complete {
-                                        let mut session = output.session(&capability);
-                                        for &(person, time) in auctions.iter() {
-                                            if time < complete {
-                                                if let Some(p_time) = new_people.get(&person) {
-                                                    if (time as i64 - *p_time as i64).abs() < window_size_ns {
-                                                        session.give(person);
+                                        {
+                                            let mut session = output.session(&capability);
+                                            for &(person, time) in auctions.iter() {
+                                                if time < complete {
+                                                    if let Some(p_time) = new_people.get(&person) {
+                                                        if (time as i64 - *p_time as i64).abs() < window_size_ns {
+                                                            session.give(person);
+                                                        }
                                                     }
                                                 }
                                             }
+                                            auctions.retain(|&(_, time)| time >= complete);
                                         }
-                                        auctions.retain(|&(_, time)| time >= complete);
+                                        if let Some(minimum) = auctions.iter().map(|x| x.1).min() {
+                                            capability.downgrade(&RootTimestamp::new(minimum));
+                                        }
                                     }
                                 }
                                 auctions.retain(|&(_, ref list)| !list.is_empty());
@@ -1013,7 +1018,7 @@ fn main() {
                 events.flat_map(|e| nexmark::event::Person::from(e))
                       .map(|p| (p.id, p.date_time))
                       .stateful::<_, HashMap<_, _>, _, _>(|(p,_d)| calculate_hash(p), &control);
-                
+
                 let auctions_state = auctions.state.clone();
                 let people_state = people.state.clone();
 
@@ -1056,8 +1061,8 @@ fn main() {
                                         if let Some(p_time) = people_state.get_state(bin_id).get(&(seller as u64)) {
                                             if (date as i64 - *p_time as i64).abs() < window_size_ns {
                                                 output.session(&time).give(seller);
-                                            }          
-                                        } 
+                                            }
+                                        }
                                     }
                                 }
                             }
