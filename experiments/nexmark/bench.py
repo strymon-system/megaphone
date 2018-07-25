@@ -15,6 +15,8 @@ argparser.add_argument("--serverprefix", help='an ssh username@server prefix, e.
 argparser.add_argument("--dryrun", help='don\'t actually do anything', action='store_true')
 argparser.add_argument("--machineid", help='choose a machine for machine-local experiments (can be overridden per-experiment)', type=int)
 argparser.add_argument("--baseid", help='choose the first machine for this experiment (can be overridden per-experiment)', type=int)
+argparser.add_argument("--build-only", help='Only build the experiment\'s binary', action='store_true')
+argparser.add_argument("--no-build", help='Do not build the experiment\'s binary', action='store_true')
 # argparser.add_argument("-c")
 args = argparser.parse_args()
 experiments.cluster_src_path = args.clusterpath
@@ -22,6 +24,11 @@ experiments.cluster_server = args.serverprefix
 dryrun = args.dryrun
 single_machine_id = args.machineid
 base_machine_id = args.baseid
+run = not args.build_only
+build = not args.no_build
+if not run and not build:
+    eprint("Cannot select --build-only and --no-build at the same time")
+    sys.exit(1)
 if dryrun:
     eprint("dry-run")
 
@@ -154,17 +161,19 @@ class Experiment(object):
             commands = [(self.single_machine_id, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
             return commands
 
-    def run_commands(self):
+    def run_commands(self, run=True, build=True):
         eprint("running experiment, results in {}".format(self.get_result_directory_name()), level="info")
         if not dryrun:
             ensure_dir(self.get_result_directory_name())
-        build_cmd = ". ~/eth_proxy.sh && cargo rustc --target-dir {} --bin timely --release --no-default-features --features \\\"{}\\\"".format(
-            self.get_build_directory_name(), " ".join(self.get_features()))
-        if not self._machine_local:
-            run_cmd(build_cmd, node=self.base_machine_id, dryrun=dryrun)
-        else:
-            run_cmd(build_cmd, node=self.single_machine_id, dryrun=dryrun)
-        wait_all([run_cmd(c, redirect=r, stderr=stderr, background=True, node=p, dryrun=dryrun) for p, c, r, stderr in self.commands()])
+        if build:
+            build_cmd = ". ~/eth_proxy.sh && cargo rustc --target-dir {} --bin timely --release --no-default-features --features \\\"{}\\\"".format(
+                self.get_build_directory_name(), " ".join(self.get_features()))
+            if not self._machine_local:
+                run_cmd(build_cmd, node=self.base_machine_id, dryrun=dryrun)
+            else:
+                run_cmd(build_cmd, node=self.single_machine_id, dryrun=dryrun)
+        if run:
+            wait_all([run_cmd(c, redirect=r, stderr=stderr, background=True, node=p, dryrun=dryrun) for p, c, r, stderr in self.commands()])
 
 duration=30
 
@@ -188,10 +197,10 @@ def non_migrating(group, groups=4):
                     fake_stateful=False,
                     machine_local=True)
             experiment.single_machine_id = group + 1
-            experiment.run_commands()
+            experiment.run_commands(run, build)
 
-def exploratory_migrating(group, groups=4):
-    workers = 8
+def exploratory_migrating(group, groups=2):
+    workers = 2
     all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
     queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
     for rate in [x * 25000 for x in [1, 2, 4, 8]]:
@@ -211,7 +220,7 @@ def exploratory_migrating(group, groups=4):
                     fake_stateful=False,
                     machine_local=True)
                 experiment.single_machine_id = group + 1
-                experiment.run_commands()
+                experiment.run_commands(run, build)
 
 def exploratory_baseline(group, groups=4):
     workers = 8
@@ -234,7 +243,7 @@ def exploratory_baseline(group, groups=4):
                     fake_stateful=True,
                     machine_local=True)
                 experiment.single_machine_id = group + 1
-                experiment.run_commands()
+                experiment.run_commands(run, build)
 
 def exploratory_migrating_single_process(group, groups=4):
     workers = 8
@@ -257,7 +266,7 @@ def exploratory_migrating_single_process(group, groups=4):
                         fake_stateful=False,
                         machine_local=True)
                 experiment.single_machine_id = group + 1
-                experiment.run_commands()
+                experiment.run_commands(run, build)
 
 def exploratory_bin_shift(group, groups=4):
     workers = 8
@@ -281,4 +290,4 @@ def exploratory_bin_shift(group, groups=4):
                     fake_stateful=False,
                     machine_local=True)
                 experiment.single_machine_id = group + 1
-                experiment.run_commands()
+                experiment.run_commands(run, build)

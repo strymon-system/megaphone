@@ -5,15 +5,17 @@ clusterpath="/home/${CLUSTERUSER}/Src/dynamic-scaling-mechanism/nexmark"
 serverprefix="${CLUSTERUSER}@fdr"
 group=4
 
-function run { # command index groups
+function run { # command index groups additional
 #    xterm +hold -e
-    python3 -c "import bench; bench.$1($2, $3)" --clusterpath "${clusterpath}" --serverprefix "${serverprefix}" &
+    python3 -c "import bench; bench.$1($2, $3)" --clusterpath "${clusterpath}" --serverprefix "${serverprefix}" $4 &
 }
 
 function run_group { # name
+    run "$1" "0" "1" --build-only
+    wait
     for i in $(seq 0 $(($group - 1)))
     do
-        run "$1" "$i" "$group"
+        run "$1" "$i" "$group" --no-build
     done
     wait
 }
