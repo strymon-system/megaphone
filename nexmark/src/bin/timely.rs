@@ -21,7 +21,6 @@ use timely::dataflow::operators::Operator;
 use timely::dataflow::operators::Capability;
 use timely::progress::nested::product::Product;
 use timely::progress::timestamp::RootTimestamp;
-use timely::dataflow::operators::Input;
 use timely::dataflow::operators::Broadcast;
 use timely::dataflow::Stream;
 use timely::dataflow::Scope;
@@ -119,6 +118,21 @@ fn main() {
         // let mut control_input_2 = InputHandle::new();
         let mut probe = ProbeHandle::new();
 
+        let bids = std::rc::Rc::new(timely::dataflow::operators::capture::event::link::EventLink::new());
+        let auctions = std::rc::Rc::new(timely::dataflow::operators::capture::event::link::EventLink::new());
+        let people = std::rc::Rc::new(timely::dataflow::operators::capture::event::link::EventLink::new());
+
+        let control = std::rc::Rc::new(timely::dataflow::operators::capture::event::link::EventLink::new());
+
+        worker.dataflow(|scope| {
+           let input = input.to_stream(scope);
+            input.flat_map(|e| nexmark::event::Bid::from(e)).capture_into(bids.clone());
+            input.flat_map(|e| nexmark::event::Auction::from(e)).capture_into(auctions.clone());
+            input.flat_map(|e| nexmark::event::Person::from(e)).capture_into(people.clone());
+            control_input.to_stream(scope).broadcast().capture_into(control.clone());
+        });
+
+
         // Q0: Do nothing in particular.
         if std::env::args().any(|x| x == "q0") {
             worker.dataflow(|scope| {
@@ -130,7 +144,7 @@ fn main() {
         // Q0-flex: Do nothing in particular.
         if std::env::args().any(|x| x == "q0-flex") {
             worker.dataflow(|scope| {
-                let control = scope.input_from(&mut control_input).broadcast();
+                let control = Some(control.clone()).replay_into(scope);
                 let mut state_stream = input.to_stream(scope)
                                         .stateful::<_, HashMap<(), ()>, _, ()>(|e: &nexmark::event::Event| calculate_hash(&e.id()), &control);
                 state_stream.stream
@@ -142,8 +156,7 @@ fn main() {
         // Q1: Convert bids to euros.
         if std::env::args().any(|x| x == "q1") {
             worker.dataflow(|scope| {
-                input.to_stream(scope)
-                     .flat_map(|e| nexmark::event::Bid::from(e))
+                Some(bids.clone()).replay_into(scope)
                      .map_in_place(|b| b.price = (b.price * 89)/100)
                      .probe_with(&mut probe);
             });
@@ -152,14 +165,13 @@ fn main() {
         // Q1-flex: Convert bids to euros.
         if std::env::args().any(|x| x == "q1-flex") {
             worker.dataflow(|scope| {
-                let control = scope.input_from(&mut control_input).broadcast();
-                let mut state_stream = input.to_stream(scope)
-                                        .stateful::<_, HashMap<(), ()>, _, ()>(|e: &nexmark::event::Event| calculate_hash(&e.id()), &control);
+                let control = Some(control.clone()).replay_into(scope);
+                let mut state_stream = Some(bids.clone()).replay_into(scope)
+                    .stateful::<_, HashMap<(), ()>, _, ()>(|bid| calculate_hash(&bid.auction), &control);
 
 
                 state_stream.stream
-                     .flat_map(|(_,_,e)| nexmark::event::Bid::from(e))
-                     .map_in_place(|b| b.price = (b.price * 89)/100)
+                     .map_in_place(|(_, _, b)| b.price = (b.price * 89)/100)
                      .probe_with(&mut state_stream.probe)
                      .probe_with(&mut probe);
             });
@@ -169,8 +181,7 @@ fn main() {
         if std::env::args().any(|x| x == "q2") {
             worker.dataflow(|scope| {
                 let auction_skip = 123;
-                input.to_stream(scope)
-                     .flat_map(|e| nexmark::event::Bid::from(e))
+                Some(bids.clone()).replay_into(scope)
                      .filter(move |b| b.auction % auction_skip == 0)
                      .map(|b| (b.auction, b.price))
                      .probe_with(&mut probe);
@@ -181,13 +192,12 @@ fn main() {
         if std::env::args().any(|x| x == "q2-flex") {
             worker.dataflow(|scope| {
                 let auction_skip = 123;
-                let control = scope.input_from(&mut control_input).broadcast();
-                let mut state_stream = input.to_stream(scope)
-                                        .stateful::<_, HashMap<(), ()>, _, ()>(|e: &nexmark::event::Event| calculate_hash(&e.id()), &control);
+                let control = Some(control.clone()).replay_into(scope);
+                let mut state_stream = Some(bids.clone()).replay_into(scope)
+                                        .stateful::<_, HashMap<(), ()>, _, ()>(|bid| calculate_hash(&bid.auction), &control);
                 state_stream.stream
-                     .flat_map(|(_,_,e)| nexmark::event::Bid::from(e))
-                     .filter(move |b| b.auction % auction_skip == 0)
-                     .map(|b| (b.auction, b.price))
+                     .filter(move |(_, _, b)| b.auction % auction_skip == 0)
+                     .map(|(_, _, b)| (b.auction, b.price))
                      .probe_with(&mut state_stream.probe)
                      .probe_with(&mut probe);
             });
@@ -197,15 +207,11 @@ fn main() {
         if std::env::args().any(|x| x == "q3") {
             worker.dataflow(|scope| {
 
-                let events = input.to_stream(scope);
+                let auctions = Some(auctions.clone()).replay_into(scope)
+                    .filter(|a| a.category == 10);
 
-                let auctions =
-                events.flat_map(|e| nexmark::event::Auction::from(e))
-                      .filter(|a| a.category == 10);
-
-                let people =
-                events.flat_map(|e| nexmark::event::Person::from(e))
-                      .filter(|p| p.state == "OR" || p.state == "ID" || p.state == "CA");
+                let people = Some(people.clone()).replay_into(scope)
+                    .filter(|p| p.state == "OR" || p.state == "ID" || p.state == "CA");
 
                 auctions
                     .binary(
@@ -262,17 +268,13 @@ fn main() {
         if std::env::args().any(|x| x == "q3-flex") {
             worker.dataflow(|scope| {
 
-                let control = scope.input_from(&mut control_input).broadcast();
+                let control = Some(control.clone()).replay_into(scope);
 
-                let events = input.to_stream(scope);
+                let mut auctions = Some(auctions.clone()).replay_into(scope)
+                    .filter(|a| a.category == 10)
+                    .stateful::<_, HashMap<u64, nexmark::event::Auction>, _, _>(|a| calculate_hash(&a.seller), &control);
 
-                let mut auctions =
-                events.flat_map(|e| nexmark::event::Auction::from(e))
-                      .filter(|a| a.category == 10)
-                      .stateful::<_, HashMap<u64, nexmark::event::Auction>, _, _>(|a| calculate_hash(&a.seller), &control);
-
-                let mut people =
-                events.flat_map(|e| nexmark::event::Person::from(e))
+                let mut people = Some(people.clone()).replay_into(scope)
                       .filter(|p| p.state == "OR" || p.state == "ID" || p.state == "CA")
                       .stateful::<_, HashMap<u64, nexmark::event::Person>, _, _>(|p| calculate_hash(&p.id), &control);
 
@@ -348,10 +350,8 @@ fn main() {
         let closed_auctions = std::rc::Rc::new(timely::dataflow::operators::capture::event::link::EventLink::new());
         if std::env::args().any(|x| x == "q4" || x == "q6") {
             worker.dataflow(|scope| {
-                let events = input.to_stream(scope);
-
-                let bids = events.flat_map(|e| nexmark::event::Bid::from(e));
-                let auctions = events.flat_map(|e| nexmark::event::Auction::from(e));
+                let bids = Some(bids.clone()).replay_into(scope);
+                let auctions = Some(auctions.clone()).replay_into(scope);
 
                 bids.binary_frontier(
                         &auctions,
@@ -430,11 +430,10 @@ fn main() {
         let closed_auctions_flex = std::rc::Rc::new(timely::dataflow::operators::capture::event::link::EventLink::new());
         if std::env::args().any(|x| x == "q4-flex" || x == "q6-flex") {
             worker.dataflow(|scope| {
-                let events = input.to_stream(scope);
-                let control = scope.input_from(&mut control_input).broadcast();
+                let control = Some(control.clone()).replay_into(scope);
 
-                let bids = events.flat_map(|e| nexmark::event::Bid::from(e));
-                let auctions = events.flat_map(|e| nexmark::event::Auction::from(e));
+                let bids = Some(bids.clone()).replay_into(scope);
+                let auctions = Some(auctions.clone()).replay_into(scope);
 
                 bids.stateful_binary_input(&control,
                         &auctions,
@@ -520,7 +519,7 @@ fn main() {
         if std::env::args().any(|x| x == "q4-flex") {
             worker.dataflow(|scope| {
 
-                let control = scope.input_from(&mut control_input).broadcast();
+                let control = Some(control.clone()).replay_into(scope);
 
                 Some(closed_auctions_flex.clone())
                     .replay_into(scope)
@@ -546,8 +545,7 @@ fn main() {
                 let window_slice_count = 60;
                 let window_slide_ns = 1_000_000_000;
 
-                input.to_stream(scope)
-                     .flat_map(|e| nexmark::event::Bid::from(e))
+                Some(bids.clone()).replay_into(scope)
                      .map(move |b| (b.auction, ((b.date_time / window_slide_ns) + 1) * window_slide_ns))
                      // TODO: Could pre-aggregate pre-exchange, if there was reason to do so.
                      .unary_frontier(Exchange::new(|b: &(usize, usize)| b.0 as u64), "Q5 Accumulate",
@@ -618,18 +616,17 @@ fn main() {
         if std::env::args().any(|x| x == "q5-flex") {
             worker.dataflow(|scope| {
 
-                let control = scope.input_from(&mut control_input).broadcast();
+                let control = Some(control.clone()).replay_into(scope);
 
                 let window_slice_count = 60;
                 let window_slide_ns = 1_000_000_000;
 
-                let mut bids = input.to_stream(scope)
-                     .flat_map(|e| nexmark::event::Bid::from(e))
+                let mut bids = Some(bids.clone()).replay_into(scope)
                      // Discretize bid's datetime based on slides
                      .map(move |b| (b.auction, ((b.date_time / window_slide_ns) + 1) * window_slide_ns))
                      // TODO: Could pre-aggregate pre-exchange, if there was reason to do so.
                      // Partitions by auction id
-                     .stateful::<_,HashMap<_, _>, _, _>(|(a, _b)| calculate_hash(a), &control);
+                     .stateful::<_, HashMap<_, _>, _, _>(|(a, _b)| calculate_hash(a), &control);
 
                 let bid_state = bids.state.clone();
 
@@ -723,7 +720,7 @@ fn main() {
         if std::env::args().any(|x| x == "q6-flex") {
             worker.dataflow(|scope| {
 
-                let control = scope.input_from(&mut control_input).broadcast();
+                let control = Some(control.clone()).replay_into(scope);
 
                 let mut winners =  Some(closed_auctions_flex.clone())
                     .replay_into(scope)
@@ -772,8 +769,7 @@ fn main() {
                 // Window ticks every 10 seconds.
                 let window_size_ns = 1_000_000_000;
 
-                input.to_stream(scope)
-                     .flat_map(|e| nexmark::event::Bid::from(e))
+                Some(bids.clone()).replay_into(scope)
                      .map(move |b| (((b.date_time / window_size_ns) + 1) * window_size_ns, b.price))
                      .unary_frontier(Pipeline, "Q7 Pre-reduce", |_cap, _info| {
 
@@ -854,13 +850,12 @@ fn main() {
         if std::env::args().any(|x| x == "q7-flex") {
             worker.dataflow(|scope| {
 
-                let control = scope.input_from(&mut control_input).broadcast();
+                let control = Some(control.clone()).replay_into(scope);
 
                 // Window ticks every 10 seconds.
                 let window_size_ns = 1_000_000_000;
 
-                let mut bids = input.to_stream(scope)
-                     .flat_map(|e| nexmark::event::Bid::from(e))
+                let mut bids = Some(bids.clone()).replay_into(scope)
                      .map(move |b| (b.auction, ((b.date_time / window_size_ns) + 1) * window_size_ns, b.price))
                      // Partition by auction id to avoid serializing the computation
                      .stateful::<_, HashMap<_, _>, _, _>(|(a, _window, _price)| calculate_hash(a), &control);
@@ -926,14 +921,10 @@ fn main() {
         if std::env::args().any(|x| x == "q8") {
             worker.dataflow(|scope| {
 
-                let events = input.to_stream(scope);
-
-                let auctions =
-                events.flat_map(|e| nexmark::event::Auction::from(e))
+                let auctions = Some(auctions.clone()).replay_into(scope)
                       .map(|a| (a.seller, a.date_time));
 
-                let people =
-                events.flat_map(|e| nexmark::event::Person::from(e))
+                let people = Some(people.clone()).replay_into(scope)
                       .map(|p| (p.id, p.date_time));
 
                 use timely::dataflow::channels::pact::Exchange;
@@ -1005,19 +996,15 @@ fn main() {
         if std::env::args().any(|x| x == "q8-flex") {
             worker.dataflow(|scope| {
 
-                let control = scope.input_from(&mut control_input).broadcast();
+                let control = Some(control.clone()).replay_into(scope);
 
-                let events = input.to_stream(scope);
-
-                let mut auctions =
-                events.flat_map(|e| nexmark::event::Auction::from(e))
+                let mut auctions = Some(auctions.clone()).replay_into(scope)
                       .map(|a| (a.seller, a.date_time))
-                      .stateful::<_, HashMap<(), ()>, _, _>(|(s,_d)| calculate_hash(s), &control);
+                      .stateful::<_, HashMap<(), ()>, _, _>(|(s, _d)| calculate_hash(s), &control);
 
-                let mut people =
-                events.flat_map(|e| nexmark::event::Person::from(e))
+                let mut people = Some(people.clone()).replay_into(scope)
                       .map(|p| (p.id, p.date_time))
-                      .stateful::<_, HashMap<_, _>, _, _>(|(p,_d)| calculate_hash(p), &control);
+                      .stateful::<_, HashMap<_, _>, _, _>(|(p, _d)| calculate_hash(p), &control);
 
                 let auctions_state = auctions.state.clone();
                 let people_state = people.state.clone();
