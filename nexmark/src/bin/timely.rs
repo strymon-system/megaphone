@@ -1145,7 +1145,8 @@ fn main() {
         };
 
         for instruction in &instructions {
-            eprintln!("instructions\t{:?}", instruction);
+            // Format instructions first to be able to truncate the string representation
+            eprintln!("instructions\t{:.120}", format!("{:?}", instruction));
         }
 
         // Establish a start of the computation.
