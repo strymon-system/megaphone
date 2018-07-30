@@ -179,7 +179,7 @@ duration=300
 
 def non_migrating(group, groups=4):
     workers = 8
-    all_queries = ["q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7"]
+    all_queries = ["q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8"]
     queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
     for rate in [x * 25000 for x in [1, 2, 4, 8]]:
         for query in queries:
