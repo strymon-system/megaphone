@@ -153,7 +153,7 @@ class Experiment(object):
         else:
             assert(self.single_machine_id is not None)
             make_command = lambda p: (
-                    # "hwloc-bind socket:{} -- ".format(p) +
+                    "/mnt/SG/strymon/local/bin/hwloc-bind socket:{}.pu:even -- ".format(p) +
                     "./{}/release/timely {} {} {}/{} {}".format(
                         self.get_build_directory_name(),
                         self._rate // (self._processes * self._workers), self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._queries)) +
