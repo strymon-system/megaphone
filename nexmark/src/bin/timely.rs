@@ -125,7 +125,7 @@ fn main() {
         let control = std::rc::Rc::new(timely::dataflow::operators::capture::event::link::EventLink::new());
 
         worker.dataflow(|scope| {
-           let input = input.to_stream(scope);
+            let input = input.to_stream(scope);
             input.flat_map(|e| nexmark::event::Bid::from(e)).capture_into(bids.clone());
             input.flat_map(|e| nexmark::event::Auction::from(e)).capture_into(auctions.clone());
             input.flat_map(|e| nexmark::event::Person::from(e)).capture_into(people.clone());
@@ -1170,6 +1170,8 @@ fn main() {
 
         let mut last_migrated = None;
 
+        let mut last_ns = 0;
+
         loop {
             let elapsed_ns = timer.elapsed().to_nanos();
 
@@ -1196,7 +1198,9 @@ fn main() {
                 break;
             }
 
+            let wait_ns = last_ns;
             let target_ns = (elapsed_ns + 1) / 1_000_000 * 1_000_000;
+            last_ns = target_ns;
             if let Some(it) = input_times_gen.iter_until(target_ns) {
                 let mut input = input.as_mut().unwrap();
                 for _t in it {
@@ -1216,8 +1220,8 @@ fn main() {
                 control_input.take();
             }
 
-            if let Some(input) = input.as_ref() {
-                while probe.less_than(input.time()) { worker.step(); }
+            if input.is_some() {
+                while probe.less_than(&RootTimestamp::new(wait_ns as usize)) { worker.step(); }
             } else {
                 while worker.step() { }
             }
