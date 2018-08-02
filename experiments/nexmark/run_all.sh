@@ -1,4 +1,6 @@
 #!/bin/bash
+trap "exit" INT TERM ERR
+trap "kill 0" EXIT
 
 CLUSTERUSER="${CLUSTERUSER:-andreal}"
 clusterpath="/home/${CLUSTERUSER}/Src/dynamic-scaling-mechanism/nexmark"
