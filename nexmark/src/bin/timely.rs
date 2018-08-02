@@ -1142,7 +1142,8 @@ fn main() {
 
         use rand::SeedableRng;
         use rand::rngs::SmallRng;
-        let mut rng = SmallRng::from_seed([0;16]);
+        assert!(worker.peers() < 256);
+        let mut rng = SmallRng::from_seed([worker.peers() as u8;16]);
 
         let input_times = {
             let config = config.clone();
