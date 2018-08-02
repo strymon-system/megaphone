@@ -1184,7 +1184,7 @@ fn main() {
 
             if index == 0
                 && last_migrated.map_or(true, |time| control_input.as_ref().map_or(false, |t| t.time().inner != time))
-                && instructions.get(0).map(|&(ts, _)| ts < elapsed_ns).unwrap_or(false)
+                && instructions.get(0).map(|&(ts, _)| ts < target_ns).unwrap_or(false)
             {
                 let instructions = instructions.remove(0).1;
                 let count = instructions.len();
