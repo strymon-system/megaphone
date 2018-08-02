@@ -17,7 +17,7 @@ use timely::ExchangeData;
 use timely::PartialOrder;
 use timely::dataflow::{Stream, Scope, ProbeHandle};
 use timely::dataflow::channels::pact::{Exchange, Pipeline};
-use timely::dataflow::operators::{FrontierNotificator as TFN};
+use timely::dataflow::operators::{Capability, FrontierNotificator as TFN};
 use timely::dataflow::operators::generic::Operator;
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::progress::Timestamp;
@@ -225,12 +225,11 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
             // Data input stash, time -> Vec<Vec<V>>
             let mut data_stash: HashMap<_, Vec<Vec<V>>> = Default::default();
 
-            // Control input stash, time -> Vec<ControlInstr>
-            let mut pending_control: HashMap<_,_> = Default::default();
-
             // Active configurations: Vec<(T, ControlInstr)> sorted by increasing T. Note that
             // we assume the Ts form a total order, i.e. they must dominate each other.
-            let mut pending_configurations: Vec<ControlSet<S::Timestamp>> = Vec::new();
+            let mut pending_configurations: Vec<(Capability<S::Timestamp>, ControlSet<S::Timestamp>)> = Vec::new();
+
+            let mut pending_configuration_data: HashMap<S::Timestamp, ControlSetBuilder<S::Timestamp>> = Default::default();
 
             // TODO : default configuration may be poorly chosen.
             let mut active_configuration: ControlSet<S::Timestamp> = ControlSet { 
@@ -250,44 +249,100 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                 // Read control input
                 control_in.for_each(|time, data| {
                     // Append to pending control instructions
-                    pending_control.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                    let cap = time.retain();
-                    // Notify both control and data (both can trigger a configuration update)
-                    control_notificator.notify_at(cap.clone());
-                    data_notificator.notify_at(cap);
+                    let builder = pending_configuration_data.entry(time.time().clone()).or_insert_with(|| {
+                        let mut builder: ControlSetBuilder<S::Timestamp> = Default::default();
+                        // TODO: We don't know the frontier at the time the command was received.
+                        builder.frontier(vec![time.time().clone()].into_iter());
+                        builder
+                    });
+                    for update in data.drain(..) {
+                        builder.apply(update);
+                    }
+                    let time = time.retain();
+                    control_notificator.notify_at(time.clone());
                 });
 
                 // Analyze control frontier
                 control_notificator.for_each(&[&frontiers[1]], |time, _not| {
                     // Check if there are pending control instructions
-                    if let Some(mut vec) = pending_control.remove(time.time()) {
-                        // Extend the configurations with (T, ControlInst) tuples
-                        let mut builder: ControlSetBuilder<S::Timestamp> = Default::default();
-                        // Apply each instruction
-                        for update in vec.drain(..) {
-                            builder.apply(update);
-                        }
-                        // TODO: We don't know the frontier at the time the command was received.
-                        builder.frontier(vec![time.time().clone()].into_iter());
+                    if let Some(builder) = pending_configuration_data.remove(time.time()) {
                         // Build new configuration
-                        let config = builder.build(pending_configurations.last().unwrap_or(&active_configuration));
+                        let config = builder.build(pending_configurations.last().map_or(&active_configuration, |pending| &pending.1));
                         // Append to list of compiled configuration
-                        pending_configurations.push(config);
+                        pending_configurations.push((time, config));
                         // Sort by provided sequence number
-                        pending_configurations.sort_by_key(|d| d.sequence);
+                        pending_configurations.sort_by_key(|d| d.1.sequence);
 
                         // Configurations are well-formed if a bigger sequence number implies that
                         // actions are not reversely ordered. Each configuration has to dominate its
                         // successors.
                         for cs in pending_configurations.windows(2) {
-                            debug_assert!(cs[0].frontier.dominates(&cs[1].frontier));
+                            debug_assert!(cs[0].1.frontier.dominates(&cs[1].1.frontier));
                         }
                         // Assert that the currently active configuration dominates the first pending
                         if let Some(config) = pending_configurations.first() {
-                            debug_assert!(active_configuration.frontier.dominates(&config.frontier));
+                            debug_assert!(active_configuration.frontier.dominates(&config.1.frontier));
                         }
                     }
                 });
+
+                // Did we cross a frontier?
+                // Here we can't really express frontier equality yet ):
+                // What we really want is to know if we can apply a configuration change or not.
+                // let data_frontier_f = data_frontier_f.borrow();
+                // if let Some(ref config) = configurations.iter().rev().find(|&c| c.frontier.dominates(&data_frontier_f)) {
+
+                // TODO : Perhaps we keep an active config and a queue of pending configs, because the *only*
+                // transition that can happen is to install the config with the next sequence number. That is
+                // the only test to perform, rather than scanning all pending configs.
+
+                // If the next configuration to install is no longer at all ahead of the state machine output,
+                // then there can be no more records or state updates for any configuration prior to the next.
+                if pending_configurations.get(0).is_some() {
+                    if pending_configurations[0].1.frontier.elements().iter().all(|t| !probe2.less_than(t)) {
+
+                        // We should now install `pending_configurations[0]` into `active_configuration`!
+                        let (time, to_install) = pending_configurations.remove(0);
+
+                        {   // Scoped to let `old_map` and `new_map` borrows drop.
+                            let old_map = active_configuration.map();
+                            let new_map = to_install.map();
+
+                            // Grab states
+                            let mut states = states_f.borrow_mut();
+                            let mut session = state_out.session(&time);
+                            // Determine if we're to move state
+                            for (bin, (old, new)) in old_map.iter().zip(new_map.iter()).enumerate() {
+                                // Migration is needed if a bin is to be moved (`old != new`) and the state
+                                // actually contains data. Also, we must be the current owner of the bin.
+                                if (*old % peers == index) && (old != new) {
+                                    // Capture bin's values as a stream of data
+                                    let state = states.bins[bin].take().expect("Instructed to move bin but it is None");
+                                    session.give((*new, StateProtocol::Prepare(Bin(bin))));
+                                    session.give_iterator(state.into_iter().map(|s| (*new, StateProtocol::State(Bin(bin), s))));
+                                }
+                            }
+                            for (cap, data) in states.notificator.pending_mut().iter_mut() {
+                                data.retain(|(key_id, meta)| {
+                                    let old_worker = old_map[key_to_bin(key_id)];
+                                    let new_worker = new_map[key_to_bin(key_id)];
+                                    if old_worker != new_worker {
+                                        // Pass pending notifications to the new owner
+                                        // Note: The receiver will get *all* notifications, so an
+                                        // operator can experience spurious wake-ups
+                                        session.give((new_worker, StateProtocol::Pending(cap.time().clone(), (*key_id, meta.clone()))));
+                                        false
+                                    } else {
+                                        true
+                                    }
+                                });
+                            }
+                        }
+
+                        // Promote the pending config to active
+                        active_configuration = to_install;
+                    }
+                }
 
                 data_notificator.for_each(&[&frontiers[0], &frontiers[1]], |time, _not| {
                     // Check for stashed data - now control input has to have advanced
@@ -297,6 +352,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                             pending_configurations
                                 .iter()
                                 .rev()
+                                .map(|c| &c.1)
                                 .find(|&c| c.frontier.less_equal(time.time()))
                                 .unwrap_or(&active_configuration)
                                 .map();
@@ -313,66 +369,6 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                             if data_return_buffer.len() < BUFFER_CAP {
                                 data_return_buffer.push(data);
                             }
-                        }
-                    }
-
-                    // Did we cross a frontier?
-                    // Here we can't really express frontier equality yet ):
-                    // What we really want is to know if we can apply a configuration change or not.
-                    // let data_frontier_f = data_frontier_f.borrow();
-                    // if let Some(ref config) = configurations.iter().rev().find(|&c| c.frontier.dominates(&data_frontier_f)) {
-
-                    // TODO : Perhaps we keep an active config and a queue of pending configs, because the *only*
-                    // transition that can happen is to install the config with the next sequence number. That is
-                    // the only test to perform, rather than scanning all pending configs.
-
-                    // If the next configuration to install is no longer at all ahead of the state machine output,
-                    // then there can be no more records or state updates for any configuration prior to the next.
-                    if pending_configurations.get(0).is_some() {
-                        if pending_configurations[0].frontier.elements().iter().all(|t| !probe2.less_than(t)) {
-
-                            // We should now install `pending_configurations[0]` into `active_configuration`!
-                            let to_install = pending_configurations.remove(0);
-
-                            {   // Scoped to let `old_map` and `new_map` borrows drop.
-                                let old_map = active_configuration.map();
-                                let new_map = to_install.map();
-
-                                // Grab states
-                                let mut states = states_f.borrow_mut();
-                                let mut session = state_out.session(&time);
-                                // Determine if we're to move state
-                                for (bin, (old, new)) in old_map.iter().zip(new_map.iter()).enumerate() {
-                                    // Migration is needed if a bin is to be moved (`old != new`) and the state
-                                    // actually contains data. Also, we must be the current owner of the bin.
-                                    if (*old % peers == index) && (old != new) {
-                                        // Capture bin's values as a stream of data
-                                        let state = states.bins[bin].take().expect("Instructed to move bin but it is None");
-                                        session.give((*new, StateProtocol::Prepare(Bin(bin))));
-                                        session.give_iterator(state.into_iter().map(|s| (*new, StateProtocol::State(Bin(bin), s))));
-                                    }
-                                }
-                                for (cap, data) in states.notificator.pending_mut().iter_mut() {
-                                    data.retain(|(key_id, meta)| {
-                                        let old_worker = old_map[key_to_bin(*key_id)];
-                                        let new_worker = new_map[key_to_bin(*key_id)];
-                                        if old_worker != new_worker {
-                                            // Pass pending notifications to the new owner
-                                            // Note: The receiver will get *all* notifications, so an
-                                            // operator can experience spurious wake-ups
-                                            session.give((new_worker, StateProtocol::Pending(cap.time().clone(), (*key_id, meta.clone()))));
-                                            false
-                                        } else {
-                                            true
-                                        }
-                                    });
-                                }
-                            }
-
-                            // Promote the pending config to active
-                            active_configuration = to_install;
-                        } else {
-                            _not.notify_at(time);
                         }
                     }
                 });
@@ -394,6 +390,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                             pending_configurations
                                 .iter()
                                 .rev()
+                                .map(|c| &c.1)
                                 .find(|&c| c.frontier.less_equal(time.time()))
                                 .unwrap_or(&active_configuration)
                                 .map();
