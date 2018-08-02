@@ -1077,6 +1077,9 @@ fn main() {
             file_name => ExperimentMapMode::File(file_name.to_string()),
         };
 
+        let time_dilation = std::env::args().nth(4).map_or(1, |arg| arg.parse().unwrap_or(1));
+        println!("time_dilation\t{}", time_dilation);
+
         let mut instructions: Vec<(u64, Vec<ControlInst>)> = match map_mode {
             ExperimentMapMode::None => {
                 let mut map = vec![0; 1 << ::dynamic_scaling_mechanism::BIN_SHIFT];
