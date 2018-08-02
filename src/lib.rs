@@ -26,17 +26,37 @@ pub struct Control {
 
 /// A bin identifier. Wraps a `usize`.
 #[derive(Abomonation, Clone, Copy, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Bin(pub usize);
+pub struct Bin(usize);
 
+impl Bin {
+    pub fn new(bin: usize) -> Self {
+        Bin(bin)
+    }
+}
+
+type KeyType = u64;
 #[derive(Abomonation, Clone, Copy, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Key(u64);
+pub struct Key(KeyType);
 
-pub fn key_to_bin(key: Key) -> usize {
-    (key.0 >> ::std::mem::size_of::<u64>() * 8 - BIN_SHIFT) as usize
+impl Key {
+    pub fn bin(&self) -> usize {
+        key_to_bin(self)
+    }
+}
+
+pub fn key_to_bin(key: &Key) -> usize {
+    (key.0 >> ::std::mem::size_of::<KeyType>() * 8 - BIN_SHIFT) as usize
 }
 
 impl ::std::ops::Deref for Bin {
     type Target = usize;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl ::std::ops::Deref for Key {
+    type Target = u64;
     fn deref(&self) -> &Self::Target {
         &self.0
     }

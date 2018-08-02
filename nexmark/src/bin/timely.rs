@@ -311,14 +311,14 @@ fn main() {
                                 while let Some((time, data)) = auction_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
                                     let mut session = output.session(&time);
                                     for (bin_id, auction) in data {
-                                        if let Some(mut person) = people_state.get_state(bin_id).get(&(auction.seller as u64)) {
+                                        if let Some(mut person) = people_state.get_state(&bin_id).get(&(auction.seller as u64)) {
                                             session.give((person.name.clone(),
                                                         person.city.clone(),
                                                         person.state.clone(),
                                                         auction.id));
                                         }
                                         // Update auction state
-                                        auction_state.get_state(bin_id).insert(auction.seller as u64, auction);
+                                        auction_state.get_state(&bin_id).insert(auction.seller as u64, auction);
                                     };
 
                                 }
@@ -326,14 +326,14 @@ fn main() {
                                 while let Some((time, data)) = people_state.notificator().next(&[input1.frontier(), input2.frontier()]) {
                                     let mut session = output.session(&time);
                                     for (bin_id, person) in data {
-                                        if let Some(mut auction) = auction_state.get_state(bin_id).get(&(person.id as u64)) {
+                                        if let Some(mut auction) = auction_state.get_state(&bin_id).get(&(person.id as u64)) {
                                             session.give((person.name.clone(),
                                                         person.city.clone(),
                                                         person.state.clone(),
                                                         auction.id));
                                         }
                                         // Update people state
-                                        people_state.get_state(bin_id).insert(person.id as u64, person);
+                                        people_state.get_state(&bin_id).insert(person.id as u64, person);
                                     };
                                 }
                             }
@@ -458,14 +458,14 @@ fn main() {
                         |_time, data, bid_state, _auction_state, _output| {
                             for (key_id, bid) in data {
                                 // Update bin state
-                                let bin: &mut HashMap<_, _> = bid_state.get_state(key_id);
+                                let bin: &mut HashMap<_, _> = bid_state.get_state(&key_id);
                                 bin.entry(bid.auction).or_insert_with(Vec::new).push(bid);
                             };
                         },
                         |time, auction_data, bid_state, _auction_state: &mut ::dynamic_scaling_mechanism::stateful::State<_, HashMap<(), ()>, _>, output| {
                             let mut session = output.session(&time);
                             for (key_id, auction) in auction_data {
-                                if let Some(mut bids) = bid_state.get_state(key_id).remove(&auction.id) {
+                                if let Some(mut bids) = bid_state.get_state(&key_id).remove(&auction.id) {
                                     bids.retain(|b|
                                         auction.date_time <= b.date_time &&
                                             b.date_time < auction.expires &&
@@ -528,7 +528,7 @@ fn main() {
                         |time, data, state, output| {
                             let mut session = output.session(&time);
                             for (key_id, (category, price)) in data {
-                                let bin: &mut HashMap<_, _> = state.get_state(key_id);
+                                let bin: &mut HashMap<_, _> = state.get_state(&key_id);
                                 let entry = bin.entry(category).or_insert((0usize, 0));
                                 entry.0 += price;
                                 entry.1 += 1;
@@ -658,11 +658,11 @@ fn main() {
                                     for (key_id, action) in data {
                                         match action {
                                             InsDel::Ins(auction) => {
-                                                let slot = bid_state.get_state(key_id).entry(auction).or_insert(0);
+                                                let slot = bid_state.get_state(&key_id).entry(auction).or_insert(0);
                                                 *slot += 1;
                                             },
                                             InsDel::Del(auction) => {
-                                                let slot = bid_state.get_state(key_id).entry(auction).or_insert(0);
+                                                let slot = bid_state.get_state(&key_id).entry(auction).or_insert(0);
                                                 *slot -= 1;
                                             }
 
@@ -745,7 +745,7 @@ fn main() {
                                 while let Some((time, data)) = state.notificator().next(&[input.frontier()]) {
                                     let mut session = output.session(&time);
                                     for (bin_id, (bidder, price)) in data {
-                                        let entry = state.get_state(bin_id).entry(bidder).or_insert(::nexmark::AbomVecDeque(VecDeque::new()));
+                                        let entry = state.get_state(&bin_id).entry(bidder).or_insert(::nexmark::AbomVecDeque(VecDeque::new()));
                                         if entry.len() >= 10 { entry.pop_back(); }
                                         entry.push_front(price);
                                         let mut sum: usize = entry.iter().sum();
@@ -879,7 +879,7 @@ fn main() {
                             while let Some((time, maxima)) = bid_state.notificator().next(&[input.frontier()]) {
                                 let mut windows = HashMap::new();
                                 for (key_id, (window, price)) in maxima {
-                                    let open_windows = bid_state.get_state(key_id).entry(window).or_insert(0);
+                                    let open_windows = bid_state.get_state(&key_id).entry(window).or_insert(0);
                                     if *open_windows < price {
                                         *open_windows = price;
                                         windows.insert(window, price);
@@ -1039,13 +1039,13 @@ fn main() {
                                 while let Some((_time, data)) = people_state.notificator().next(&[input1.frontier(),input2.frontier()]) {
                                     // Update people state
                                     for (bin_id, (person, date)) in data {
-                                        people_state.get_state(bin_id).entry(person as u64).or_insert(date);
+                                        people_state.get_state(&bin_id).entry(person as u64).or_insert(date);
                                     }
                                 }
 
                                 while let Some((time, data)) = auctions_state.notificator().next(&[input1.frontier(),input2.frontier()]) {
                                     for (bin_id, (seller, date)) in data {
-                                        if let Some(p_time) = people_state.get_state(bin_id).get(&(seller as u64)) {
+                                        if let Some(p_time) = people_state.get_state(&bin_id).get(&(seller as u64)) {
                                             if (date as i64 - *p_time as i64).abs() < window_size_ns {
                                                 output.session(&time).give(seller);
                                             }
@@ -1118,7 +1118,7 @@ fn main() {
                         "M" => (ts, vec![ControlInst::Map(parts.map(|x| x.parse().unwrap()).collect())]),
                         "D" => {
                             let parts: Vec<usize> = parts.map(|x| x.parse().unwrap()).collect();
-                            let inst = parts.chunks(2).map(|x|ControlInst::Move(::dynamic_scaling_mechanism::Bin(x[0]), x[1])).collect();
+                            let inst = parts.chunks(2).map(|x|ControlInst::Move(::dynamic_scaling_mechanism::Bin::new(x[0]), x[1])).collect();
                             (ts, inst)
                         },
                         _ => panic!("Incorrect input found in map file"),

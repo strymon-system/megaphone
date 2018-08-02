@@ -55,13 +55,13 @@ impl<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> State<T, S, D> {
 pub trait StateHandle<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> {
 
     /// Obtain a mutable reference to the state associated with a bin.
-    fn get_state(&mut self, key: Key) -> &mut S;
+    fn get_state(&mut self, key: &Key) -> &mut S;
 
     /// Call-back to get state and a notificator.
     fn with_state_frontier<
         R,
         F: Fn(&mut S, &FrontierNotificator<T, (Key, D)>) -> R
-    >(&mut self, key: Key, f: F) -> R;
+    >(&mut self, key: &Key, f: F) -> R;
 
     /// Iterate all bins. This might go away.
     fn scan<F: FnMut(&mut S)>(&mut self, f: F);
@@ -72,7 +72,8 @@ pub trait StateHandle<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> {
 
 impl<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> StateHandle<T, S, D> for State<T, S, D> {
 
-    fn get_state(&mut self, key: Key) -> &mut S {
+    fn get_state(&mut self, key: &Key) -> &mut S {
+        assert!(self.bins[key_to_bin(key)].is_some(), "Accessing bin {} for key {:?}", key_to_bin(key), key);
         self.bins[key_to_bin(key)].as_mut().expect("Trying to access non-available bin")
     }
 
@@ -80,7 +81,7 @@ impl<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> StateHandle<T, S, D> for Sta
     fn with_state_frontier<
         R,
         F: Fn(&mut S, &FrontierNotificator<T, (Key, D)>) -> R
-    >(&mut self, key: Key, f: F) -> R {
+    >(&mut self, key: &Key, f: F) -> R {
         f(self.bins[key_to_bin(key)].as_mut().expect("Trying to access non-available bin"), &mut self.notificator)
     }
 
@@ -305,7 +306,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                             {
                                 let data_iter = data.drain(..).map(|d| {
                                     let key = Key(key(&d));
-                                    (map[key_to_bin(key)], key, d)
+                                    (map[key_to_bin(&key)], key, d)
                                 });
                                 session.give_iterator(data_iter);
                             }
@@ -401,7 +402,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
                         let data_iter = data.drain(..).into_iter().map(|d| {
                             let key = Key(key(&d));
-                            (map[key_to_bin(key)], key, d)
+                            (map[key_to_bin(&key)], key, d)
                         });
                         session.give_iterator(data_iter);
                     }

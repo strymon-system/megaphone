@@ -66,7 +66,7 @@ impl<S, D, W, KV> BinProber<S> for StateStream<S, KV, D, W, ()>
                     {
                         let contents: &Vec<_> = &*data;
                         for &(_target, key, _) in contents.iter() {
-                            map[key_to_bin(key)] += 1;
+                            map[key_to_bin(&key)] += 1;
                         }
                     }
                     data_out.session(&time).give_content(data);

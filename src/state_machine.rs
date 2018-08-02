@@ -56,7 +56,7 @@ where
                 while let Some((time, pend)) = states.notificator().next(&[frontier]) {
                     let mut session = output.session(&time);
                     for (key_id, (key, val)) in pend {
-                        let mut states = states.get_state(key_id);
+                        let mut states = states.get_state(&key_id);
                         let (remove, output) = {
                             let state = states.entry(key.clone()).or_insert_with(Default::default);
                             fold(&key, val.clone(), state)
@@ -75,7 +75,7 @@ where
                         // else we can process immediately
                         let mut session = output.session(&time);
                         for (_target, key_id, (key, val)) in data.drain(..) {
-                            let mut states = states.get_state(key_id);
+                            let mut states = states.get_state(&key_id);
                             let (remove, output) = {
                                 let state = states.entry(key.clone()).or_insert_with(Default::default);
                                 fold(&key, val.clone(), state)
