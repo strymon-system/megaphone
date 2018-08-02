@@ -69,7 +69,7 @@ where
                 // stash each input and request a notification when ready
                 while let Some((time, data)) = input.next() {
                     // stash if not time yet
-                    if frontier.less_than(time.time()) {
+                    if frontier.less_equal(time.time()) {
                         states.notificator().notify_at(time.retain(), data.drain(..).map(|(_, key_id, d)| (key_id, d)).collect());
                     } else {
                         // else we can process immediately
