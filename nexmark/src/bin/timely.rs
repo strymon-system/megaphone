@@ -1175,6 +1175,12 @@ fn main() {
 
         loop {
             let elapsed_ns = timer.elapsed().to_nanos();
+            let wait_ns = last_ns;
+            let target_ns = {
+                let scale = (elapsed_ns - last_ns).next_power_of_two() / 2;
+                elapsed_ns & !(scale - 1)
+            };
+            last_ns = target_ns;
 
             if index == 0
                 && last_migrated.map_or(true, |time| control_input.as_ref().map_or(false, |t| t.time().inner != time))
@@ -1199,9 +1205,6 @@ fn main() {
                 break;
             }
 
-            let wait_ns = last_ns;
-            let target_ns = (elapsed_ns + 1) / 1_000_000 * 1_000_000;
-            last_ns = target_ns;
             if let Some(it) = input_times_gen.iter_until(target_ns) {
                 let mut input = input.as_mut().unwrap();
                 for _t in it {
