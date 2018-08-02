@@ -415,35 +415,36 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
         // Read data input and state input
         // Route each according to the encoded target worker
-        let stream = stream.binary_notify(&state, Exchange::new(move |&(target, _key, _)| target as u64), Exchange::new(move |&(target, _)| target as u64), "State", vec![], move |input, state, output, notificator| {
+        let stream = stream.binary(&state, Exchange::new(move |&(target, _key, _)| target as u64), Exchange::new(move |&(target, _)| target as u64), "State", |cap, info| {
+            move |input, state, output| {
 
-            // Handle data input
-            input.for_each(|time, data| {
-                output.session(&time).give_content(data);
-            });
+                // Handle data input
+                input.for_each(|time, data| {
+                    output.session(&time).give_content(data);
+                });
 
-            // Handle state updates
-            state.for_each(|time, data| {
-                let mut states = states.borrow_mut();
+                // Handle state updates
+                state.for_each(|time, data| {
+                    let mut states = states.borrow_mut();
 
-                // Apply each state update
-                for (_target, state) in data.drain(..) {
-                    match state {
-                        StateProtocol::Prepare(bin) => {
-                            assert!(states.bins[*bin].is_none());
-                            states.bins[*bin] = Some(Default::default());
+                    // Apply each state update
+                    for (_target, state) in data.drain(..) {
+                        match state {
+                            StateProtocol::Prepare(bin) => {
+                                assert!(states.bins[*bin].is_none());
+                                states.bins[*bin] = Some(Default::default());
+                            }
+                            // Extend state
+                            StateProtocol::State(bin, s) => {
+                                states.bins[*bin].as_mut().map(|bin| bin.extend(Some(s)));
+                            },
+                            // Request notification
+                            StateProtocol::Pending(t, data) =>
+                                states.notificator.enqueue(t, vec![data]),
                         }
-                        // Extend state
-                        StateProtocol::State(bin, s) => {
-                            states.bins[*bin].as_mut().map(|bin| bin.extend(Some(s)));
-                        },
-                        // Request notification
-                        StateProtocol::Pending(t, data) =>
-                            states.notificator.enqueue(t, vec![data]),
                     }
-
-                }
-            });
+                });
+            }
         });
 
         // `stream` is the stateful output stream where data is already correctly partitioned.
