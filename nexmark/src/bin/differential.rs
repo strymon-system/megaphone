@@ -339,9 +339,10 @@ fn main() {
         config.base_time_ns = elapsed_ns;
         let mut requested_ns = elapsed_ns;
 
-        use rand::{StdRng, SeedableRng};
+        use rand::SeedableRng;
+        use rand::rngs::SmallRng;
         assert!(worker.peers() < 256);
-        let mut rng = StdRng::from_seed([worker.peers() as u8;32]);
+        let mut rng = SmallRng::from_seed([worker.peers() as u8;16]);
 
         let mut counts = vec![[0u64; 16]; 64];
 
