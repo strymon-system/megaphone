@@ -773,7 +773,7 @@ fn main() {
                 use timely::dataflow::operators::Operator;
 
                 // Window ticks every 10 seconds.
-                let window_size_ns = 1_000_000_000;
+                let window_size_ns = 10_000_000_000;
 
                 Some(bids.clone()).replay_into(scope)
                      .map(move |b| (::nexmark::event::Date::new(((*b.date_time / window_size_ns) + 1) * window_size_ns), b.price))
@@ -859,7 +859,7 @@ fn main() {
                 let control = Some(control.clone()).replay_into(scope);
 
                 // Window ticks every 10 seconds.
-                let window_size_ns = 1_000_000_000;
+                let window_size_ns = 10_000_000_000;
 
                 let mut bids = Some(bids.clone()).replay_into(scope)
                      .map(move |b| (b.auction, ::nexmark::event::Date::new(((*b.date_time / window_size_ns) + 1) * window_size_ns), b.price))
