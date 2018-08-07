@@ -317,3 +317,29 @@ def exploratory_bin_shift(group, groups=4):
                     time_dilation=1)
                 experiment.single_machine_id = group + 1
                 experiment.run_commands(run, build)
+
+
+def migrating_time_dilation(group, groups=4):
+    workers = 8
+    all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
+    queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
+    for rate in [x * 250 for x in [1, 2, 4, 8]]:
+        for migration in ["sudden", "fluid", "batched"]:
+            for query in queries:
+                # Time dilation of 75: just more than two 12h windows in 300s
+                experiment = Experiment(
+                    "migrating",
+                    duration=duration,
+                    rate=rate,
+                    queries=[query,],
+                    migration=migration,
+                    bin_shift=8,
+                    workers=workers,
+                    processes=1,
+                    initial_config="uniform",
+                    final_config="uniform_skew",
+                    fake_stateful=False,
+                    machine_local=True,
+                    time_dilation=75)
+                experiment.single_machine_id = group + 1
+                experiment.run_commands(run, build)
