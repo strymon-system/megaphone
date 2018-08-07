@@ -1159,8 +1159,8 @@ fn main() {
         let mut output_metric_collector =
             ::streaming_harness::output::default::hdrhist_timeline_collector(
                 input_times(),
-                0, 2_000_000_000 * time_dilation as u64, (duration_ns - 2_000_000_000) * time_dilation as u64, duration_ns * time_dilation as u64,
-                1_000_000_000 * time_dilation as u64);
+                0, 2_000_000_000, duration_ns - 2_000_000_000, duration_ns,
+                1_000_000_000);
 
         let mut events_so_far = 0;
 
