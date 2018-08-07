@@ -92,7 +92,6 @@ impl Event {
     pub fn create(events_so_far: usize, rng: &mut SmallRng, nex: &mut NEXMarkConfig) -> Self {
         let rem = nex.next_adjusted_event(events_so_far) % nex.proportion_denominator;
         let timestamp = Date(nex.event_timestamp_ns(nex.next_adjusted_event(events_so_far)));
-        println!("event time: {:?}", timestamp);
         let id = nex.first_event_id + nex.next_adjusted_event(events_so_far);
 
         if rem < nex.person_proportion {
