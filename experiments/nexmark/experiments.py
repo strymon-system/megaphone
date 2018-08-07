@@ -32,7 +32,7 @@ def wait_all(processes):
     for p in processes:
         # p.wait(use_spinner=False)
         while p.is_running:
-            time.sleep(1)
+            time.sleep(.1)
 
 eprint("commit: {}".format(current_commit))
 

@@ -134,35 +134,17 @@ class Experiment(object):
         hostfile_file_name = self.get_setup_file_name("hostfile")
         with open(hostfile_file_name, 'w') as f:
             eprint("writing hostfile to {}".format(hostfile_file_name))
-            if not self._machine_local:
-                assert(self.base_machine_id is not None)
-                for p in range(0, self._processes):
-                    f.write("{}{}.ethz.ch:3210\n".format(experiments.cluster_server.split('@')[1], self.base_machine_id + p))
-            else:
+            if self._machine_local:
                 assert(self.single_machine_id is not None)
                 for p in range(0, self._processes):
                     f.write("{}{}.ethz.ch:{}\n".format(experiments.cluster_server.split('@')[1], self.single_machine_id, 3210 + p))
+            else:
+                assert(self.base_machine_id is not None)
+                for p in range(0, self._processes):
+                    f.write("{}{}.ethz.ch:3210\n".format(experiments.cluster_server.split('@')[1], self.base_machine_id + p))
 
 
-        if not self._machine_local:
-            def make_command(p):
-                params = {
-                    'dir': self.get_build_directory_name(),
-                    'rate': self._rate // (self._processes * self._workers),
-                    'duration': self._duration,
-                    'cwd': "../experiments/nexmark",
-                    'migration': migration_pattern_file_name,
-                    'queries': " ".join(self._queries),
-                    'hostfile': hostfile_file_name,
-                    'processes': self._processes,
-                    'p': p,
-                    'workers': self._workers,
-                    'time_dilation': self._time_dilation,
-                }
-                return "./{dir}/release/timely {rate} {duration} {cwd}/{migration} {time_dilation} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
-            commands = [(self.base_machine_id + p, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
-            return commands
-        else:
+        if self._machine_local:
             assert(self.single_machine_id is not None)
             def make_command(p):
                 params = {
@@ -181,6 +163,24 @@ class Experiment(object):
                 return "/mnt/SG/strymon/local/bin/hwloc-bind socket:{p}.pu:even -- ./{dir}/release/timely {rate} {duration} {cwd}/{migration} {time_dilation} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
             commands = [(self.single_machine_id, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
             return commands
+        else:
+            def make_command(p):
+                params = {
+                    'dir': self.get_build_directory_name(),
+                    'rate': self._rate // (self._processes * self._workers),
+                    'duration': self._duration,
+                    'cwd': "../experiments/nexmark",
+                    'migration': migration_pattern_file_name,
+                    'queries': " ".join(self._queries),
+                    'hostfile': hostfile_file_name,
+                    'processes': self._processes,
+                    'p': p,
+                    'workers': self._workers,
+                    'time_dilation': self._time_dilation,
+                }
+                return "./{dir}/release/timely {rate} {duration} {cwd}/{migration} {time_dilation} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
+            commands = [(self.base_machine_id + p, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
+            return commands
 
     def run_commands(self, run=True, build=True):
         eprint("running experiment, results in {}".format(self.get_result_directory_name()), level="info")
@@ -189,10 +189,10 @@ class Experiment(object):
         if build:
             build_cmd = ". ~/eth_proxy.sh && cargo rustc --target-dir {} --bin timely --release --no-default-features --features {}".format(
                 shlex.quote(self.get_build_directory_name()), shlex.quote(" ".join(self.get_features())))
-            if not self._machine_local:
-                run_cmd(build_cmd, node=self.base_machine_id, dryrun=dryrun)
-            else:
+            if self._machine_local:
                 run_cmd(build_cmd, node=self.single_machine_id, dryrun=dryrun)
+            else:
+                run_cmd(build_cmd, node=self.base_machine_id, dryrun=dryrun)
         if run:
             wait_all([run_cmd(c, redirect=r, stderr=stderr, background=True, node=p, dryrun=dryrun) for p, c, r, stderr in self.commands()])
 
