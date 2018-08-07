@@ -108,7 +108,6 @@ fn main() {
     let timelines: Vec<_> = timely::execute_from_args(std::env::args(), move |worker| {
 
         let time_dilation = std::env::args().nth(4).map_or(1, |arg| arg.parse().unwrap_or(1));
-        println!("time_dilation\t{}", time_dilation);
 
         let to_nexmark_time = move |x| ::nexmark::event::Date::new(x * time_dilation);
         let from_nexmark_time = move |x: ::nexmark::event::Date| *x / time_dilation;
@@ -174,7 +173,6 @@ fn main() {
                 let control = Some(control.clone()).replay_into(scope);
                 let mut state_stream = Some(bids.clone()).replay_into(scope)
                     .stateful::<_, HashMap<(), ()>, _, ()>(|bid| calculate_hash(&bid.auction), &control);
-
 
                 state_stream.stream
                      .map_in_place(|(_, _, b)| b.price = (b.price * 89)/100)
@@ -1066,8 +1064,6 @@ fn main() {
             });
         }
 
-        println!("bin_shift\t{}", ::dynamic_scaling_mechanism::BIN_SHIFT);
-
         let rate = std::env::args().nth(1).expect("rate absent").parse().expect("couldn't parse rate");
         let mut config1 = nexmark::config::Config::new();
         config1.insert("events-per-second", rate);
@@ -1137,9 +1133,14 @@ fn main() {
 //            _ => panic!("unsupported map mode"),
         };
 
-        for instruction in &instructions {
-            // Format instructions first to be able to truncate the string representation
-            eprintln!("instructions\t{:.120}", format!("{:?}", instruction));
+        if index == 0 {
+            println!("time_dilation\t{}", time_dilation);
+            println!("bin_shift\t{}", ::dynamic_scaling_mechanism::BIN_SHIFT);
+
+            for instruction in &instructions {
+                // Format instructions first to be able to truncate the string representation
+                eprintln!("instructions\t{:.120}", format!("{:?}", instruction));
+            }
         }
 
         // Establish a start of the computation.
