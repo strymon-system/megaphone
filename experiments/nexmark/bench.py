@@ -100,7 +100,7 @@ class Experiment(object):
         print(vars(self))
         migration_pattern_file_name = self.get_setup_file_name("migration_pattern")
 
-        initial_pattern = InitialPattern(self._bin_shift, self._workers)
+        initial_pattern = InitialPattern(self._bin_shift, self._workers * self._processes)
 
         if self._migration == "sudden":
             pattern = SuddenMigrationPattern
