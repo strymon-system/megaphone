@@ -415,7 +415,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
         // Read data input and state input
         // Route each according to the encoded target worker
-        let stream = stream.binary(&state, Exchange::new(move |&(target, _key, _)| target as u64), Exchange::new(move |&(target, _)| target as u64), "State", |cap, info| {
+        let stream = stream.binary(&state, Exchange::new(move |&(target, _key, _)| target as u64), Exchange::new(move |&(target, _)| target as u64), "State", |_cap, _info| {
             move |input, state, output| {
 
                 // Handle data input
@@ -424,7 +424,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                 });
 
                 // Handle state updates
-                state.for_each(|time, data| {
+                state.for_each(|_time, data| {
                     let mut states = states.borrow_mut();
 
                     // Apply each state update
