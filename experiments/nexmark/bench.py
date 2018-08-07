@@ -53,6 +53,7 @@ class Experiment(object):
         self._machine_local = self._config["machine_local"]
         self._queries = self._config["queries"]
         self._fake_stateful = self._config.get("fake_stateful", False)
+        self._time_dilation = self._config.get("time_dilation", 1)
         assert(isinstance(self._queries, list))
 
         self.single_machine_id = single_machine_id
@@ -156,8 +157,9 @@ class Experiment(object):
                     'processes': self._processes,
                     'p': p,
                     'workers': self._workers,
+                    'time_dilation': self._time_dilation,
                 }
-                return "./{dir}/release/timely {rate} {duration} {cwd}/{migration} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
+                return "./{dir}/release/timely {rate} {duration} {cwd}/{migration} {time_dilation} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
             commands = [(self.base_machine_id + p, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
             return commands
         else:
@@ -174,8 +176,9 @@ class Experiment(object):
                     'processes': self._processes,
                     'p': p,
                     'workers': self._workers,
+                    'time_dilation': self._time_dilation,
                 }
-                return "/mnt/SG/strymon/local/bin/hwloc-bind socket:{p}.pu:even -- ./{dir}/release/timely {rate} {duration} {cwd}/{migration} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
+                return "/mnt/SG/strymon/local/bin/hwloc-bind socket:{p}.pu:even -- ./{dir}/release/timely {rate} {duration} {cwd}/{migration} {time_dilation} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
             commands = [(self.single_machine_id, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
             return commands
 
@@ -213,7 +216,8 @@ def non_migrating(group, groups=4):
                     initial_config="uniform",
                     final_config="uniform",
                     fake_stateful=False,
-                    machine_local=True)
+                    machine_local=True,
+                    time_dilation=1)
             experiment.single_machine_id = group + 1
             experiment.run_commands(run, build)
 
@@ -236,7 +240,8 @@ def exploratory_migrating(group, groups=4):
                     initial_config="uniform",
                     final_config="uniform_skew",
                     fake_stateful=False,
-                    machine_local=True)
+                    machine_local=True,
+                    time_dilation=1)
                 experiment.single_machine_id = group + 1
                 experiment.run_commands(run, build)
 
@@ -259,7 +264,8 @@ def exploratory_baseline(group, groups=4):
                     initial_config="uniform",
                     final_config="uniform_skew",
                     fake_stateful=True,
-                    machine_local=True)
+                    machine_local=True,
+                    time_dilation=1)
                 experiment.single_machine_id = group + 1
                 experiment.run_commands(run, build)
 
@@ -282,7 +288,8 @@ def exploratory_migrating_single_process(group, groups=4):
                         initial_config="uniform",
                         final_config="uniform_skew",
                         fake_stateful=False,
-                        machine_local=True)
+                        machine_local=True,
+                        time_dilation=1)
                 experiment.single_machine_id = group + 1
                 experiment.run_commands(run, build)
 
@@ -306,6 +313,7 @@ def exploratory_bin_shift(group, groups=4):
                     initial_config="uniform",
                     final_config="uniform_skew",
                     fake_stateful=False,
-                    machine_local=True)
+                    machine_local=True,
+                    time_dilation=1)
                 experiment.single_machine_id = group + 1
                 experiment.run_commands(run, build)
