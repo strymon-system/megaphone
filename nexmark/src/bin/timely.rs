@@ -107,6 +107,12 @@ fn main() {
     // define a new computational scope, in which to run BFS
     let timelines: Vec<_> = timely::execute_from_args(std::env::args(), move |worker| {
 
+        let time_dilation = std::env::args().nth(4).map_or(1, |arg| arg.parse().unwrap_or(1));
+        println!("time_dilation\t{}", time_dilation);
+
+        let to_nexmark_time = move |x| ::nexmark::event::Date::new(x * time_dilation);
+        let from_nexmark_time = move |x: ::nexmark::event::Date| *x / time_dilation;
+
         let peers = worker.peers();
         let index = worker.index();
 
@@ -378,9 +384,9 @@ fn main() {
                                 // Record each auction.
                                 input2.for_each(|time, data| {
                                     for auction in data.drain(..) {
-                                        if capability.as_ref().map(|c| c.time().inner <= auction.expires) != Some(true) {
+                                        if capability.as_ref().map(|c| to_nexmark_time(c.time().inner) <= auction.expires) != Some(true) {
                                             let mut new_time = time.time().clone();
-                                            new_time.inner = auction.expires;
+                                            new_time.inner = from_nexmark_time(auction.expires);
                                             capability = Some(time.delayed(&new_time));
                                         }
                                         use std::cmp::Reverse;
@@ -396,7 +402,7 @@ fn main() {
                                     let complete = std::cmp::min(complete1, complete2);
 
                                     let mut session = output.session(capability);
-                                    while opens.peek().map(|x| (x.0).0 < complete) == Some(true) {
+                                    while opens.peek().map(|x| (x.0).0 < to_nexmark_time(complete)) == Some(true) {
 
                                         let (_time, auction) = opens.pop().unwrap();
                                         if let Some(mut state) = state.remove(&auction.id) {
@@ -414,7 +420,7 @@ fn main() {
 
                                 // Downgrade capability.
                                 if let Some(head) = opens.peek() {
-                                    capability.as_mut().map(|c| c.downgrade(&RootTimestamp::new((head.0).0)));
+                                    capability.as_mut().map(|c| c.downgrade(&RootTimestamp::new(from_nexmark_time((head.0).0))));
                                 }
                                 else {
                                     capability = None;
@@ -440,17 +446,17 @@ fn main() {
                         |bid| calculate_hash(&bid.auction),
                         |a| calculate_hash(&a.id),
                         "Q4 Auction close",
-                        |not, time, data| {
+                        move |not, time, data| {
                             let mut not_time = time.time().clone();
                             for (_, key_id, bid) in data.drain(..) {
-                                not_time.inner = bid.date_time;
+                                not_time.inner = from_nexmark_time(bid.date_time);
                                 not.notify_at(time.delayed(&not_time), vec![(key_id, bid)])
                             }
                         },
-                        |not, time, data| {
+                        move |not, time, data| {
                             let mut new_time = time.time().clone();
                             for (_target, key_id, auction) in data.drain(..) {
-                                new_time.inner = auction.expires;
+                                new_time.inner = from_nexmark_time(auction.expires);
                                 // Request notification for the auction's expiration time, which is used to look into the auctions_state
                                 not.notify_at(time.delayed(&new_time), vec![(key_id, auction)]);
                             }
@@ -546,9 +552,9 @@ fn main() {
                 let window_slide_ns = 1_000_000_000;
 
                 Some(bids.clone()).replay_into(scope)
-                     .map(move |b| (b.auction, ((b.date_time / window_slide_ns) + 1) * window_slide_ns))
+                     .map(move |b| (b.auction, ::nexmark::event::Date::new(((*b.date_time / window_slide_ns) + 1) * window_slide_ns)))
                      // TODO: Could pre-aggregate pre-exchange, if there was reason to do so.
-                     .unary_frontier(Exchange::new(|b: &(usize, usize)| b.0 as u64), "Q5 Accumulate",
+                     .unary_frontier(Exchange::new(|b: &(usize, _)| b.0 as u64), "Q5 Accumulate",
                         |_capability, _info| {
 
                             let mut additions = HashMap::new();
@@ -559,14 +565,14 @@ fn main() {
 
                                 input.for_each(|time, data| {
 
-                                    let slide = ((time.time().inner / window_slide_ns) + 1) * window_slide_ns;
-                                    let downgrade = time.delayed(&RootTimestamp::new(slide));
+                                    let slide = ::nexmark::event::Date::new(((*to_nexmark_time(time.time().inner) / window_slide_ns) + 1) * window_slide_ns);
+                                    let downgrade = time.delayed(&RootTimestamp::new(from_nexmark_time(slide)));
 
                                     // Collect all bids in a different slide.
                                     for &(auction, a_time) in data.iter() {
                                         if a_time != slide {
                                             additions
-                                                .entry(time.delayed(&RootTimestamp::new(a_time)))
+                                                .entry(time.delayed(&RootTimestamp::new(from_nexmark_time(a_time))))
                                                 .or_insert(Vec::new())
                                                 .push(auction);
                                         }
@@ -623,7 +629,7 @@ fn main() {
 
                 let mut bids = Some(bids.clone()).replay_into(scope)
                      // Discretize bid's datetime based on slides
-                     .map(move |b| (b.auction, ((b.date_time / window_slide_ns) + 1) * window_slide_ns))
+                     .map(move |b| (b.auction, ::nexmark::event::Date::new(((*b.date_time / window_slide_ns) + 1) * window_slide_ns)))
                      // TODO: Could pre-aggregate pre-exchange, if there was reason to do so.
                      // Partitions by auction id
                      .stateful::<_, HashMap<_, _>, _, _>(|(a, _b)| calculate_hash(a), &control);
@@ -645,11 +651,11 @@ fn main() {
                                 input.for_each(|time, data| {
                                     for &(_, bin_id, (auction, a_time)) in data.iter() {
                                         // Stash pending additions
-                                        bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(a_time)), vec![(bin_id, InsDel::Ins(auction))]);
+                                        bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(from_nexmark_time(a_time))), vec![(bin_id, InsDel::Ins(auction))]);
 
                                         // Stash pending deletions
-                                        let new_time = a_time + (window_slice_count * window_slide_ns);
-                                        bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(new_time)),vec![(bin_id, InsDel::Del(auction))]);
+                                        let new_time = ::nexmark::event::Date::new(*a_time + (window_slice_count * window_slide_ns));
+                                        bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(from_nexmark_time(new_time))),vec![(bin_id, InsDel::Del(auction))]);
                                     }
                                 });
 
@@ -770,7 +776,7 @@ fn main() {
                 let window_size_ns = 1_000_000_000;
 
                 Some(bids.clone()).replay_into(scope)
-                     .map(move |b| (((b.date_time / window_size_ns) + 1) * window_size_ns, b.price))
+                     .map(move |b| (::nexmark::event::Date::new(((*b.date_time / window_size_ns) + 1) * window_size_ns), b.price))
                      .unary_frontier(Pipeline, "Q7 Pre-reduce", |_cap, _info| {
 
                         use timely::dataflow::operators::Capability;
@@ -785,13 +791,13 @@ fn main() {
                             input.for_each(|time, data| {
 
                                 for (window, price) in data.drain(..) {
-                                    if let Some(position) = maxima.iter().position(|x| (x.0).time().inner == window) {
+                                    if let Some(position) = maxima.iter().position(|x| (x.0).time().inner == from_nexmark_time(window)) {
                                         if maxima[position].1 < price {
                                             maxima[position].1 = price;
                                         }
                                     }
                                     else {
-                                        maxima.push((time.delayed(&RootTimestamp::new(window)), price));
+                                        maxima.push((time.delayed(&RootTimestamp::new(from_nexmark_time(window))), price));
                                     }
                                 }
 
@@ -856,7 +862,7 @@ fn main() {
                 let window_size_ns = 1_000_000_000;
 
                 let mut bids = Some(bids.clone()).replay_into(scope)
-                     .map(move |b| (b.auction, ((b.date_time / window_size_ns) + 1) * window_size_ns, b.price))
+                     .map(move |b| (b.auction, ::nexmark::event::Date::new(((*b.date_time / window_size_ns) + 1) * window_size_ns), b.price))
                      // Partition by auction id to avoid serializing the computation
                      .stateful::<_, HashMap<_, _>, _, _>(|(a, _window, _price)| calculate_hash(a), &control);
 
@@ -872,7 +878,7 @@ fn main() {
 
                             input.for_each(|time, data| {
                                 for (_, key_id, (_auction, window, price)) in data.drain(..) {
-                                    bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(window)),vec![(key_id, (window, price))]);
+                                    bid_state.notificator().notify_at(time.delayed(&RootTimestamp::new(from_nexmark_time(window))),vec![(key_id, (window, price))]);
                                 }
                             });
 
@@ -891,7 +897,7 @@ fn main() {
                         }
                      })
                      // Aggregate the partial counts. This doesn't need to be stateful since we request notification upon a window firing time and then we drop the state immediately after processing
-                     .unary_frontier(Exchange::new(move |x: &(usize, usize)| (x.0 / window_size_ns) as u64), "Q7 All-reduce", |_cap, _info|
+                     .unary_frontier(Exchange::new(move |x: &(::nexmark::event::Date, usize)| (*x.0 / window_size_ns) as u64), "Q7 All-reduce", |_cap, _info|
                      {
                         let mut pending_maxima: HashMap<_,Vec<_>> = Default::default();
                         let mut notificator = FrontierNotificator::new();
@@ -900,11 +906,11 @@ fn main() {
                                 for (window,price) in data.drain(..) {
                                     let slot = pending_maxima.entry(window).or_insert_with(Vec::new);
                                     slot.push(price);
-                                    notificator.notify_at(time.delayed(&RootTimestamp::new(window)));
+                                    notificator.notify_at(time.delayed(&RootTimestamp::new(from_nexmark_time(window))));
                                 }
                             });
                             while let Some(time) = notificator.next(&[input.frontier()]) {
-                                if let Some(mut maxima) = pending_maxima.remove(&time.time().inner) {
+                                if let Some(mut maxima) = pending_maxima.remove(&to_nexmark_time(time.time().inner)) {
                                     if let Some(max_price) = maxima.drain(..).max(){
                                         output.session(&time).give(max_price);
                                     }
@@ -934,8 +940,8 @@ fn main() {
                 people
                     .binary_frontier(
                         &auctions,
-                        Exchange::new(|p: &(usize, usize)| p.0 as u64),
-                        Exchange::new(|a: &(usize, usize)| a.0 as u64),
+                        Exchange::new(|p: &(usize, _)| p.0 as u64),
+                        Exchange::new(|a: &(usize, _)| a.0 as u64),
                         "Q8 join",
                         |_capability, _info| {
 
@@ -967,18 +973,18 @@ fn main() {
                                         {
                                             let mut session = output.session(&capability);
                                             for &(person, time) in auctions.iter() {
-                                                if time < complete {
+                                                if time < to_nexmark_time(complete) {
                                                     if let Some(p_time) = new_people.get(&person) {
-                                                        if (time as i64 - *p_time as i64).abs() < window_size_ns {
+                                                        if *time < **p_time + window_size_ns {
                                                             session.give(person);
                                                         }
                                                     }
                                                 }
                                             }
-                                            auctions.retain(|&(_, time)| time >= complete);
+                                            auctions.retain(|&(_, time)| time >= to_nexmark_time(complete));
                                         }
                                         if let Some(minimum) = auctions.iter().map(|x| x.1).min() {
-                                            capability.downgrade(&RootTimestamp::new(minimum));
+                                            capability.downgrade(&RootTimestamp::new(from_nexmark_time(minimum)));
                                         }
                                     }
                                 }
@@ -1046,7 +1052,7 @@ fn main() {
                                 while let Some((time, data)) = auctions_state.notificator().next(&[input1.frontier(),input2.frontier()]) {
                                     for (bin_id, (seller, date)) in data {
                                         if let Some(p_time) = people_state.get_state(&bin_id).get(&(seller as u64)) {
-                                            if (date as i64 - *p_time as i64).abs() < window_size_ns {
+                                            if *date < **p_time + window_size_ns {
                                                 output.session(&time).give(seller);
                                             }
                                         }
@@ -1076,9 +1082,6 @@ fn main() {
 //            "fluid" => ExperimentMapMode::Fluid,
             file_name => ExperimentMapMode::File(file_name.to_string()),
         };
-
-        let time_dilation = std::env::args().nth(4).map_or(1, |arg| arg.parse().unwrap_or(1));
-        println!("time_dilation\t{}", time_dilation);
 
         let mut instructions: Vec<(u64, Vec<ControlInst>)> = match map_mode {
             ExperimentMapMode::None => {
@@ -1150,14 +1153,14 @@ fn main() {
 
         let input_times = {
             let config = config.clone();
-            move || nexmark::config::NexMarkInputTimes::new(config.clone(), duration_ns)
+            move || nexmark::config::NexMarkInputTimes::new(config.clone(), duration_ns, time_dilation)
         };
 
         let mut output_metric_collector =
             ::streaming_harness::output::default::hdrhist_timeline_collector(
                 input_times(),
-                0, 2_000_000_000, duration_ns - 2_000_000_000, duration_ns,
-                1_000_000_000);
+                0, 2_000_000_000 * time_dilation as u64, (duration_ns - 2_000_000_000) * time_dilation as u64, duration_ns * time_dilation as u64,
+                1_000_000_000 * time_dilation as u64);
 
         let mut events_so_far = 0;
 
