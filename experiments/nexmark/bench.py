@@ -2,6 +2,7 @@
 
 import sys, math, os
 import argparse
+import shlex
 from collections import namedtuple, defaultdict
 from HopcroftKarp import HopcroftKarp
 
@@ -143,21 +144,38 @@ class Experiment(object):
 
 
         if not self._machine_local:
-            make_command = lambda p: (
-                    "./{}/release/timely {} {} {}/{} {}".format(
-                        self.get_build_directory_name(),
-                        self._rate // (self._processes * self._workers), self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._queries)) +
-                    " --hostfile {}/{} -n {} -p {} -w {}".format(os.getcwd(), hostfile_file_name, self._processes, p, self._workers))
+            def make_command(p):
+                params = {
+                    'dir': self.get_build_directory_name(),
+                    'rate': self._rate // (self._processes * self._workers),
+                    'duration': self._duration,
+                    'cwd': "../experiments/nexmark",
+                    'migration': migration_pattern_file_name,
+                    'queries': " ".join(self._queries),
+                    'hostfile': hostfile_file_name,
+                    'processes': self._processes,
+                    'p': p,
+                    'workers': self._workers,
+                }
+                return "./{dir}/release/timely {rate} {duration} {cwd}/{migration} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
             commands = [(self.base_machine_id + p, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
             return commands
         else:
             assert(self.single_machine_id is not None)
-            make_command = lambda p: (
-                    "/mnt/SG/strymon/local/bin/hwloc-bind socket:{}.pu:even -- ".format(p) +
-                    "./{}/release/timely {} {} {}/{} {}".format(
-                        self.get_build_directory_name(),
-                        self._rate // (self._processes * self._workers), self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._queries)) +
-                    " --hostfile {}/{} -n {} -p {} -w {}".format(os.getcwd(), hostfile_file_name, self._processes, p, self._workers))
+            def make_command(p):
+                params = {
+                    'dir': self.get_build_directory_name(),
+                    'rate': self._rate // (self._processes * self._workers),
+                    'duration': self._duration,
+                    'cwd': "../experiments/nexmark",
+                    'migration': migration_pattern_file_name,
+                    'queries': " ".join(self._queries),
+                    'hostfile': hostfile_file_name,
+                    'processes': self._processes,
+                    'p': p,
+                    'workers': self._workers,
+                }
+                return "/mnt/SG/strymon/local/bin/hwloc-bind socket:{p}.pu:even -- ./{dir}/release/timely {rate} {duration} {cwd}/{migration} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
             commands = [(self.single_machine_id, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
             return commands
 
@@ -166,8 +184,8 @@ class Experiment(object):
         if not dryrun:
             ensure_dir(self.get_result_directory_name())
         if build:
-            build_cmd = ". ~/eth_proxy.sh && cargo rustc --target-dir {} --bin timely --release --no-default-features --features \\\"{}\\\"".format(
-                self.get_build_directory_name(), " ".join(self.get_features()))
+            build_cmd = ". ~/eth_proxy.sh && cargo rustc --target-dir {} --bin timely --release --no-default-features --features {}".format(
+                shlex.quote(self.get_build_directory_name()), shlex.quote(" ".join(self.get_features())))
             if not self._machine_local:
                 run_cmd(build_cmd, node=self.base_machine_id, dryrun=dryrun)
             else:

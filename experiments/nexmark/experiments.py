@@ -2,6 +2,7 @@
 import sys, os, datetime
 from executor import execute
 import time
+import shlex
 
 is_worktree_clean = execute("cd `git rev-parse --show-toplevel`; git diff-index --quiet HEAD -- src/ Cargo.toml nexmark/src/ nexmark/Cargo.toml", check=False)
 
@@ -45,9 +46,9 @@ def run_cmd(cmd, redirect=None, stderr=False, background=False, node="", dryrun=
     # eprint("running on {}{}: {}".format(cluster_server, node, full_cmd))
     # if redirect is not None and os.path.exists(redirect):
     #     return execute("echo \"skipping {}\"".format(redirect), async=background)
-    cmd = "ssh -T {}{}.ethz.ch \"{}\"".format(cluster_server, node, full_cmd)\
-          + (" > {}".format(redirect) if redirect else "")\
-          + (" 2> {}".format(stderr) if stderr else "")
+    cmd = "ssh -o StrictHostKeyChecking=no -T {}{}.ethz.ch {}".format(cluster_server, node, shlex.quote(full_cmd))\
+          + (" > {}".format(shlex.quote(redirect)) if redirect else "")\
+          + (" 2> {}".format(shlex.quote(stderr)) if stderr else "")
     eprint("$ {}".format(cmd), level="run")
     if dryrun:
         return execute("echo dryrun {}".format(node), async=background)
