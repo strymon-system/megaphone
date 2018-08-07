@@ -282,15 +282,17 @@ pub struct NexMarkInputTimes {
     next: Option<u64>,
     events_so_far: usize,
     end: u64,
+    time_dilation: usize,
 }
 
 impl NexMarkInputTimes {
-    pub fn new(config: NEXMarkConfig, end: u64) -> Self {
+    pub fn new(config: NEXMarkConfig, end: u64, time_dilation: usize) -> Self {
         let mut this = Self {
             config,
             next: None,
             events_so_far: 0,
             end,
+            time_dilation,
         };
         this.make_next();
         this
@@ -299,6 +301,7 @@ impl NexMarkInputTimes {
     fn make_next(&mut self) {
         let ts = self.config.event_timestamp_ns(
             self.config.next_adjusted_event(self.events_so_far)) as u64;
+        let ts = ts / self.time_dilation as u64;
         if ts < self.end {
             self.events_so_far += 1;
             self.next = Some(ts);

@@ -28,7 +28,35 @@ impl NEXMarkRng for SmallRng {
 }
 
 type Id = usize;
-type Date = usize;
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Serialize, Deserialize, Debug, Abomonation, Hash, Copy, Default)]
+pub struct Date(usize);
+
+impl Date {
+    pub fn new(date_time: usize) -> Date {
+        Date(date_time)
+    }
+}
+
+impl ::std::ops::Deref for Date {
+    type Target = usize;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl ::std::ops::Add for Date {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Date(self.0 + other.0)
+    }
+}
+impl ::std::ops::Sub for Date {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self {
+        Date(self.0 - other.0)
+    }
+}
 
 const MIN_STRING_LENGTH: usize = 3;
 // const BASE_TIME: usize = 1436918400_000;
@@ -53,7 +81,7 @@ pub enum Event {
 
 impl Event {
 
-    pub fn time(&self) -> usize {
+    pub fn time(&self) -> Date {
         match self {
             &Event::Person(ref p) => p.date_time,
             &Event::Auction(ref a) => a.date_time,
@@ -63,7 +91,7 @@ impl Event {
 
     pub fn create(events_so_far: usize, rng: &mut SmallRng, nex: &mut NEXMarkConfig) -> Self {
         let rem = nex.next_adjusted_event(events_so_far) % nex.proportion_denominator;
-        let timestamp = nex.event_timestamp_ns(nex.next_adjusted_event(events_so_far));
+        let timestamp = Date(nex.event_timestamp_ns(nex.next_adjusted_event(events_so_far)));
         let id = nex.first_event_id + nex.next_adjusted_event(events_so_far);
 
         if rem < nex.person_proportion {
@@ -233,8 +261,8 @@ impl Auction {
         let events_for_auctions = (nex.in_flight_auctions * nex.proportion_denominator) / nex.auction_proportion;
         let future_auction = nex.event_timestamp_ns(current_event+events_for_auctions);
 
-        let horizon = future_auction - time;
-        1 + rng.gen_range(0, max(horizon * 2, 1))
+        let horizon = future_auction - time.0;
+        Date(1 + rng.gen_range(0, max(horizon * 2, 1)))
     }
 }
 

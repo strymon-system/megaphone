@@ -2,6 +2,7 @@
 
 import sys, math, os
 import argparse
+import shlex
 from collections import namedtuple, defaultdict
 from HopcroftKarp import HopcroftKarp
 
@@ -52,6 +53,7 @@ class Experiment(object):
         self._machine_local = self._config["machine_local"]
         self._queries = self._config["queries"]
         self._fake_stateful = self._config.get("fake_stateful", False)
+        self._time_dilation = self._config.get("time_dilation", 1)
         assert(isinstance(self._queries, list))
 
         self.single_machine_id = single_machine_id
@@ -143,21 +145,40 @@ class Experiment(object):
 
 
         if not self._machine_local:
-            make_command = lambda p: (
-                    "./{}/release/timely {} {} {}/{} {}".format(
-                        self.get_build_directory_name(),
-                        self._rate // (self._processes * self._workers), self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._queries)) +
-                    " --hostfile {}/{} -n {} -p {} -w {}".format(os.getcwd(), hostfile_file_name, self._processes, p, self._workers))
+            def make_command(p):
+                params = {
+                    'dir': self.get_build_directory_name(),
+                    'rate': self._rate // (self._processes * self._workers),
+                    'duration': self._duration,
+                    'cwd': "../experiments/nexmark",
+                    'migration': migration_pattern_file_name,
+                    'queries': " ".join(self._queries),
+                    'hostfile': hostfile_file_name,
+                    'processes': self._processes,
+                    'p': p,
+                    'workers': self._workers,
+                    'time_dilation': self._time_dilation,
+                }
+                return "./{dir}/release/timely {rate} {duration} {cwd}/{migration} {time_dilation} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
             commands = [(self.base_machine_id + p, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
             return commands
         else:
             assert(self.single_machine_id is not None)
-            make_command = lambda p: (
-                    "/mnt/SG/strymon/local/bin/hwloc-bind socket:{}.pu:even -- ".format(p) +
-                    "./{}/release/timely {} {} {}/{} {}".format(
-                        self.get_build_directory_name(),
-                        self._rate // (self._processes * self._workers), self._duration, os.getcwd(), migration_pattern_file_name, " ".join(self._queries)) +
-                    " --hostfile {}/{} -n {} -p {} -w {}".format(os.getcwd(), hostfile_file_name, self._processes, p, self._workers))
+            def make_command(p):
+                params = {
+                    'dir': self.get_build_directory_name(),
+                    'rate': self._rate // (self._processes * self._workers),
+                    'duration': self._duration,
+                    'cwd': "../experiments/nexmark",
+                    'migration': migration_pattern_file_name,
+                    'queries': " ".join(self._queries),
+                    'hostfile': hostfile_file_name,
+                    'processes': self._processes,
+                    'p': p,
+                    'workers': self._workers,
+                    'time_dilation': self._time_dilation,
+                }
+                return "/mnt/SG/strymon/local/bin/hwloc-bind socket:{p}.pu:even -- ./{dir}/release/timely {rate} {duration} {cwd}/{migration} {time_dilation} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
             commands = [(self.single_machine_id, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
             return commands
 
@@ -166,8 +187,8 @@ class Experiment(object):
         if not dryrun:
             ensure_dir(self.get_result_directory_name())
         if build:
-            build_cmd = ". ~/eth_proxy.sh && cargo rustc --target-dir {} --bin timely --release --no-default-features --features \\\"{}\\\"".format(
-                self.get_build_directory_name(), " ".join(self.get_features()))
+            build_cmd = ". ~/eth_proxy.sh && cargo rustc --target-dir {} --bin timely --release --no-default-features --features {}".format(
+                shlex.quote(self.get_build_directory_name()), shlex.quote(" ".join(self.get_features())))
             if not self._machine_local:
                 run_cmd(build_cmd, node=self.base_machine_id, dryrun=dryrun)
             else:
@@ -195,7 +216,8 @@ def non_migrating(group, groups=4):
                     initial_config="uniform",
                     final_config="uniform",
                     fake_stateful=False,
-                    machine_local=True)
+                    machine_local=True,
+                    time_dilation=1)
             experiment.single_machine_id = group + 1
             experiment.run_commands(run, build)
 
@@ -218,7 +240,8 @@ def exploratory_migrating(group, groups=4):
                     initial_config="uniform",
                     final_config="uniform_skew",
                     fake_stateful=False,
-                    machine_local=True)
+                    machine_local=True,
+                    time_dilation=1)
                 experiment.single_machine_id = group + 1
                 experiment.run_commands(run, build)
 
@@ -241,7 +264,8 @@ def exploratory_baseline(group, groups=4):
                     initial_config="uniform",
                     final_config="uniform_skew",
                     fake_stateful=True,
-                    machine_local=True)
+                    machine_local=True,
+                    time_dilation=1)
                 experiment.single_machine_id = group + 1
                 experiment.run_commands(run, build)
 
@@ -264,7 +288,8 @@ def exploratory_migrating_single_process(group, groups=4):
                         initial_config="uniform",
                         final_config="uniform_skew",
                         fake_stateful=False,
-                        machine_local=True)
+                        machine_local=True,
+                        time_dilation=1)
                 experiment.single_machine_id = group + 1
                 experiment.run_commands(run, build)
 
@@ -288,6 +313,33 @@ def exploratory_bin_shift(group, groups=4):
                     initial_config="uniform",
                     final_config="uniform_skew",
                     fake_stateful=False,
-                    machine_local=True)
+                    machine_local=True,
+                    time_dilation=1)
+                experiment.single_machine_id = group + 1
+                experiment.run_commands(run, build)
+
+
+def migrating_time_dilation(group, groups=4):
+    workers = 8
+    all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
+    queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
+    for rate in [x * 250 for x in [1, 2, 4, 8]]:
+        for migration in ["sudden", "fluid", "batched"]:
+            for query in queries:
+                # Time dilation of 75: just more than two 12h windows in 300s
+                experiment = Experiment(
+                    "migrating",
+                    duration=duration,
+                    rate=rate,
+                    queries=[query,],
+                    migration=migration,
+                    bin_shift=8,
+                    workers=workers,
+                    processes=1,
+                    initial_config="uniform",
+                    final_config="uniform_skew",
+                    fake_stateful=False,
+                    machine_local=True,
+                    time_dilation=75)
                 experiment.single_machine_id = group + 1
                 experiment.run_commands(run, build)
