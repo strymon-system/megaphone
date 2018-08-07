@@ -245,6 +245,30 @@ def exploratory_migrating(group, groups=4):
                 experiment.single_machine_id = group + 1
                 experiment.run_commands(run, build)
 
+def exploratory_migrating_mp(group, groups=2):
+    workers = 8
+    all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
+    queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
+    for rate in [x * 25000 for x in [1, 2, 4, 8]]:
+        for migration in ["sudden", "fluid", "batched"]:
+            for query in queries:
+                experiment = Experiment(
+                    "migrating",
+                    duration=duration,
+                    rate=rate,
+                    queries=[query,],
+                    migration=migration,
+                    bin_shift=8,
+                    workers=workers,
+                    processes=2,
+                    initial_config="uniform",
+                    final_config="uniform_skew",
+                    fake_stateful=False,
+                    machine_local=False,
+                    time_dilation=1)
+                experiment.base_machine_id = group*groups + 1
+                experiment.run_commands(run, build)
+
 def exploratory_baseline(group, groups=4):
     workers = 8
     all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
