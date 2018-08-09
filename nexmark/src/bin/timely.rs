@@ -750,8 +750,8 @@ fn main() {
                                     let mut session = output.session(&time);
                                     for (bin_id, (bidder, price)) in data {
                                         let entry = state.get_state(&bin_id).entry(bidder).or_insert(Vec::new());
-                                        if entry.len() >= 10 { entry.remove(10); }
-                                        entry.insert(0, price);
+                                        while entry.len() >= 10 { entry.remove(0); }
+                                        entry.push(price);
                                         let mut sum: usize = entry.iter().sum();
                                         session.give((bidder, sum / entry.len()));
                                     }
