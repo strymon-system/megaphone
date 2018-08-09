@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# ./plot_migration_queries_latency.py results/98f4e2fa2e8bc839/ "[ ('bin_shift', 8), ('duration', 300), ('machine_local', True), ('processes', 4), ('workers', 8), ]"
+# ./plot_migration_queries_latency.py results/98f4e2fa2e8bc839/ "[ ('bin_shift', 8), ('duration', 120), ('machine_local', True), ('processes', 2), ('workers', 8), ]"
 
 import sys, os, shutil, json
 import argparse

@@ -65,14 +65,18 @@ def latency_plots(results_dir, files, filtering):
     data = []
     for filename, config in [x for x in files if set(x[1]).issuperset(set(filtering))]:
         experiment_dict = dict(set(config).difference(set(filtering)))
-        with open("{}/{}/stdout.0".format(results_dir, filename), 'r') as f:
-            experiment_data = [dict(list({
-                     "latency": int(x),
-                     "ccdf": float(y),
-                     "experiment": experiment_name(experiment_dict),
-                 }.items()) + list(experiment_dict.items())) for x, y in
-                    [x.split('\t')[1:3] for x in f.readlines() if x.startswith('latency_ccdf')]]
-            data.extend(experiment_data)
+        try:
+            with open("{}/{}/stdout.0".format(results_dir, filename), 'r') as f:
+                experiment_data = [dict(list({
+                         "latency": int(x),
+                         "ccdf": float(y),
+                         "experiment": experiment_name(experiment_dict),
+                     }.items()) + list(experiment_dict.items())) for x, y in
+                        [x.split('\t')[1:3] for x in f.readlines() if x.startswith('latency_ccdf')]]
+                data.extend(experiment_data)
+        except IOError as e:
+            print("Unexpected error:", e)
+            pass
 
     return (filtering, data)
 
@@ -82,14 +86,18 @@ def memory_timeline_plots(results_dir, files, filtering):
     data = []
     for filename, config in [x for x in files if set(x[1]).issuperset(set(filtering))]:
         experiment_dict = dict(set(config).difference(set(filtering)))
-        with open("{}/{}/stdout.0".format(results_dir, filename), 'r') as f:
-            experiment_data = [dict(list({
-                "time": float(x) / 1000000000,
-                "RSS": float(y),
-                "experiment": "m: {}, q: {}, r: {}".format(experiment_dict['migration'], experiment_dict['queries'], experiment_dict['rate']),
-            }.items()) + list(experiment_dict.items())) for x, y in
-                    [x.split('\t')[1:3] for x in f.readlines() if x.startswith('statm_RSS')]]
-            data.extend(experiment_data[0::10])
+        try:
+            with open("{}/{}/stdout.0".format(results_dir, filename), 'r') as f:
+                experiment_data = [dict(list({
+                    "time": float(x) / 1000000000,
+                    "RSS": float(y),
+                    "experiment": "m: {}, q: {}, r: {}".format(experiment_dict['migration'], experiment_dict['queries'], experiment_dict.get('rate', 0)),
+                }.items()) + list(experiment_dict.items())) for x, y in
+                        [x.split('\t')[1:3] for x in f.readlines() if x.startswith('statm_RSS')]]
+                data.extend(experiment_data[0::10])
+        except IOError as e:
+            print("Unexpected error:", e)
+            pass
 
     return (filtering, data)
 
@@ -101,15 +109,19 @@ def latency_timeline_plots(results_dir, files, filtering):
     data = []
     for filename, config in [x for x in files if set(x[1]).issuperset(set(filtering))]:
         experiment_dict = dict(set(config).difference(set(filtering)))
-        with open("{}/{}/stdout.0".format(results_dir, filename), 'r') as f:
-            for vals in [x.split('\t')[1:] for x in f.readlines() if x.startswith('summary_timeline')]:
-                for p, l in [(.25, 1), (.5, 2), (.75, 3), (.99, 4), (.999, 5), (1, 6)]:
-                    data.append(dict(list({
-                        "time": float(vals[0]) / 1000000000,
-                        "latency": int(vals[l]),
-                        "p": p,
-                        "experiment": "m: {}, q: {}, r: {}, f: {}".format(experiment_dict['migration'], experiment_dict['queries'], experiment_dict['rate'], experiment_dict.get('fake_stateful', False)),
-                    }.items()) + list(experiment_dict.items())))
+        try:
+            with open("{}/{}/stdout.0".format(results_dir, filename), 'r') as f:
+                for vals in [x.split('\t')[1:] for x in f.readlines() if x.startswith('summary_timeline')]:
+                    for p, l in [(.25, 1), (.5, 2), (.75, 3), (.99, 4), (.999, 5), (1, 6)]:
+                        data.append(dict(list({
+                            "time": float(vals[0]) / 1000000000,
+                            "latency": int(vals[l]),
+                            "p": p,
+                            "experiment": "m: {}, r: {}, f: {}".format(experiment_dict['migration'], experiment_dict.get('rate', 0), experiment_dict.get('fake_stateful', False)),
+                        }.items()) + list(experiment_dict.items())))
+        except IOError as e:
+            print("Unexpected error:", e)
+            pass
 
     return (filtering, data)
 
