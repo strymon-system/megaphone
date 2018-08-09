@@ -1161,7 +1161,7 @@ fn main() {
             ::streaming_harness::output::default::hdrhist_timeline_collector(
                 input_times(),
                 0, 2_000_000_000, duration_ns - 2_000_000_000, duration_ns,
-                1_000_000_000);
+                250_000_000);
 
         let mut events_so_far = 0;
 

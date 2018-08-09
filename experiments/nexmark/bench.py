@@ -196,13 +196,13 @@ class Experiment(object):
         if run:
             wait_all([run_cmd(c, redirect=r, stderr=stderr, background=True, node=p, dryrun=dryrun) for p, c, r, stderr in self.commands()])
 
-duration=300
+duration=120
 
 def non_migrating(group, groups=4):
     workers = 8
     all_queries = ["q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8"]
     queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
-    for rate in [x * 25000 for x in [1, 2, 4, 8]]:
+    for rate in [x * 1000000 for x in [1, 2, 4, 8]]:
         for query in queries:
             experiment = Experiment(
                     "non_migrating",
@@ -225,11 +225,11 @@ def exploratory_migrating(group, groups=4):
     workers = 8
     all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
     queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
-    for rate in [x * 25000 for x in [1, 2, 4, 8]]:
+    for rate in [x * 1000000 for x in [1, 2, 4, 8]]:
         for migration in ["sudden", "fluid", "batched"]:
             for query in queries:
                 experiment = Experiment(
-                    "migrating",
+                    "migrating-mp",
                     duration=duration,
                     rate=rate,
                     queries=[query,],
@@ -245,15 +245,15 @@ def exploratory_migrating(group, groups=4):
                 experiment.single_machine_id = group + 1
                 experiment.run_commands(run, build)
 
-def exploratory_migrating_mp(group, groups=2):
+def exploratory_migrating_mm(group, groups=2):
     workers = 8
     all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
     queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
-    for rate in [x * 25000 for x in [1, 2, 4, 8]]:
+    for rate in [x * 1000000 for x in [1, 2, 4, 8]]:
         for migration in ["sudden", "fluid", "batched"]:
             for query in queries:
                 experiment = Experiment(
-                    "migrating",
+                    "migrating-mm",
                     duration=duration,
                     rate=rate,
                     queries=[query,],
@@ -273,11 +273,11 @@ def exploratory_baseline(group, groups=4):
     workers = 8
     all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
     queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
-    for rate in [x * 25000 for x in [1, 2, 4, 8]]:
+    for rate in [x * 1000000 for x in [1, 2, 4, 8]]:
         for migration in ["sudden"]:
             for query in queries:
                 experiment = Experiment(
-                    "migrating",
+                    "migrating-bl",
                     duration=duration,
                     rate=rate,
                     queries=[query,],
@@ -301,7 +301,7 @@ def exploratory_migrating_single_process(group, groups=4):
         for migration in ["sudden", "fluid", "batched"]:
             for query in queries:
                 experiment = Experiment(
-                        "migrating",
+                        "migrating-sp",
                         duration=duration,
                         rate=rate,
                         queries=[query,],
@@ -345,14 +345,15 @@ def exploratory_bin_shift(group, groups=4):
 
 def migrating_time_dilation(group, groups=4):
     workers = 8
+    # Time dilation: Two 12h-windows in duration seconds plus padding
+    time_dilation = int(12*60*60/(duration * 2)*1.1)
     all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
     queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
     for rate in [x * 250 for x in [1, 2, 4, 8]]:
         for migration in ["sudden", "fluid", "batched"]:
             for query in queries:
-                # Time dilation of 75: just more than two 12h windows in 300s
                 experiment = Experiment(
-                    "migrating",
+                    "migrating-td",
                     duration=duration,
                     rate=rate,
                     queries=[query,],
@@ -364,6 +365,6 @@ def migrating_time_dilation(group, groups=4):
                     final_config="uniform_skew",
                     fake_stateful=False,
                     machine_local=True,
-                    time_dilation=75)
+                    time_dilation=time_dilation)
                 experiment.single_machine_id = group + 1
                 experiment.run_commands(run, build)
