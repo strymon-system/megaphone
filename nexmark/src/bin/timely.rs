@@ -1064,6 +1064,15 @@ fn main() {
             });
         }
 
+
+        ::std::mem::drop(bids);
+        ::std::mem::drop(auctions);
+        ::std::mem::drop(people);
+        ::std::mem::drop(control);
+
+        ::std::mem::drop(closed_auctions);
+        ::std::mem::drop(closed_auctions_flex);
+
         let rate = std::env::args().nth(1).expect("rate absent").parse().expect("couldn't parse rate");
         let mut config1 = nexmark::config::Config::new();
         config1.insert("events-per-second", rate);
