@@ -96,6 +96,9 @@ class Experiment(object):
     def get_result_file_name(self, name, process):
         return "{}/{}.{}".format(self.get_result_directory_name(), name, process)
 
+    def get_result_done_marker(self):
+        return "{}/done".format(self.get_result_directory_name())
+
     def commands(self):
         print(vars(self))
         migration_pattern_file_name = self.get_setup_file_name("migration_pattern")
@@ -184,6 +187,9 @@ class Experiment(object):
 
     def run_commands(self, run=True, build=True):
         eprint("running experiment, results in {}".format(self.get_result_directory_name()), level="info")
+        marker_file = self.get_result_done_marker()
+        if os.path.exists(marker_file):
+            eprint("not running experiment")
         if not dryrun:
             ensure_dir(self.get_result_directory_name())
         if build:
@@ -195,6 +201,7 @@ class Experiment(object):
                 run_cmd(build_cmd, node=self.base_machine_id, dryrun=dryrun)
         if run:
             wait_all([run_cmd(c, redirect=r, stderr=stderr, background=True, node=p, dryrun=dryrun) for p, c, r, stderr in self.commands()])
+            open(marker_file, 'a').close()
 
 duration=120
 
