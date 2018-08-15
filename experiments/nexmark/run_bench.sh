@@ -8,7 +8,7 @@ serverprefix="${CLUSTERUSER}@fdr"
 
 function run { # command index groups additional
 #    xterm +hold -e
-    python3 -c "import bench; bench.$1($2, $3)" --clusterpath "${clusterpath}" --serverprefix "${serverprefix}" $4
+    python3 -c "import bench; bench.$1($2, $3)" --clusterpath "${clusterpath}" --serverprefix "${serverprefix}" $4 || exit $?
 }
 
 function run_group { # name
