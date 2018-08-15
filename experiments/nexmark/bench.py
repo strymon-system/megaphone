@@ -354,7 +354,7 @@ def migrating_time_dilation(group, groups=4):
     workers = 8
     # Time dilation: Two 12h-windows in duration seconds plus padding
     time_dilation = int(12*60*60/(duration * 2)*1.1)
-    rate = 400000 / time_dilation
+    rate = int(400000 / time_dilation)
     all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
     queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
     for rate in [x * rate for x in [1, 2, 4, 8]]:
