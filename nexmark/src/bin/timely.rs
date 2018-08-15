@@ -1146,7 +1146,7 @@ fn main() {
             println!("time_dilation\t{}", time_dilation);
             println!("bin_shift\t{}", ::dynamic_scaling_mechanism::BIN_SHIFT);
 
-            for instruction in &instructions {
+            for instruction in instructions.iter().take(10) {
                 // Format instructions first to be able to truncate the string representation
                 eprintln!("instructions\t{:.120}", format!("{:?}", instruction));
             }
