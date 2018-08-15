@@ -60,20 +60,20 @@ where
                 while let Some((time, _)) = state1.notificator().next(&[input1.frontier(), input2.frontier()]) {
                     let mut session = output.session(&time);
                     for (_target, key_id, (key, value)) in pending1.remove(&time.time()).into_iter().flat_map(|v| v.into_iter()) {
-                        if let Some(mut d2) = state2.get_state(&key_id).remove(&key) {
+                        if let Some(mut d2) = state2.get_state(key_id).remove(&key) {
                             session.give_iterator(d2.drain(..).map(|d| (key.clone(), value.clone(), d)));
                         }
-                        state1.get_state(&key_id).insert(key, value);
+                        state1.get_state(key_id).insert(key, value);
                     };
                 };
 
                 while let Some((time, _)) = state2.notificator().next(&[input1.frontier(), input2.frontier()]) {
                     let mut session = output.session(&time);
                     for (_target, key_id, (key, value)) in pending2.remove(&time.time()).into_iter().flat_map(|v| v.into_iter()) {
-                        if let Some(d1) = state1.get_state(&key_id).get(&key) {
+                        if let Some(d1) = state1.get_state(key_id).get(&key) {
                             session.give((key.clone(), d1.clone(), value.clone()));
                         } else {
-                            state2.get_state(&key_id).entry(key).or_insert_with(Vec::new).push(value);
+                            state2.get_state(key_id).entry(key).or_insert_with(Vec::new).push(value);
                         }
                     };
                 };

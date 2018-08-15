@@ -39,12 +39,12 @@ type KeyType = u64;
 pub struct Key(KeyType);
 
 impl Key {
-    pub fn bin(&self) -> usize {
+    pub fn bin(self) -> usize {
         key_to_bin(self)
     }
 }
 
-pub fn key_to_bin(key: &Key) -> usize {
+pub fn key_to_bin(key: Key) -> usize {
     (key.0 >> ::std::mem::size_of::<KeyType>() * 8 - BIN_SHIFT) as usize
 }
 

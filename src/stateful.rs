@@ -14,7 +14,6 @@ use std::marker::PhantomData;
 use fnv::FnvHashMap as HashMap;
 
 use timely::ExchangeData;
-use timely::PartialOrder;
 use timely::dataflow::{Stream, Scope, ProbeHandle};
 use timely::dataflow::channels::pact::{Exchange, Pipeline};
 use timely::dataflow::operators::{Capability, FrontierNotificator as TFN};
@@ -55,13 +54,13 @@ impl<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> State<T, S, D> {
 pub trait StateHandle<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> {
 
     /// Obtain a mutable reference to the state associated with a bin.
-    fn get_state(&mut self, key: &Key) -> &mut S;
+    fn get_state(&mut self, key: Key) -> &mut S;
 
     /// Call-back to get state and a notificator.
     fn with_state_frontier<
         R,
         F: Fn(&mut S, &FrontierNotificator<T, (Key, D)>) -> R
-    >(&mut self, key: &Key, f: F) -> R;
+    >(&mut self, key: Key, f: F) -> R;
 
     /// Iterate all bins. This might go away.
     fn scan<F: FnMut(&mut S)>(&mut self, f: F);
@@ -72,7 +71,7 @@ pub trait StateHandle<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> {
 
 impl<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> StateHandle<T, S, D> for State<T, S, D> {
 
-    fn get_state(&mut self, key: &Key) -> &mut S {
+    fn get_state(&mut self, key: Key) -> &mut S {
         assert!(self.bins[key_to_bin(key)].is_some(), "Accessing bin {} for key {:?}", key_to_bin(key), key);
         self.bins[key_to_bin(key)].as_mut().expect("Trying to access non-available bin")
     }
@@ -81,13 +80,13 @@ impl<T: Timestamp, S, D: ExchangeData+Eq+PartialEq> StateHandle<T, S, D> for Sta
     fn with_state_frontier<
         R,
         F: Fn(&mut S, &FrontierNotificator<T, (Key, D)>) -> R
-    >(&mut self, key: &Key, f: F) -> R {
+    >(&mut self, key: Key, f: F) -> R {
         f(self.bins[key_to_bin(key)].as_mut().expect("Trying to access non-available bin"), &mut self.notificator)
     }
 
     fn scan<F: FnMut(&mut S)>(&mut self, mut f: F) {
         for state in &mut self.bins {
-            state.as_mut().map(|state| f(state));
+            state.as_mut().map(&mut f);
         }
     }
 
@@ -324,8 +323,8 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                             }
                             for (cap, data) in states.notificator.pending_mut().iter_mut() {
                                 data.retain(|(key_id, meta)| {
-                                    let old_worker = old_map[key_to_bin(key_id)];
-                                    let new_worker = new_map[key_to_bin(key_id)];
+                                    let old_worker = old_map[key_to_bin(*key_id)];
+                                    let new_worker = new_map[key_to_bin(*key_id)];
                                     if old_worker != new_worker {
                                         // Pass pending notifications to the new owner
                                         // Note: The receiver will get *all* notifications, so an
@@ -361,8 +360,8 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                         for mut data in vec {
                             {
                                 let data_iter = data.drain(..).map(|d| {
-                                    let key = Key(key(&d));
-                                    (map[key_to_bin(&key)], key, d)
+                                    let key_id = Key(key(&d));
+                                    (map[key_to_bin(key_id)], key_id, d)
                                 });
                                 session.give_iterator(data_iter);
                             }
@@ -398,8 +397,8 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                         let mut session = data_out.session(&time);
 
                         let data_iter = data.drain(..).into_iter().map(|d| {
-                            let key = Key(key(&d));
-                            (map[key_to_bin(&key)], key, d)
+                            let key_id = Key(key(&d));
+                            (map[key_to_bin(key_id)], key_id, d)
                         });
                         session.give_iterator(data_iter);
                     }
