@@ -5,11 +5,16 @@ use fnv::FnvHashMap as HashMap;
 
 use timely::ExchangeData;
 use timely::dataflow::{Stream, Scope};
-use timely::dataflow::channels::pact::Pipeline;
-use timely::dataflow::operators::Probe;
-use timely::dataflow::operators::Operator;
 
-use stateful::{StateHandle, StateStream};
+use operator::StatefulOperator;
+use stateful::State;
+
+fn calculate_hash<T: Hash>(t: &T) -> u64 {
+    use ::std::hash::Hasher;
+    let mut h: ::fnv::FnvHasher = Default::default();
+    t.hash(&mut h);
+    h.finish()
+}
 
 trait BinarySkeleton<S, K, V>
     where
@@ -17,67 +22,40 @@ trait BinarySkeleton<S, K, V>
         K: ExchangeData+Hash+Eq,
         V: ExchangeData, // Input data
 {
-    fn left_join<V2>(&mut self, other: &mut StateStream<S, (K, V2), HashMap<K, Vec<V2>>, (K, Vec<V2>), ()>, name: &str) -> Stream<S, (K, V, V2)>
+    fn left_join<V2>(&mut self, other: &Stream<S, (K, V2)>, name: &str, control: &Stream<S, ::Control>) -> Stream<S, (K, V, V2)>
         where
-            V2: ExchangeData,
-            K: ExchangeData+Hash+Eq,
+            V2: ExchangeData+Eq,
 ;
 }
 
-impl<S, K, V> BinarySkeleton<S, K, V> for StateStream<S, (K, V), HashMap<K, V>, (K, V), ()>
+impl<S, K, V> BinarySkeleton<S, K, V> for Stream<S, (K, V)>
 where
     S: Scope, // The containing scope
     K: ExchangeData+Hash+Eq,
-    V: ExchangeData, // Input data
+    V: ExchangeData+Eq, // Input data
 {
-    fn left_join<V2>(&mut self, other: &mut StateStream<S, (K, V2), HashMap<K, Vec<V2>>, (K, Vec<V2>), ()>, name: &str) -> Stream<S, (K, V, V2)>
+    fn left_join<V2>(&mut self, other: &Stream<S, (K, V2)>, name: &str, control: &Stream<S, ::Control>) -> Stream<S, (K, V, V2)>
         where
-            V2: ExchangeData,
+            V2: ExchangeData+Eq,
     {
-        let state1 = self.state.clone();
-        let state2 = other.state.clone();
-        self.stream.binary_frontier(&other.stream, Pipeline, Pipeline, name, |_cap, _info| {
-
-            let mut pending1: HashMap<_, Vec<(_, _, _)>> = Default::default();
-            let mut pending2: HashMap<_, Vec<(_, _, _)>> = Default::default();
-
-            move |input1, input2, output| {
-
-                let mut state1 = state1.borrow_mut();
-                let mut state2 = state2.borrow_mut();
-
-
-                input1.for_each(|time, data| {
-                    pending1.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                    state1.notificator().notify_at(time.retain(), vec![]);
-                });
-
-                input2.for_each(|time, data| {
-                    pending2.entry(time.time().clone()).or_insert_with(Vec::new).extend(data.drain(..));
-                    state2.notificator().notify_at(time.retain(), vec![]);
-                });
-
-                while let Some((time, _)) = state1.notificator().next(&[input1.frontier(), input2.frontier()]) {
-                    let mut session = output.session(&time);
-                    for (_target, key_id, (key, value)) in pending1.remove(&time.time()).into_iter().flat_map(|v| v.into_iter()) {
-                        if let Some(mut d2) = state2.get_state(key_id).remove(&key) {
-                            session.give_iterator(d2.drain(..).map(|d| (key.clone(), value.clone(), d)));
-                        }
-                        state1.get_state(key_id).insert(key, value);
-                    };
-                };
-
-                while let Some((time, _)) = state2.notificator().next(&[input1.frontier(), input2.frontier()]) {
-                    let mut session = output.session(&time);
-                    for (_target, key_id, (key, value)) in pending2.remove(&time.time()).into_iter().flat_map(|v| v.into_iter()) {
-                        if let Some(d1) = state1.get_state(key_id).get(&key) {
-                            session.give((key.clone(), d1.clone(), value.clone()));
-                        } else {
-                            state2.get_state(key_id).entry(key).or_insert_with(Vec::new).push(value);
-                        }
-                    };
-                };
-            }
-        }).probe_with(&mut self.probe).probe_with(&mut other.probe)
+        self.stateful_binary(&control, other, |t| calculate_hash(&t.0), |t| calculate_hash(&t.0), name, |time, data, state1: &mut State<HashMap<K, V>>, state2: &mut State<HashMap<K, Vec<V2>>>, output| {
+            let mut session = output.session(&time);
+            for (key_id, (key, value)) in data {
+                let bin: &mut HashMap<_, _> = state2.get_state(key_id);
+                if let Some(mut d2) = bin.remove(&key) {
+                    session.give_iterator(d2.drain(..).map(|d| (key.clone(), value.clone(), d)));
+                }
+                state1.get_state(key_id).insert(key, value);
+            };
+        }, |time, data, state1, state2, output| {
+            let mut session = output.session(&time);
+            for (key_id, (key, value)) in data {
+                if let Some(d1) = state1.get_state(key_id).get(&key) {
+                    session.give((key.clone(), d1.clone(), value.clone()));
+                } else {
+                    state2.get_state(key_id).entry(key).or_insert_with(Vec::new).push(value);
+                }
+            };
+        })
     }
 }

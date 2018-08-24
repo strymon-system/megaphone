@@ -26,7 +26,7 @@ use timely::dataflow::Stream;
 use timely::dataflow::Scope;
 use timely::ExchangeData;
 
-use dynamic_scaling_mechanism::stateful::{StateHandle, State};
+use dynamic_scaling_mechanism::stateful::State;
 use dynamic_scaling_mechanism::{ControlInst, Control};
 use dynamic_scaling_mechanism::operator::StatefulOperator;
 
@@ -650,7 +650,7 @@ fn main() {
                                         let entry = state.entry(bidder).or_insert(VecDeque::new());
                                         if entry.len() >= 10 { entry.pop_back(); }
                                         entry.push_front(price);
-                                        let mut sum: usize = entry.iter().sum();
+                                        let sum: usize = entry.iter().sum();
                                         session.give((bidder, sum / entry.len()));
                                     }
                                 });
@@ -676,7 +676,7 @@ fn main() {
                         let entry = bin.entry(bidder).or_insert(Vec::new());
                         while entry.len() >= 10 { entry.remove(0); }
                         entry.push(price);
-                        let mut sum: usize = entry.iter().sum();
+                        let sum: usize = entry.iter().sum();
                         session.give((bidder, sum / entry.len()));
                     }
                 }).probe_with(&mut probe);

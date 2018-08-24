@@ -16,7 +16,6 @@ use timely::dataflow::operators::aggregation::StateMachine;
 
 use dynamic_scaling_mechanism::{BIN_SHIFT, ControlInst, Control};
 use dynamic_scaling_mechanism::distribution::ControlStateMachine;
-use dynamic_scaling_mechanism::stateful::Stateful;
 use dynamic_scaling_mechanism::state_machine::BinnedStateMachine;
 
 // include!(concat!(env!("OUT_DIR"), "/words.rs"));
@@ -238,9 +237,7 @@ fn main() {
                         &control
                     ),
                 Backend::Generic => {
-                    let mut stateful = input
-                        .stateful(|key| calculate_hash(&key.0), &control);
-                    stateful.state_machine(fold)
+                    input.stateful_state_machine(fold, |key| calculate_hash(key), &control)
                 },
             };
             let validate = false;

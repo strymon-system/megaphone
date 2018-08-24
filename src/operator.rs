@@ -1,5 +1,4 @@
 //! General purpose state transition operator.
-use std::hash::Hash;
 
 use timely::ExchangeData;
 use timely::dataflow::{Stream, Scope};
@@ -51,7 +50,7 @@ pub trait StatefulOperator<G, D1>
     ;
 
     fn stateful_binary<
-        D2: ExchangeData+Hash+Eq,                    // input type
+        D2: ExchangeData+Eq,                         // input type
         D3: Data,                                    // output type
         B1: Fn(&D1)->u64+'static,                    // Key extraction function, input 1
         B2: Fn(&D2)->u64+'static,                    // Key extraction function, input 2
@@ -73,7 +72,7 @@ pub trait StatefulOperator<G, D1>
     ;
 
     fn stateful_binary_input<
-        D2: ExchangeData+Hash+Eq,                    // input type
+        D2: ExchangeData+Eq,                         // input type
         D3: Data,                                    // output type
         B1: Fn(&D1)->u64+'static,
         B2: Fn(&D2)->u64+'static,
@@ -158,9 +157,6 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
             }
         });
         stream.probe_with(&mut stateful.probe)
-//        self.stateful_unary_input(control, key, name,
-//                                   |not, time, data, _output| not.notify_at_data(time.retain(), data.drain(..).map(|(_, key_id, d)| (key_id, d))),
-//                                   fold)
     }
 
     fn stateful_unary_input<
@@ -214,7 +210,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
     }
 
     fn stateful_binary<
-        D2: ExchangeData+Hash+Eq,                    // input type
+        D2: ExchangeData+Eq,                         // input type
         D3: Data,                                    // output type
         B1: Fn(&D1)->u64+'static,
         B2: Fn(&D2)->u64+'static,
@@ -242,7 +238,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
     }
 
     fn stateful_binary_input<
-        D2: ExchangeData+Hash+Eq,                    // input type
+        D2: ExchangeData+Eq,                         // input type
         D3: Data,                                    // output type
         B1: Fn(&D1)->u64+'static,
         B2: Fn(&D2)->u64+'static,

@@ -46,45 +46,20 @@ impl<S> State<S> {
     fn new(bins: Vec<Option<S>>) -> Self {
         Self { bins }
     }
-}
-
-/// State access functions.
-pub trait StateHandle<S> {
 
     /// Obtain a mutable reference to the state associated with a bin.
-    fn get_state(&mut self, key: Key) -> &mut S;
-
-    /// Iterate all bins. This might go away.
-    fn scan<F: FnMut(&mut S)>(&mut self, f: F);
-
-//    /// Obtain a reference to a notificator.
-//    fn notificator(&mut self) -> &mut FrontierNotificator<T, (Key, D)>;
-}
-
-impl<S> StateHandle<S> for State<S> {
-
-    fn get_state(&mut self, key: Key) -> &mut S {
+    pub fn get_state(&mut self, key: Key) -> &mut S {
         assert!(self.bins[key_to_bin(key)].is_some(), "Accessing bin {} for key {:?}", key_to_bin(key), key);
         self.bins[key_to_bin(key)].as_mut().expect("Trying to access non-available bin")
     }
 
-//    #[inline(always)]
-//    fn with_state_frontier<
-//        R,
-//        F: Fn(&mut S, &FrontierNotificator<T, (Key, D)>) -> R
-//    >(&mut self, key: Key, f: F) -> R {
-//        f(self.bins[key_to_bin(key)].as_mut().expect("Trying to access non-available bin"), &mut self.notificator)
-//    }
-
-    fn scan<F: FnMut(&mut S)>(&mut self, mut f: F) {
+    /// Iterate all bins. This might go away.
+    pub fn scan<F: FnMut(&mut S)>(&mut self, mut f: F) {
         for state in &mut self.bins {
             state.as_mut().map(&mut f);
         }
     }
 
-//    fn notificator(&mut self) -> &mut FrontierNotificator<T, (Key, D)> {
-//        &mut self.notificator
-//    }
 }
 
 /// Datatype to multiplex state and timestamps on the state update channel.
