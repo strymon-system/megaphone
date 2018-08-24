@@ -26,7 +26,7 @@ use timely::dataflow::Stream;
 use timely::dataflow::Scope;
 use timely::ExchangeData;
 
-use dynamic_scaling_mechanism::stateful::State;
+use dynamic_scaling_mechanism::State;
 use dynamic_scaling_mechanism::{ControlInst, Control};
 use dynamic_scaling_mechanism::operator::StatefulOperator;
 
@@ -422,7 +422,7 @@ fn main() {
                                 bin.entry(bid.auction).or_insert_with(Vec::new).push(bid);
                             };
                         },
-                        |time, auction_data, bid_state, _auction_state: &mut ::dynamic_scaling_mechanism::stateful::State<Vec<()>>, output| {
+                        |time, auction_data, bid_state, _auction_state: &mut State<Vec<()>>, output| {
                             let mut session = output.session(&time);
                             for (key_id, auction) in auction_data {
                                 if let Some(mut bids) = bid_state.get_state(key_id).remove(&auction.id) {

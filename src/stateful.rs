@@ -21,7 +21,7 @@ use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::progress::Timestamp;
 use timely::progress::frontier::Antichain;
 
-use ::{BIN_SHIFT, Bin, Control, ControlSetBuilder, ControlSet, Key, key_to_bin};
+use ::{BIN_SHIFT, Bin, Control, ControlSetBuilder, ControlSet, Key, key_to_bin, State};
 use ::notificator::FrontierNotificator;
 
 const BUFFER_CAP: usize = 16;
@@ -34,33 +34,6 @@ const BUFFER_CAP: usize = 16;
 /// updates for the current time reflected in the notificator, though. In the case of partially
 /// ordered times, the only guarantee is that updates are not applied out of order, not that there
 /// is some total order on times respecting the total order (updates may be interleaved).
-
-
-/// State abstraction. It encapsulates state assorted by bins and a notificator.
-pub struct State<S> {
-    bins: Vec<Option<S>>,
-}
-
-impl<S> State<S> {
-    /// Construct a new `State` with the provided vector of bins and a default `FrontierNotificator`.
-    fn new(bins: Vec<Option<S>>) -> Self {
-        Self { bins }
-    }
-
-    /// Obtain a mutable reference to the state associated with a bin.
-    pub fn get_state(&mut self, key: Key) -> &mut S {
-        assert!(self.bins[key_to_bin(key)].is_some(), "Accessing bin {} for key {:?}", key_to_bin(key), key);
-        self.bins[key_to_bin(key)].as_mut().expect("Trying to access non-available bin")
-    }
-
-    /// Iterate all bins. This might go away.
-    pub fn scan<F: FnMut(&mut S)>(&mut self, mut f: F) {
-        for state in &mut self.bins {
-            state.as_mut().map(&mut f);
-        }
-    }
-
-}
 
 /// Datatype to multiplex state and timestamps on the state update channel.
 #[derive(Abomonation, Clone, Ord, PartialOrd, Eq, PartialEq)]

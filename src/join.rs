@@ -7,7 +7,7 @@ use timely::ExchangeData;
 use timely::dataflow::{Stream, Scope};
 
 use operator::StatefulOperator;
-use stateful::State;
+use ::State;
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     use ::std::hash::Hasher;

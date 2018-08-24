@@ -5,7 +5,7 @@ extern crate abomonation;
 
 pub mod bin_prober;
 pub mod distribution;
-pub mod stateful;
+mod stateful;
 pub mod state_machine;
 pub mod join;
 pub mod notificator;
@@ -163,6 +163,32 @@ impl<T: PartialOrder> ControlSetBuilder<T> {
             map,
         }
     }
+}
+
+/// State abstraction. It encapsulates state assorted by bins and a notificator.
+pub struct State<S> {
+    bins: Vec<Option<S>>,
+}
+
+impl<S> State<S> {
+    /// Construct a new `State` with the provided vector of bins and a default `FrontierNotificator`.
+    fn new(bins: Vec<Option<S>>) -> Self {
+        Self { bins }
+    }
+
+    /// Obtain a mutable reference to the state associated with a bin.
+    pub fn get_state(&mut self, key: Key) -> &mut S {
+        assert!(self.bins[key_to_bin(key)].is_some(), "Accessing bin {} for key {:?}", key_to_bin(key), key);
+        self.bins[key_to_bin(key)].as_mut().expect("Trying to access non-available bin")
+    }
+
+    /// Iterate all bins. This might go away.
+    pub fn scan<F: FnMut(&mut S)>(&mut self, mut f: F) {
+        for state in &mut self.bins {
+            state.as_mut().map(&mut f);
+        }
+    }
+
 }
 
 #[cfg(feature = "bin-1")]

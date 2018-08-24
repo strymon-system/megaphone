@@ -11,8 +11,8 @@ use timely::Data;
 use timely::dataflow::operators::{Capability, CapabilityRef};
 use timely::dataflow::operators::generic::OutputHandle;
 
-use ::{Control, Key};
-use stateful::{Stateful, State, apply_state_updates};
+use ::{Control, Key, State};
+use stateful::{Stateful, apply_state_updates};
 use notificator::{Notify, FrontierNotificator};
 
 pub trait StatefulOperator<G, D1>
