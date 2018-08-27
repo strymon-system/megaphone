@@ -22,9 +22,10 @@ use timely::progress::Timestamp;
 use timely::progress::frontier::Antichain;
 
 use ::{BIN_SHIFT, Bin, Control, ControlSetBuilder, ControlSet, Key, key_to_bin, State};
-use ::notificator::FrontierNotificator;
 
 const BUFFER_CAP: usize = 16;
+
+type Notificator<T, D> = ::notificator::FrontierNotificator<T, D>;
 
 /// Generic state-transition machinery: each key has a state, and receives a sequence of events.
 /// Events are applied in time-order, but no other promises are made. Each state transition can
@@ -67,7 +68,7 @@ pub struct StateStream<S, V, D, W, M> where
     pub state: Rc<RefCell<State<D>>>,
     /// The probe `stateful` uses to determine completion.
     pub probe: ProbeHandle<S::Timestamp>,
-    pub notificator: Rc<RefCell<FrontierNotificator<S::Timestamp, (Key, M)>>>,
+    pub notificator: Rc<RefCell<Notificator<S::Timestamp, (Key, M)>>>,
     _phantom: PhantomData<(*const W)>,
 }
 
@@ -79,7 +80,7 @@ impl<S, V, D, W, M> StateStream<S, V, D, W, M>
         W: ExchangeData,
         M: ExchangeData+Eq+PartialEq,
 {
-    pub fn new(stream: Stream<S, (usize, Key, V)>, state_stream: Stream<S, (usize, StateProtocol<S::Timestamp, W, M>)>, state: Rc<RefCell<State<D>>>, probe: ProbeHandle<S::Timestamp>, notificator: Rc<RefCell<FrontierNotificator<S::Timestamp, (Key, M)>>>) -> Self {
+    pub fn new(stream: Stream<S, (usize, Key, V)>, state_stream: Stream<S, (usize, StateProtocol<S::Timestamp, W, M>)>, state: Rc<RefCell<State<D>>>, probe: ProbeHandle<S::Timestamp>, notificator: Rc<RefCell<Notificator<S::Timestamp, (Key, M)>>>) -> Self {
         StateStream {
             stream,
             state_stream,
@@ -97,7 +98,7 @@ pub fn apply_state_updates<
     D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
     W: ExchangeData,
     M: ExchangeData+Eq+PartialEq,
-    I: Iterator<Item=(usize, StateProtocol<T, W, M>)>>(states: &mut State<D>, not: &mut FrontierNotificator<T, (Key, M)>, cap: &CapabilityRef<T>, data: I) {
+    I: Iterator<Item=(usize, StateProtocol<T, W, M>)>>(states: &mut State<D>, not: &mut Notificator<T, (Key, M)>, cap: &CapabilityRef<T>, data: I) {
 
     // Apply each state update
     for (_target, state) in data {
@@ -186,7 +187,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         let probe1 = ProbeHandle::new();
         let probe2 = probe1.clone();
 
-        let notificator: Rc<RefCell<FrontierNotificator<S::Timestamp, (Key, M)>>> = Rc::new(RefCell::new(FrontierNotificator::new()));
+        let notificator: Rc<RefCell<Notificator<S::Timestamp, (Key, M)>>> = Rc::new(RefCell::new(Notificator::new()));
         let notificator_f = Rc::clone(&notificator);
 
         // Construct F operator
