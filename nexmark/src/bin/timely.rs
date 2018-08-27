@@ -1048,7 +1048,7 @@ fn main() {
 
         let input_times = {
             let config = config.clone();
-            move || nexmark::config::NexMarkInputTimes::new(config.clone(), duration_ns, time_dilation)
+            move || nexmark::config::NexMarkInputTimes::new(config.clone(), duration_ns, time_dilation, peers)
         };
 
         let mut output_metric_collector =
@@ -1114,7 +1114,7 @@ fn main() {
                             events_so_far,
                             &mut rng,
                             &mut config));
-                    events_so_far += 1;
+                    events_so_far += worker.peers();
                 }
                 input.advance_to(target_ns as usize);
                 if index == 0 {
