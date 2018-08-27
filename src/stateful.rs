@@ -215,6 +215,8 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
             // Stash for consumed input buffers
             let mut data_return_buffer = vec![];
 
+            let mut control_data_buffer = vec![];
+
             // Handle input data
             move |frontiers| {
                 let mut data_out = data_out.activate();
@@ -222,6 +224,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
                 // Read control input
                 control_in.for_each(|time, data| {
+                    data.swap(&mut control_data_buffer);
                     // Append to pending control instructions
                     let builder = pending_configuration_data.entry(time.time().clone()).or_insert_with(|| {
                         let mut builder: ControlSetBuilder<S::Timestamp> = Default::default();
@@ -229,7 +232,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                         builder.frontier(vec![time.time().clone()].into_iter());
                         builder
                     });
-                    for update in data.drain(..) {
+                    for update in control_data_buffer.drain(..) {
                         builder.apply(update);
                     }
                     let time = time.retain();
@@ -355,7 +358,9 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                         if !data_stash.contains_key(time.time()) {
                             data_stash.insert(time.time().clone(), Vec::new());
                         }
-                        data_stash.get_mut(time.time()).unwrap().push(data.replace_with(data_return_buffer.pop().unwrap_or_else(Vec::new)));
+                        let mut data_vec = data_return_buffer.pop().unwrap_or_else(Vec::new);
+                        data.swap(&mut data_vec);
+                        data_stash.get_mut(time.time()).unwrap().push(data_vec);
                     } else {
                         // Yes, control frontier not <= `time`, process right-away
 
@@ -371,7 +376,9 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
                         let mut session = data_out.session(&time);
 
-                        let data_iter = data.drain(..).map(|d| {
+                        let mut data_vec = data_return_buffer.pop().unwrap_or_else(Vec::new);
+                        data.swap(&mut data_vec);
+                        let data_iter = data_vec.drain(..).map(|d| {
                             let key_id = Key(key(&d));
                             (map[key_to_bin(key_id)], key_id, d)
                         });

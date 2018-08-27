@@ -42,14 +42,17 @@ fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T
     use std::collections::HashMap;
     let mut in1_pending: HashMap<_, Vec<_>> = Default::default();
     let mut in2_pending: HashMap<_, Vec<_>> = Default::default();
+    let mut data_buffer: Vec<T> = Vec::new();
     correct.binary_notify(&output, Exchange::new(|_| 0), Exchange::new(|_| 0), "Verify", vec![],
         move |in1, in2, _out, not| {
             in1.for_each(|time, data| {
-                in1_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data.drain(..));
+                data.swap(&mut data_buffer);
+                in1_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data_buffer.drain(..));
                 not.notify_at(time.retain());
             });
             in2.for_each(|time, data| {
-                in2_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data.drain(..));
+                data.swap(&mut data_buffer);
+                in2_pending.entry(time.time().clone()).or_insert_with(Default::default).extend(data_buffer.drain(..));
                 not.notify_at(time.retain());
             });
             not.for_each(|time, _, _| {
@@ -212,6 +215,9 @@ fn main() {
                 let people = Some(people.clone()).replay_into(scope)
                     .filter(|p| p.state == "OR" || p.state == "ID" || p.state == "CA");
 
+                let mut auctions_buffer = vec![];
+                let mut people_buffer = vec![];
+
                 auctions
                     .binary(
                         &people,
@@ -227,8 +233,9 @@ fn main() {
 
                                 // Process each input auction.
                                 input1.for_each(|time, data| {
+                                    data.swap(&mut auctions_buffer);
                                     let mut session = output.session(&time);
-                                    for auction in data.drain(..) {
+                                    for auction in auctions_buffer.drain(..) {
                                         if let Some(person) = state2.get(&auction.seller) {
                                                 session.give((
                                                     person.name.clone(),
@@ -242,8 +249,9 @@ fn main() {
 
                                 // Process each input person.
                                 input2.for_each(|time, data| {
+                                    data.swap(&mut people_buffer);
                                     let mut session = output.session(&time);
-                                    for person in data.drain(..) {
+                                    for person in people_buffer.drain(..) {
                                         if let Some(auctions) = state1.get(&person.id) {
                                             for auction in auctions.iter() {
                                                 session.give((
@@ -329,15 +337,15 @@ fn main() {
 
                                 // Record each bid.
                                 // NB: We don't summarize as the max, because we don't know which are valid.
-                                input1.for_each(|_time, data| {
-                                    for bid in data.drain(..) {
                                         state.entry(bid.auction).or_insert(Vec::new()).push(bid);
+                                input1.for_each(|time, data| {
+                                    for bid in data.iter().cloned() {
                                     }
                                 });
 
                                 // Record each auction.
                                 input2.for_each(|time, data| {
-                                    for auction in data.drain(..) {
+                                    for auction in data.iter().cloned() {
                                         if capability.as_ref().map(|c| to_nexmark_time(c.time().inner) <= auction.expires) != Some(true) {
                                             let mut new_time = time.time().clone();
                                             new_time.inner = from_nexmark_time(auction.expires);
@@ -402,17 +410,17 @@ fn main() {
                         "Q4 Auction close",
                         move |not, time, data, _output| {
                             let mut not_time = time.time().clone();
-                            for (_, key_id, bid) in data.drain(..) {
+                            for (_, key_id, bid) in data.iter() {
                                 not_time.inner = from_nexmark_time(bid.date_time);
-                                not.notify_at_data(time.delayed(&not_time), Some((key_id, bid)))
+                                not.notify_at_data(time.delayed(&not_time), Some((key_id.clone(), bid.clone())))
                             }
                         },
                         move |not, time, data, _output| {
                             let mut new_time = time.time().clone();
-                            for (_target, key_id, auction) in data.drain(..) {
+                            for (_target, key_id, auction) in data.iter() {
                                 new_time.inner = from_nexmark_time(auction.expires);
                                 // Request notification for the auction's expiration time, which is used to look into the auctions_state
-                                not.notify_at_data(time.delayed(&new_time), Some((key_id, auction)));
+                                not.notify_at_data(time.delayed(&new_time), Some((key_id.clone(), auction.clone())));
                             }
                         },
                         |_time, data, bid_state, _auction_state, _output| {
@@ -461,7 +469,7 @@ fn main() {
 
                                 input.for_each(|time, data| {
                                     let mut session = output.session(&time);
-                                    for (category, price) in data.drain(..) {
+                                    for (category, price) in data.iter().cloned() {
                                         let entry = state.entry(category).or_insert((0, 0));
                                         entry.0 += price;
                                         entry.1 += 1;
@@ -515,15 +523,17 @@ fn main() {
                             let mut deletions = HashMap::new();
                             let mut accumulations = HashMap::new();
 
+                            let mut bids_buffer = vec![];
+
                             move |input, output| {
 
                                 input.for_each(|time, data| {
-
+                                    data.swap(&mut bids_buffer);
                                     let slide = ::nexmark::event::Date::new(((*to_nexmark_time(time.time().inner) / window_slide_ns) + 1) * window_slide_ns);
                                     let downgrade = time.delayed(&RootTimestamp::new(from_nexmark_time(slide)));
 
                                     // Collect all bids in a different slide.
-                                    for &(auction, a_time) in data.iter() {
+                                    for &(auction, a_time) in bids_buffer.iter() {
                                         if a_time != slide {
                                             additions
                                                 .entry(time.delayed(&RootTimestamp::new(from_nexmark_time(a_time))))
@@ -531,13 +541,13 @@ fn main() {
                                                 .push(auction);
                                         }
                                     }
-                                    data.retain(|&(_, a_time)| a_time == slide);
+                                    bids_buffer.retain(|&(_, a_time)| a_time == slide);
 
                                     // Collect all bids in the same slide.
                                     additions
                                         .entry(downgrade)
                                         .or_insert(Vec::new())
-                                        .extend(data.drain(..).map(|(b,_)| b));
+                                        .extend(bids_buffer.drain(..).map(|(b,_)| b));
                                 });
 
                                 // Extract and order times we can now process.
@@ -646,7 +656,7 @@ fn main() {
 
                                 input.for_each(|time, data| {
                                     let mut session = output.session(&time);
-                                    for (bidder, price) in data.drain(..) {
+                                    for (bidder, price) in data.iter().cloned() {
                                         let entry = state.entry(bidder).or_insert(VecDeque::new());
                                         if entry.len() >= 10 { entry.pop_back(); }
                                         entry.push_front(price);
@@ -708,7 +718,7 @@ fn main() {
 
                             input.for_each(|time, data| {
 
-                                for (window, price) in data.drain(..) {
+                                for (window, price) in data.iter().cloned() {
                                     if let Some(position) = maxima.iter().position(|x| (x.0).time().inner == from_nexmark_time(window)) {
                                         if maxima[position].1 < price {
                                             maxima[position].1 = price;
@@ -744,7 +754,7 @@ fn main() {
 
                         input.for_each(|time, data| {
 
-                            for (window, price) in data.drain(..) {
+                            for (window, price) in data.iter().cloned() {
                                 if let Some(position) = maxima.iter().position(|x| (x.0).time().inner == window) {
                                     if maxima[position].1 < price {
                                         maxima[position].1 = price;
@@ -785,8 +795,8 @@ fn main() {
 
                 // Partition by auction id to avoid serializing the computation
                 bids.stateful_unary_input(&control, |(a, _window, _price)| calculate_hash(a), "q7-flex pre-reduce", move |not, time, data, _output| {
-                    for (_, key_id, (_auction, window, price)) in data.drain(..) {
-                        not.notify_at_data(time.delayed(&RootTimestamp::new(from_nexmark_time(window))), Some((key_id, (window, price))));
+                    for (_, key_id, (_auction, window, price)) in data.iter() {
+                        not.notify_at_data(time.delayed(&RootTimestamp::new(from_nexmark_time(*window))), Some((*key_id, (*window, *price))));
                     }
                 }, |time, maxima, bid_state, output| {
                     let mut windows = HashMap::new();
@@ -808,7 +818,7 @@ fn main() {
                         let mut notificator = FrontierNotificator::new();
                         move |input, output| {
                             input.for_each(|time, data| {
-                                for (window,price) in data.drain(..) {
+                                for (window,price) in data.iter().cloned() {
                                     let slot = pending_maxima.entry(window).or_insert_with(Vec::new);
                                     slot.push(price);
                                     notificator.notify_at(time.delayed(&RootTimestamp::new(from_nexmark_time(window))));
@@ -857,14 +867,16 @@ fn main() {
 
                                 // Notice new people.
                                 input1.for_each(|_time, data| {
-                                    for (person, time) in data.drain(..) {
+                                    for (person, time) in data.iter().cloned() {
                                         new_people.insert(person, time);
                                     }
                                 });
 
                                 // Notice new auctions.
                                 input2.for_each(|time, data| {
-                                    auctions.push((time.retain(), data.take()));
+                                    let mut data_vec = vec![];
+                                    data.swap(&mut data_vec);
+                                    auctions.push((time.retain(), data_vec));
                                 });
 
                                 // Determine least timestamp we might still see.
