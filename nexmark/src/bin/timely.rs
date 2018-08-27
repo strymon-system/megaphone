@@ -30,6 +30,8 @@ use dynamic_scaling_mechanism::State;
 use dynamic_scaling_mechanism::{ControlInst, Control};
 use dynamic_scaling_mechanism::operator::StatefulOperator;
 
+use nexmark::event::{Event, Auction, Bid, Person};
+
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut h: ::fnv::FnvHasher = Default::default();
     t.hash(&mut h);
@@ -328,31 +330,67 @@ fn main() {
                         "Q4 Auction close",
                         |_capability, _info| {
 
-                            let mut state = std::collections::HashMap::new();
+                            let mut state: HashMap<_, (Option<_>, Vec<Bid>)> = std::collections::HashMap::new();
                             let mut opens = std::collections::BinaryHeap::new();
 
                             let mut capability: Option<Capability<Product<RootTimestamp, usize>>> = None;
+                            use std::collections::hash_map::Entry;
+                            use std::cmp::Reverse;
+
+                            fn is_valid_bid(bid: &Bid, auction: &Auction) -> bool {
+                                bid.price >= auction.reserve && auction.date_time <= bid.date_time && bid.date_time < auction.expires
+                            }
 
                             move |input1, input2, output| {
 
                                 // Record each bid.
                                 // NB: We don't summarize as the max, because we don't know which are valid.
-                                        state.entry(bid.auction).or_insert(Vec::new()).push(bid);
                                 input1.for_each(|time, data| {
                                     for bid in data.iter().cloned() {
+//                                        eprintln!("[{:?}] bid: {:?}", time.time().inner, bid);
+                                        let mut entry = state.entry(bid.auction).or_insert((None, Vec::new()));
+                                        if let Some(ref auction) = entry.0 {
+                                            debug_assert!(entry.1.len() <= 1);
+                                            if is_valid_bid(&bid, auction) {
+                                                // bid must fall between auction creation and expiration
+                                                if let Some(existing) = entry.1.get(0).cloned() {
+                                                    if existing.price < bid.price {
+                                                        entry.1[0] = bid;
+                                                    }
+                                                } else {
+                                                    entry.1.push(bid);
+                                                }
+                                            }
+                                        } else {
+                                            opens.push((Reverse(bid.date_time), bid.auction));
+                                            if capability.as_ref().map(|c| to_nexmark_time(c.time().inner) <= bid.date_time) != Some(true) {
+                                                let mut new_time = time.time().clone();
+                                                new_time.inner = from_nexmark_time(bid.date_time);
+                                                capability = Some(time.delayed(&new_time));
+                                            }
+                                            entry.1.push(bid);
+                                        }
                                     }
                                 });
 
                                 // Record each auction.
                                 input2.for_each(|time, data| {
                                     for auction in data.iter().cloned() {
+//                                        eprintln!("[{:?}] auction: {:?}", time.time().inner, auction);
                                         if capability.as_ref().map(|c| to_nexmark_time(c.time().inner) <= auction.expires) != Some(true) {
                                             let mut new_time = time.time().clone();
                                             new_time.inner = from_nexmark_time(auction.expires);
                                             capability = Some(time.delayed(&new_time));
                                         }
-                                        use std::cmp::Reverse;
-                                        opens.push((Reverse(auction.expires), auction));
+                                        opens.push((Reverse(auction.expires), auction.id));
+                                        let mut entry = state.entry(auction.id).or_insert((None, Vec::new()));
+                                        debug_assert!(entry.0.is_none());
+                                        entry.1.retain(|bid| is_valid_bid(&bid, &auction));
+                                        if let Some(bid) = entry.1.iter().max_by_key(|bid| bid.price).cloned() {
+                                            entry.1.clear();
+                                            entry.1.push(bid);
+                                        }
+                                        entry.0 = Some(auction);
                                     }
                                 });
 
@@ -364,17 +402,31 @@ fn main() {
                                     let complete = std::cmp::min(complete1, complete2);
 
                                     let mut session = output.session(capability);
-                                    while opens.peek().map(|x| (x.0).0 < to_nexmark_time(complete)) == Some(true) {
+                                    while opens.peek().map(|x| complete == usize::max_value() || (x.0).0 < to_nexmark_time(complete)) == Some(true) {
+//                                        eprintln!("[{:?}] opens.len(): {} state.len(): {} {:?}", capability.time().inner, opens.len(), state.len(), state.iter().map(|x| (x.1).1.len()).sum::<usize>());
 
-                                        let (_time, auction) = opens.pop().unwrap();
-                                        if let Some(mut state) = state.remove(&auction.id) {
-                                            state.retain(|b|
-                                                auction.date_time <= b.date_time &&
-                                                b.date_time < auction.expires &&
-                                                b.price >= auction.reserve);
-                                            state.sort_by(|b1,b2| b1.price.cmp(&b2.price));
-                                            if let Some(winner) = state.pop() {
-                                                session.give((auction, winner));
+                                        let (Reverse(time), auction) = opens.pop().unwrap();
+                                        let mut entry = state.entry(auction);
+                                        if let Entry::Occupied(mut entry) = entry {
+                                            let delete = {
+                                                let auction_bids = entry.get_mut();
+                                                if let Some(ref auction) = auction_bids.0 {
+                                                    if time == auction.expires {
+                                                        // Auction expired, clean up state
+                                                        if let Some(winner) = auction_bids.1.pop() {
+                                                            session.give((auction.clone(), winner));
+                                                        }
+                                                        true
+                                                    } else {
+                                                        false
+                                                    }
+                                                } else {
+                                                    auction_bids.1.retain(|bid| bid.date_time > time);
+                                                    auction_bids.1.is_empty()
+                                                }
+                                            };
+                                            if delete {
+                                                entry.remove_entry();
                                             }
                                         }
                                     }
