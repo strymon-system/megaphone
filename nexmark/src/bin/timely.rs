@@ -954,9 +954,13 @@ fn main() {
         ::std::mem::drop(closed_auctions);
         ::std::mem::drop(closed_auctions_flex);
 
-        let rate = std::env::args().nth(1).expect("rate absent").parse().expect("couldn't parse rate");
+        let rate: String = std::env::args().nth(1).expect("rate absent").parse().expect("couldn't parse rate");
         let mut config1 = nexmark::config::Config::new();
+        // 0.06*60*60*12 = 0.06*60*60*12
+        // auction_proportion*sec_in_12h
+        config1.insert("in-flight-auctions", format!("{}", rate.parse::<u64>().expect("failed to parse rate")*2592));
         config1.insert("events-per-second", rate);
+        config1.insert("first-event-number", format!("{}", index));
         let mut config = nexmark::config::NEXMarkConfig::new(&config1);
 
         let duration_ns: u64 = std::env::args().nth(2).expect("duration absent").parse::<u64>().expect("couldn't parse duration") * 1_000_000_000;
