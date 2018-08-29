@@ -384,7 +384,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
                 }
 
                 // go through each time with data
-                for (bin1, bin2) in states1.bins.iter_mut().zip(states2.bins.iter_mut()).filter(|(b1, _b2)| b1.is_some()) {
+                for (bin1, bin2) in states1.bins.iter_mut().zip(states2.bins.iter_mut()).filter(|(b1, b2)| b1.is_some() && b2.is_some()) {
                     let (bin1, bin2) = (bin1.as_mut().unwrap(), bin2.as_mut().unwrap());
                     while let Some((time, data)) = bin1.notificator().next(&[&frontiers[0], &frontiers[1], &frontiers[2], &frontiers[3]]) {
                         fold1(&time, data.as_slice(), bin1, bin2, &mut output_handle);
