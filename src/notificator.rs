@@ -748,10 +748,20 @@ impl<T: Timestamp + TotalOrder, D> Notify<T, D> for TotalOrderFrontierNotificato
                 let min = self.pending.pop().unwrap();
                 self.available.push(OrderReversedCap::new(self.capability.as_ref().unwrap().delayed(&min.element), min.data));
             }
+
+            if let Some(cap) = self.capability.as_mut() {
+                if let Some(pending) = self.pending.peek() {
+                    if cap.time().less_than(&pending.element) {
+                        cap.downgrade(&pending.element);
+                    }
+                }
+            }
+        } else {
+            self.capability.take();
         }
 
         if frontiers.iter().all(|f| f.is_empty()) {
-            self.capability = None;
+            self.capability.take();
         }
     }
 
