@@ -3,16 +3,17 @@ extern crate timely;
 extern crate abomonation;
 #[macro_use] extern crate abomonation_derive;
 
-pub mod bin_prober;
-pub mod distribution;
+//pub mod bin_prober;
+//pub mod distribution;
 mod stateful;
 pub mod state_machine;
 pub mod join;
 pub mod notificator;
 pub mod operator;
 
-use timely::order::PartialOrder;
+use timely::order::{PartialOrder, TotalOrder};
 use timely::progress::frontier::Antichain;
+use timely::progress::Timestamp;
 
 /// A control message consisting of a sequence number, a total count of messages to be expected
 /// and an instruction.
@@ -26,11 +27,11 @@ pub struct Control {
 
 /// A bin identifier. Wraps a `usize`.
 #[derive(Abomonation, Clone, Copy, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Bin(usize);
+pub struct BinId(usize);
 
-impl Bin {
+impl BinId {
     pub fn new(bin: usize) -> Self {
-        Bin(bin)
+        BinId(bin)
     }
 }
 
@@ -48,7 +49,7 @@ pub fn key_to_bin(key: Key) -> usize {
     (key.0 >> ::std::mem::size_of::<KeyType>() * 8 - BIN_SHIFT) as usize
 }
 
-impl ::std::ops::Deref for Bin {
+impl ::std::ops::Deref for BinId {
     type Target = usize;
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -68,7 +69,7 @@ pub enum ControlInst {
     /// Provide a new map
     Map(Vec<usize>),
     /// Provide a map update
-    Move(Bin, /*worker*/ usize),
+    Move(BinId, /*worker*/ usize),
     /// No-op
     None,
 }
@@ -149,7 +150,7 @@ impl<T: PartialOrder> ControlSetBuilder<T> {
                     map.clear();
                     map.extend( new_map.iter());
                 },
-                ControlInst::Move(Bin(bin), target) => {
+                ControlInst::Move(BinId(bin), target) => {
                     assert!(bin < (1 << BIN_SHIFT));
                     map[bin] = target
                 },
@@ -166,31 +167,78 @@ impl<T: PartialOrder> ControlSetBuilder<T> {
 }
 
 /// State abstraction. It encapsulates state assorted by bins and a notificator.
-pub struct State<S> {
-    bins: Vec<Option<S>>,
+pub struct State<T, D, N>
+    where
+        T: Timestamp + TotalOrder,
+{
+    bins: Vec<Option<Bin<T, D, N>>>,
 }
 
-impl<S> State<S> {
+impl<T, D, N> State<T, D, N>
+    where
+        T: Timestamp + TotalOrder,
+{
     /// Construct a new `State` with the provided vector of bins and a default `FrontierNotificator`.
-    fn new(bins: Vec<Option<S>>) -> Self {
+    fn new(bins: Vec<Option<Bin<T, D, N>>>) -> Self {
         Self { bins }
     }
 
-    /// Obtain a mutable reference to the state associated with a bin.
-    pub fn get_state(&mut self, key: Key) -> &mut S {
+    pub fn get(&mut self, key: Key) -> &mut Bin<T, D, N> {
         assert!(self.bins[key_to_bin(key)].is_some(), "Accessing bin {} for key {:?}", key_to_bin(key), key);
         self.bins[key_to_bin(key)].as_mut().expect("Trying to access non-available bin")
     }
 
-    /// Iterate all bins. This might go away.
-    pub fn scan<F: FnMut(&mut S)>(&mut self, mut f: F) {
-        for state in &mut self.bins {
-            state.as_mut().map(&mut f);
-        }
+    /// Obtain a mutable reference to the notificator associated with a bin.
+    pub fn get_notificator(&mut self, key: Key) -> &mut ::stateful::Notificator<T, N> {
+        self.get(key).notificator()
+    }
+    /// Obtain a mutable reference to the state associated with a bin.
+    pub fn get_state(&mut self, key: Key) -> &mut D {
+        self.get(key).state()
     }
 
+    /// Iterate all bins. This might go away.
+    pub fn scan<F: FnMut(&mut D)>(&mut self, mut f: F) {
+        for state in &mut self.bins {
+            state.as_mut().map(|bin| f(&mut bin.data));
+        }
+    }
 }
 
+pub struct Bin<T, D, N>
+    where
+        T: Timestamp + TotalOrder,
+{
+    data: D,
+    notificator: ::stateful::Notificator<T, N>,
+}
+
+impl<T, D, N> Bin<T, D, N>
+    where
+        T: Timestamp + TotalOrder,
+{
+    pub fn state(&mut self) -> &mut D {
+        &mut self.data
+    }
+
+    pub fn notificator(&mut self) -> &mut ::stateful::Notificator<T, N> {
+        &mut self.notificator
+    }
+}
+
+impl<T, D, N> Default for Bin<T, D, N>
+    where
+        T: Timestamp + TotalOrder,
+        D: Default,
+{
+    /// Creates an empty `HashMap<K, V, S>`, with the `Default` value for the hasher.
+    fn default() -> Self {
+        Self {
+            data: Default::default(),
+            notificator: ::stateful::Notificator::new(),
+        }
+    }
+}
 #[cfg(feature = "bin-1")]
 pub const BIN_SHIFT: usize = 1;
 #[cfg(feature = "bin-2")]
