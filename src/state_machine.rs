@@ -10,7 +10,14 @@ use timely::Data;
 use operator::StatefulOperator;
 use ::Control;
 
-pub trait BinnedStateMachine<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData, D: ExchangeData + Default + 'static> {
+pub trait BinnedStateMachine<S, K, V, D>
+where
+    S: Scope,
+    S::Timestamp: ::timely::order::TotalOrder,
+    K: ExchangeData+Hash+Eq,
+    V: ExchangeData+Eq,
+    D: ExchangeData + Default + 'static,
+{
     /// Tracks a state for each presented key, using user-supplied state transition logic.
     ///
     /// The transition logic `fold` may mutate the state, and produce both output records and
@@ -31,6 +38,7 @@ pub trait BinnedStateMachine<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData,
 impl<S, K, V, D> BinnedStateMachine<S, K, V, D> for Stream<S, (K, V)>
 where
     S: Scope,
+    S::Timestamp: ::timely::order::TotalOrder,
     K: ExchangeData+Hash+Eq,
     V: ExchangeData+Eq,
     D: ExchangeData + Default + 'static,
@@ -42,10 +50,10 @@ where
         H: Fn(&K)->u64+'static,                     // "hash" function for keys
     >(&self, fold: F, hash: H, control: &Stream<S, Control>) -> Stream<S, R> where S::Timestamp : Hash+Eq {
 
-        self.stateful_unary(control, move |(k, _v)| hash(&k), "StateMachine", move |time, data, states, output| {
+        self.stateful_unary(control, move |(k, _v)| hash(&k), "StateMachine", move |time, data, bin, output| {
             let mut session = output.session(&time);
-            for (key_id, (key, val)) in data {
-                let states: &mut HashMap<_, _> = states.get_state(key_id);
+            let states: &mut HashMap<_, _> = bin.state();
+            for (key, val) in data {
                 let (remove, output) = {
                     let state = states.entry(key.clone()).or_insert_with(Default::default);
                     fold(&key, val.clone(), state)
@@ -54,47 +62,5 @@ where
                 session.give_iterator(output.into_iter());
             }
         })
-
-//        self.stream.unary_frontier(Pipeline, "StateMachine", |cap, _info| {
-//            move |input, output| {
-//
-//                let frontier = input.frontier();
-//                // go through each time with data, process each (key, val) pair.
-//                let mut states = states.borrow_mut();
-//                let mut notificator = notificator.borrow_mut();
-//                while let Some((time, pend)) = notificator.next(&[frontier]) {
-//                    let mut session = output.session(&time);
-//                    for (key_id, (key, val)) in pend {
-//                        let mut states = states.get_state(key_id);
-//                        let (remove, output) = {
-//                            let state = states.entry(key.clone()).or_insert_with(Default::default);
-//                            fold(&key, val.clone(), state)
-//                        };
-//                        if remove { states.remove(&key); }
-//                        session.give_iterator(output.into_iter());
-//                    }
-//                }
-//
-//                // stash each input and request a notification when ready
-//                while let Some((time, data)) = input.next() {
-//                    // stash if not time yet
-//                    if frontier.less_equal(time.time()) {
-//                        states.notificator().notify_at_data(time.retain(), data.drain(..).map(|(_, key_id, d)| (key_id, d)));
-//                    } else {
-//                        // else we can process immediately
-//                        let mut session = output.session(&time);
-//                        for (_target, key_id, (key, val)) in data.drain(..) {
-//                            let mut states = states.get_state(key_id);
-//                            let (remove, output) = {
-//                                let state = states.entry(key.clone()).or_insert_with(Default::default);
-//                                fold(&key, val.clone(), state)
-//                            };
-//                            if remove { states.remove(&key); }
-//                            session.give_iterator(output.into_iter());
-//                        }
-//                    }
-//                };
-//            }
-//        }).probe_with(&mut self.probe)
     }
 }

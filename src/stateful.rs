@@ -18,14 +18,15 @@ use timely::dataflow::{Stream, Scope, ProbeHandle};
 use timely::dataflow::channels::pact::Pipeline;
 use timely::dataflow::operators::{Capability, CapabilityRef, FrontierNotificator as TFN};
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
+use timely::order::TotalOrder;
 use timely::progress::Timestamp;
 use timely::progress::frontier::Antichain;
 
-use ::{BIN_SHIFT, Bin, Control, ControlSetBuilder, ControlSet, Key, key_to_bin, State};
+use ::{BIN_SHIFT, BinId, Control, ControlSetBuilder, ControlSet, Key, key_to_bin, State};
 
 const BUFFER_CAP: usize = 16;
 
-type Notificator<T, D> = ::notificator::FrontierNotificator<T, D>;
+pub type Notificator<T, D> = ::notificator::TotalOrderFrontierNotificator<T, D>;
 
 /// Generic state-transition machinery: each key has a state, and receives a sequence of events.
 /// Events are applied in time-order, but no other promises are made. Each state transition can
@@ -40,20 +41,21 @@ type Notificator<T, D> = ::notificator::FrontierNotificator<T, D>;
 #[derive(Abomonation, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub enum StateProtocol<T, S, D> {
     /// Provide a piece of state for a bin
-    State(Bin, S),
+    State(BinId, S),
     /// Announce an outstanding time stamp
-    Pending(T, (Key, D)),
+    Pending(BinId, T, Vec<D>),
     /// Prepare for receiving state
-    Prepare(Bin),
+    Prepare(BinId),
 }
 
 /// A timely `Stream` with an additional state handle and a probe.
 pub struct StateStream<S, V, D, W, M> where
     S: Scope, // The containing scope
+    S::Timestamp: TotalOrder,
     V: ExchangeData, // Input data
-    D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-bin state (data)
+    D: IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-bin state (data)
     W: ExchangeData,                            // State format on the wire
-    M: ExchangeData+Eq+PartialEq,
+    M: ExchangeData,
 {
     /// The wrapped stream. The stream provides tuples of the form `(usize, Key, V)`. The first two
     /// parameters are the target worker and the key identifier. Implementations are encouraged to
@@ -65,28 +67,27 @@ pub struct StateStream<S, V, D, W, M> where
     /// Stream of state updates
     pub state_stream: Stream<S, (usize, StateProtocol<S::Timestamp, W, M>)>,
     /// A handle to the shared state object
-    pub state: Rc<RefCell<State<D>>>,
+    pub state: Rc<RefCell<State<S::Timestamp, D, M>>>,
     /// The probe `stateful` uses to determine completion.
     pub probe: ProbeHandle<S::Timestamp>,
-    pub notificator: Rc<RefCell<Notificator<S::Timestamp, (Key, M)>>>,
     _phantom: PhantomData<(*const W)>,
 }
 
 impl<S, V, D, W, M> StateStream<S, V, D, W, M>
     where
         S: Scope, // The containing scope
+        S::Timestamp: TotalOrder,
         V: ExchangeData, // Input data
-        D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
+        D: IntoIterator<Item=W>+Extend<W>+Default,    // per-key state (data)
         W: ExchangeData,
-        M: ExchangeData+Eq+PartialEq,
+        M: ExchangeData,
 {
-    pub fn new(stream: Stream<S, (usize, Key, V)>, state_stream: Stream<S, (usize, StateProtocol<S::Timestamp, W, M>)>, state: Rc<RefCell<State<D>>>, probe: ProbeHandle<S::Timestamp>, notificator: Rc<RefCell<Notificator<S::Timestamp, (Key, M)>>>) -> Self {
+    pub fn new(stream: Stream<S, (usize, Key, V)>, state_stream: Stream<S, (usize, StateProtocol<S::Timestamp, W, M>)>, state: Rc<RefCell<State<S::Timestamp, D, M>>>, probe: ProbeHandle<S::Timestamp>) -> Self {
         StateStream {
             stream,
             state_stream,
             state,
             probe,
-            notificator,
             _phantom: PhantomData,
         }
     }
@@ -94,11 +95,11 @@ impl<S, V, D, W, M> StateStream<S, V, D, W, M>
 }
 
 pub fn apply_state_updates<
-    T: Timestamp, // The containing scope
-    D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,    // per-key state (data)
+    T: Timestamp+TotalOrder, // The containing scope
+    D: IntoIterator<Item=W>+Extend<W>+Default,    // per-key state (data)
     W: ExchangeData,
-    M: ExchangeData+Eq+PartialEq,
-    I: Iterator<Item=(usize, StateProtocol<T, W, M>)>>(states: &mut State<D>, not: &mut Notificator<T, (Key, M)>, cap: &CapabilityRef<T>, data: I) {
+    M: ExchangeData,
+    I: Iterator<Item=(usize, StateProtocol<T, W, M>)>>(states: &mut State<T, D, M>, cap: &CapabilityRef<T>, data: I) {
 
     // Apply each state update
     for (_target, state) in data {
@@ -109,11 +110,11 @@ pub fn apply_state_updates<
             }
             // Extend state
             StateProtocol::State(bin, s) => {
-                states.bins[*bin].as_mut().map(|bin| bin.extend(Some(s)));
+                states.bins[*bin].as_mut().map(|bin| bin.data.extend(Some(s)));
             },
             // Request notification
-            StateProtocol::Pending(t, data) =>
-                not.notify_at_data(cap.delayed(&t), Some(data)),
+            StateProtocol::Pending(bin, t, data) =>
+                states.bins[*bin].as_mut().unwrap().notificator().notify_at_data(cap.delayed(&t), data),
         }
     }
 
@@ -134,14 +135,14 @@ pub trait Stateful<S: Scope, V: ExchangeData> {
     /// * `B`: Key function
     fn stateful<W, D, B, M>(&self, key: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W, M>
         where
-            S::Timestamp : Hash+Eq,
+            S::Timestamp: Hash+Eq+TotalOrder,
             // State format on the wire
             W: ExchangeData,
             // per-key state (data)
-            D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,
+            D: IntoIterator<Item=W>+Extend<W>+Default,
             // "hash" function for values
             B: Fn(&V)->u64+'static,
-            M: ExchangeData+Eq+PartialEq,
+            M: ExchangeData,
     ;
 }
 
@@ -150,27 +151,26 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
     fn stateful<W, D, B, M>(&self, key: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W, M>
         where
-            S::Timestamp : Hash+Eq,
+            S::Timestamp: Hash+Eq+TotalOrder,
             // State format on the wire
             W: ExchangeData,
             // per-key state (data)
-            D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,
+            D: IntoIterator<Item=W>+Extend<W>+Default,
             // "hash" function for values
             B: Fn(&V)->u64+'static,
-            M: ExchangeData+Eq+PartialEq,
+            M: ExchangeData,
     {
         let index = self.scope().index();
         let peers = self.scope().peers();
 
         // worker-local state, maps bins to state
-        let default_element: Option<D> = if self.scope().index() == 0 {
-            Some(Default::default())
+        let default_elements: Vec<Option<_>> = if self.scope().index() == 0 {
+            ::std::iter::repeat_with(|| Some(Default::default())).take(1 << BIN_SHIFT).collect()
         } else {
-            None
+            ::std::iter::repeat_with(|| None).take(1 << BIN_SHIFT).collect()
         };
-        let states: Rc<RefCell<State<D>>> = Rc::new(RefCell::new(State::new(vec![default_element; 1 << BIN_SHIFT])));
+        let states: Rc<RefCell<State<S::Timestamp, D, M>>> = Rc::new(RefCell::new(State::new(default_elements)));
         let states_f = Rc::clone(&states);
-        let states_op = Rc::clone(&states);
 
         let mut builder = OperatorBuilder::new("StateMachine F".into(), self.scope());
 
@@ -186,9 +186,6 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         // Probe to be attached after the last stateful operator
         let probe1 = ProbeHandle::new();
         let probe2 = probe1.clone();
-
-        let notificator: Rc<RefCell<Notificator<S::Timestamp, (Key, M)>>> = Rc::new(RefCell::new(Notificator::new()));
-        let notificator_f = Rc::clone(&notificator);
 
         // Construct F operator
         builder.build(move |_capability| {
@@ -296,24 +293,10 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                 if (*old % peers == index) && (old != new) {
                                     // Capture bin's values as a stream of data
                                     let state = states.bins[bin].take().expect("Instructed to move bin but it is None");
-                                    session.give((*new, StateProtocol::Prepare(Bin(bin))));
-                                    session.give_iterator(state.into_iter().map(|s| (*new, StateProtocol::State(Bin(bin), s))));
+                                    session.give((*new, StateProtocol::Prepare(BinId(bin))));
+                                    session.give_iterator(state.data.into_iter().map(|s| (*new, StateProtocol::State(BinId(bin), s))));
+                                    session.give_iterator(state.notificator.pending().into_iter().map(|(t, d)| (*new, StateProtocol::Pending(BinId(bin), t, d))));
                                 }
-                            }
-                            for (cap, data) in notificator_f.borrow_mut().pending_mut() {
-                                data.retain(|(key_id, meta)| {
-                                    let old_worker = old_map[key_to_bin(*key_id)];
-                                    let new_worker = new_map[key_to_bin(*key_id)];
-                                    if old_worker != new_worker {
-                                        // Pass pending notifications to the new owner
-                                        // Note: The receiver will get *all* notifications, so an
-                                        // operator can experience spurious wake-ups
-                                        session.give((new_worker, StateProtocol::Pending(cap.time().clone(), (*key_id, meta.clone()))));
-                                        false
-                                    } else {
-                                        true
-                                    }
-                                });
                             }
                         }
 
@@ -394,7 +377,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         });
 
         // `stream` is the stateful output stream where data is already correctly partitioned.
-        StateStream::new(stream, state, states_op, probe1, notificator)
+        StateStream::new(stream, state, states, probe1)
     }
 }
 
@@ -411,7 +394,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
             B: Fn(&V)->u64+'static,
             M: ExchangeData+Eq+PartialEq,
     {
-        let states: Rc<RefCell<State<D>>> = Rc::new(RefCell::new(State::new(vec![Some(Default::default()); 1 << BIN_SHIFT])));
+        let states: Rc<RefCell<State<S, D, M>>> = Rc::new(RefCell::new(State::new(vec![Some(Default::default()); 1 << BIN_SHIFT])));
         let states_op = Rc::clone(&states);
         // Probe to be attached after the last stateful operator
         let probe1 = ProbeHandle::new();
@@ -422,6 +405,6 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         StateStream::new(self.map(move |d| {
             let key = Key(key(&d));
             (key.0 as usize, key, d)
-        }).exchange(|d| d.0 as u64), self.filter(|_| false).map(|_| (0, StateProtocol::Prepare(Bin(0)))), states_op, probe1, Rc::new(RefCell::new(FrontierNotificator::new())))
+        }).exchange(|d| d.0 as u64), self.filter(|_| false).map(|_| (0, StateProtocol::Prepare(BinId(0)))), states_op, probe1, Rc::new(RefCell::new(FrontierNotificator::new())))
     }
 }

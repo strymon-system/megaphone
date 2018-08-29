@@ -560,10 +560,11 @@ impl<T: Timestamp, D> Notify<T, D> for FrontierNotificator<T, D> {
 ///     in2.close();
 /// }).unwrap();
 /// ```
+#[derive(Default)]
 pub struct TotalOrderFrontierNotificator<T: Timestamp + TotalOrder, D = ()> {
     capability: Option<Capability<T>>,
-    pending: BinaryHeap<OrderReversed<T, D>>,
-    available: BinaryHeap<OrderReversedCap<T, D>>,
+    pending: BinaryHeap<OrderReversed<T, Vec<D>>>,
+    available: BinaryHeap<OrderReversedCap<T, Vec<D>>>,
 }
 
 impl<T: Timestamp + TotalOrder> TotalOrderFrontierNotificator<T, ()> {
@@ -574,7 +575,7 @@ impl<T: Timestamp + TotalOrder> TotalOrderFrontierNotificator<T, ()> {
         let capability = pending.iter().min_by_key(|x| x.time()).cloned();
         Self {
             capability,
-            pending: pending.into_iter().map(|x| OrderReversed{ element: x.time().clone(), data: ()}).collect(),
+            pending: pending.into_iter().map(|x| OrderReversed{ element: x.time().clone(), data: vec![()]}).collect(),
             available: BinaryHeap::new(),
         }
     }
@@ -669,7 +670,7 @@ impl<T: Timestamp + TotalOrder, D> TotalOrderFrontierNotificator<T, D> {
     /// ```
     #[inline]
     pub fn notify_at_data<II: IntoIterator<Item=D>>(&mut self, cap: Capability<T>, iter: II) {
-        self.pending.extend(iter.into_iter().map(|d| OrderReversed { element: cap.time().clone(), data: d}));
+        self.pending.push(OrderReversed { element: cap.time().clone(), data: iter.into_iter().collect()});
         if self.capability.as_ref().map_or(true, |c| c.time() > cap.time()) {
             self.capability = Some(cap)
         }
@@ -702,40 +703,38 @@ impl<T: Timestamp + TotalOrder, D> TotalOrderFrontierNotificator<T, D> {
     /// To make sure all pending capabilities are above the frontier, use `for_each` or exhaust
     /// `next` to consume all available capabilities.
     ///
-    /// #Examples
+    /// # Examples
     /// ```
-    /// use timely::dataflow::operators::{ToStream, TotalOrderFrontierNotificator};
+    /// use timely::dataflow::operators::{ToStream, FrontierNotificator};
     /// use timely::dataflow::operators::generic::operator::Operator;
     /// use timely::dataflow::channels::pact::Pipeline;
     ///
     /// timely::example(|scope| {
     ///     (0..10).to_stream(scope)
     ///            .unary_frontier(Pipeline, "example", |_, _| {
-    ///                let mut notificator = TotalOrderFrontierNotificator::new();
+    ///                let mut notificator = FrontierNotificator::new();
     ///                move |input, output| {
     ///                    input.for_each(|cap, data| {
     ///                        output.session(&cap).give_content(data);
     ///                        let mut time = cap.time().clone();
     ///                        time.inner += 1;
-    ///                        notificator.notify_at(cap.delayed(&time));
-    ///                        assert_eq!(notificator.pending().filter(|t| t.0 == time).count(), 1);
+    ///                        notificator.notify_at_data(cap.delayed(&time), Some(time.inner));
+    ///                        assert_eq!(notificator.pending().filter(|t| t.0.time() == &time).count(), 1);
     ///                    });
-    ///                    notificator.for_each(&[input.frontier()], |cap, _| {
-    ///                        println!("done with time: {:?}", cap.time());
+    ///                    notificator.for_each_data(&[input.frontier()], |cap, data, _| {
+    ///                        println!("done with time: {:?} at: {:?}", cap.time(), data);
     ///                    });
     ///                }
     ///            });
     /// });
     /// ```
-    pub fn scan_pending<F: Fn(&T, &D)>(&self, fun: F) {
-        for or in &self.pending {
-            fun(&or.element, &or.data);
-        }
+    pub fn pending(self) -> impl Iterator<Item=(T, Vec<D>)> {
+        self.pending.into_iter().map(|e| (e.element, e.data))
     }
 }
 
 impl<T: Timestamp + TotalOrder, D> Notify<T, D> for TotalOrderFrontierNotificator<T, D> {
-    type NextData = ::std::iter::Once<D>;
+    type NextData = Vec<D>;
 
     fn make_available<'a>(&mut self, frontiers: &'a [&'a MutableAntichain<T>]) {
 
@@ -759,7 +758,7 @@ impl<T: Timestamp + TotalOrder, D> Notify<T, D> for TotalOrderFrontierNotificato
     #[inline]
     fn notify_at_frontiered<'a, II: IntoIterator<Item=D>>(&mut self, cap: Capability<T>, iter: II, frontiers: &'a [&'a MutableAntichain<T>]) {
         if frontiers.iter().all(|f| !f.less_equal(cap.time())) {
-            self.available.extend(iter.into_iter().map(|d| OrderReversedCap::new(cap.clone(), d)));
+            self.available.push(OrderReversedCap::new(cap.clone(), iter.into_iter().collect()));
         } else {
             self.notify_at_data(cap, iter);
         }
@@ -772,7 +771,7 @@ impl<T: Timestamp + TotalOrder, D> Notify<T, D> for TotalOrderFrontierNotificato
         }
         self.available.pop().map(|front| {
             while self.available.peek() == Some(&front) { self.available.pop(); }
-            (front.element, ::std::iter::once(front.data))
+            (front.element, front.data)
         })
     }
 }
@@ -804,8 +803,8 @@ impl<T: Timestamp, D> PartialEq for OrderReversedCap<T, D> {
 impl<T: Timestamp, D> Eq for OrderReversedCap<T, D> {}
 
 struct OrderReversed<T, D> {
-    element: T,
-    data: D,
+    pub element: T,
+    pub data: D,
 }
 
 impl<T, D> OrderReversed<T, D> {

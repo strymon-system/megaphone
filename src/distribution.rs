@@ -190,7 +190,9 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                         if !data_stash.contains_key(time.time()) {
                             data_stash.insert(time.time().clone(), Vec::new());
                         }
-                        data_stash.get_mut(time.time()).unwrap().push(data.replace_with(data_return_buffer.pop().unwrap_or_else(Vec::new)));
+                        let mut data_vec = data_return_buffer.pop().unwrap_or_else(Vec::new);
+                        data.swap(&mut data_vec);
+                        data_stash.get_mut(time.time()).unwrap().push(data_vec);
                     } else {
                         let map =
                             pending_configurations
@@ -286,7 +288,9 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                     if !pending.contains_key(time.time()) {
                         pending.insert(time.time().clone(), Vec::new());
                     }
-                    pending.get_mut(time.time()).unwrap().push(data.replace_with(data_return_buffer.pop().unwrap_or_else(Vec::new)));
+                    let mut data_vec = data_return_buffer.pop().unwrap_or_else(Vec::new);
+                    data.swap(&mut data_vec);
+                    pending.get_mut(time.time()).unwrap().push(data_vec);
                     notificator.notify_at(time.retain());
                 } else {
                     let mut session = output.session(&time);
@@ -311,7 +315,9 @@ impl<S: Scope, K: ExchangeData+Hash+Eq, V: ExchangeData> ControlStateMachine<S, 
                 if !pending_states.contains_key(time.time()) {
                     pending_states.insert(time.time().clone(), Vec::new());
                 }
-                pending_states.get_mut(time.time()).unwrap().push(data.replace_with(Vec::new()));
+                let mut data_vec = vec![];
+                data.swap(&mut data_vec);
+                pending_states.get_mut(time.time()).unwrap().push(data_vec);
                 notificator.notify_at(time.retain());
             });
 
