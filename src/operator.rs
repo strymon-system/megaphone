@@ -2,13 +2,13 @@
 
 use timely::ExchangeData;
 use timely::dataflow::{Stream, Scope};
-use timely::communication::allocator::RefOrMut;
+use timely::communication::message::RefOrMut;
 use timely::dataflow::channels::pact::Exchange;
 use timely::dataflow::channels::pushers::Tee;
 use timely::dataflow::operators::Probe;
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::Data;
-use timely::dataflow::operators::{Capability, CapabilityRef};
+use timely::dataflow::operators::Capability;
 use timely::dataflow::operators::generic::OutputHandle;
 use timely::order::TotalOrder;
 
