@@ -16,7 +16,7 @@ use fnv::FnvHashMap as HashMap;
 use timely::ExchangeData;
 use timely::dataflow::{Stream, Scope, ProbeHandle};
 use timely::dataflow::channels::pact::Pipeline;
-use timely::dataflow::operators::{Capability, CapabilityRef, FrontierNotificator as TFN};
+use timely::dataflow::operators::{Capability, CapabilityRef};
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::order::TotalOrder;
 use timely::progress::Timestamp;
@@ -191,8 +191,8 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         builder.build(move |_capability| {
 
             // distinct notificators for data and control input
-            let mut data_notificator = TFN::new();
-            let mut control_notificator = TFN::new();
+            let mut data_notificator = Notificator::new();
+            let mut control_notificator = Notificator::new();
 
             // Data input stash, time -> Vec<Vec<V>>
             let mut data_stash: HashMap<_, Vec<Vec<V>>> = Default::default();
