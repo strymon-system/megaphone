@@ -203,7 +203,7 @@ class Experiment(object):
             wait_all([run_cmd(c, redirect=r, stderr=stderr, background=True, node=p, dryrun=dryrun) for p, c, r, stderr in self.commands()])
             open(marker_file, 'a').close()
 
-duration=120
+duration=300
 
 def non_migrating(group, groups=4):
     workers = 8
