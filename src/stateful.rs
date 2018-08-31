@@ -385,26 +385,33 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
     fn stateful<W, D, B, M>(&self, key: B, _control: &Stream<S, Control>) -> StateStream<S, V, D, W, M>
         where
-            S::Timestamp : Hash+Eq,
+            S::Timestamp : Hash+Eq+TotalOrder,
         // State format on the wire
             W: ExchangeData,
         // per-key state (data)
-            D: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,
+            D: IntoIterator<Item=W>+Extend<W>+Default,
         // "hash" function for values
             B: Fn(&V)->u64+'static,
-            M: ExchangeData+Eq+PartialEq,
+            M: ExchangeData,
     {
-        let states: Rc<RefCell<State<S, D, M>>> = Rc::new(RefCell::new(State::new(vec![Some(Default::default()); 1 << BIN_SHIFT])));
-        let states_op = Rc::clone(&states);
+        // construct states, we simply construct all bins on each worker
+        let states: Rc<RefCell<State<S::Timestamp, D, M>>> = Rc::new(RefCell::new(State::new(::std::iter::repeat_with(|| Some(Default::default())).take(1 << BIN_SHIFT).collect())));
+
         // Probe to be attached after the last stateful operator
-        let probe1 = ProbeHandle::new();
+        let probe = ProbeHandle::new();
 
         use timely::dataflow::operators::{Map, Exchange, Filter};
 
         // `stream` is the stateful output stream where data is already correctly partitioned.
-        StateStream::new(self.map(move |d| {
-            let key = Key(key(&d));
-            (key.0 as usize, key, d)
-        }).exchange(|d| d.0 as u64), self.filter(|_| false).map(|_| (0, StateProtocol::Prepare(BinId(0)))), states_op, probe1, Rc::new(RefCell::new(FrontierNotificator::new())))
+        let stream = self
+            .map(move |d| {
+                let key = Key(key(&d));
+                (key.0 as usize, key, d)
+            })
+            .exchange(|d| d.0 as u64);
+        let state_stream = self
+            .filter(|_| false)
+            .map(|_| (0, StateProtocol::Prepare(BinId(0))));
+        StateStream::new(stream, state_stream, states, probe)
     }
 }
