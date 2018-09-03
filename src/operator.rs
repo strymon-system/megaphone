@@ -153,15 +153,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
                 // stash each input and request a notification when ready
                 while let Some((time, data)) = input.next() {
                     data.swap(&mut data_buffer);
-                    if frontiers.iter().all(|f| !f.less_equal(time.time())) {
-                        let cap = time.retain();
-                        for (_worker, key_id, d) in data_buffer.drain(..) {
-                            let slice = [d; 1];
-                            fold(&cap, &slice[..], states.get(key_id), &mut output_handle);
-                        }
-                    } else {
-                        notificator.notify_at_data(time.retain(), data_buffer.drain(..));
-                    }
+                    notificator.notify_at_data(time.retain(), data_buffer.drain(..));
                 }
 
                 for (time, data) in notificator.next(&[&frontiers[0], &frontiers[1]]) {
@@ -225,12 +217,8 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
                 }
                 // stash each input and request a notification when ready
                 while let Some((time, data)) = input.next() {
-                    if frontiers.iter().all(|f| !f.less_equal(time.time())) {
-                        consume(&mut states, time.retain(), data, &mut output_handle);
-                    } else {
-                        data.swap(&mut data_buffer);
-                        notificator.notify_at_data(time.retain(), data_buffer.drain(..));
-                    }
+                    data.swap(&mut data_buffer);
+                    notificator.notify_at_data(time.retain(), data_buffer.drain(..));
                 }
 
                 for (time, mut data) in notificator.next(&[&frontiers[0], &frontiers[1]]) {
@@ -358,21 +346,13 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
 
                 // stash each input and request a notification when ready
                 while let Some((time, data)) = input1.next() {
-                    if frontiers.iter().all(|f| !f.less_equal(time.time())) {
-                        consume1(&mut states1, time.retain(), data, &mut output_handle);
-                    } else {
-                        data.swap(&mut data1_buffer);
-                        notificator1.notify_at_data(time.retain(), data1_buffer.drain(..));
-                    }
+                    data.swap(&mut data1_buffer);
+                    notificator1.notify_at_data(time.retain(), data1_buffer.drain(..));
                 }
 
                 while let Some((time, data)) = input2.next() {
-                    if frontiers.iter().all(|f| !f.less_equal(time.time())) {
-                        consume2(&mut states2, time.retain(), data, &mut output_handle);
-                    } else {
-                        data.swap(&mut data2_buffer);
-                        notificator2.notify_at_data(time.retain(), data2_buffer.drain(..));
-                    }
+                    data.swap(&mut data2_buffer);
+                    notificator2.notify_at_data(time.retain(), data2_buffer.drain(..));
                 }
 
                 for (time, mut data) in notificator1.next(&[&frontiers[0], &frontiers[1]]) {
