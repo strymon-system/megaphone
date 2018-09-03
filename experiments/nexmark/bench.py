@@ -163,7 +163,7 @@ class Experiment(object):
                     'workers': self._workers,
                     'time_dilation': self._time_dilation,
                 }
-                return "/mnt/SG/strymon/local/bin/hwloc-bind socket:{p}.pu:even -- ./{dir}/release/timely {rate} {duration} {cwd}/{migration} {time_dilation} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
+                return "RUST_BACKTRACE=1 /mnt/SG/strymon/local/bin/hwloc-bind socket:{p}.pu:even -- ./{dir}/release/timely {rate} {duration} {cwd}/{migration} {time_dilation} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
             commands = [(self.single_machine_id, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
             return commands
         else:
@@ -181,7 +181,7 @@ class Experiment(object):
                     'workers': self._workers,
                     'time_dilation': self._time_dilation,
                 }
-                return "./{dir}/release/timely {rate} {duration} {cwd}/{migration} {time_dilation} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
+                return "RUST_BACKTRACE=1 /mnt/SG/strymon/local/bin/hwloc-bind socket:0.pu:even -- ./{dir}/release/timely {rate} {duration} {cwd}/{migration} {time_dilation} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
             commands = [(self.base_machine_id + p, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
             return commands
 
