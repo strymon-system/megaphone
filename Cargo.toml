@@ -38,10 +38,11 @@ rand = "^0.5"
 fnv="1.0"
 zipf = "^4.0"
 
-# [profile.release]
+[profile.release]
 # opt-level = 3
-# debug = true
+debug = true
 # rpath = false
 # lto = false
 # codegen-units = 16
 # debug-assertions = false
+panic = "abort"

@@ -24,3 +24,12 @@ dynamic_scaling_mechanism = { version = "0.0.1", path = "..", default_features =
 
 [patch.crates-io]
 timely = { git = 'https://github.com/frankmcsherry/timely-dataflow.git' }
+
+[profile.release]
+# opt-level = 3
+debug = true
+# rpath = false
+# lto = false
+# codegen-units = 16
+# debug-assertions = false
+panic = "abort"
