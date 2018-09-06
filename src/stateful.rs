@@ -163,12 +163,13 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         let index = self.scope().index();
         let peers = self.scope().peers();
 
+        let map: Vec<usize> = (0..peers).cycle().take(1 << BIN_SHIFT).collect();
         // worker-local state, maps bins to state
-        let default_elements: Vec<Option<_>> = if self.scope().index() == 0 {
-            ::std::iter::repeat_with(|| Some(Default::default())).take(1 << BIN_SHIFT).collect()
+        let default_elements: Vec<Option<_>> = map.iter().map(|i| if *i == index {
+            Some(Default::default())
         } else {
-            ::std::iter::repeat_with(|| None).take(1 << BIN_SHIFT).collect()
-        };
+            None
+        }).collect();
         let states: Rc<RefCell<State<S::Timestamp, D, M>>> = Rc::new(RefCell::new(State::new(default_elements)));
         let states_f = Rc::clone(&states);
 
@@ -207,7 +208,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
             let mut active_configuration: ControlSet<S::Timestamp> = ControlSet { 
                 sequence: 0,
                 frontier: Antichain::from_elem(Default::default()),
-                map: vec![0; 1 << BIN_SHIFT],
+                map: map,
             };
 
             // Stash for consumed input buffers
