@@ -55,10 +55,13 @@ where
             let states: &mut HashMap<_, _> = bin.state();
             for (key, val) in data {
                 let (remove, output) = {
-                    let state = states.entry(key.clone()).or_insert_with(Default::default);
-                    fold(&key, val.clone(), state)
+                    if !states.contains_key(key) {
+                        states.insert(key.clone(), Default::default());
+                    }
+                    let state = states.get_mut(key).unwrap();
+                    fold(key, val.clone(), state)
                 };
-                if remove { states.remove(&key); }
+                if remove { states.remove(key); }
                 session.give_iterator(output.into_iter());
             }
         })
