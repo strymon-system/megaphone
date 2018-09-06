@@ -1134,10 +1134,7 @@ fn main() {
         loop {
             let elapsed_ns = timer.elapsed().to_nanos();
             let wait_ns = last_ns;
-            let target_ns = {
-                let scale = (elapsed_ns - last_ns).next_power_of_two() / 2;
-                elapsed_ns & !(scale - 1)
-            };
+            let target_ns = (elapsed_ns + 1) / 1_000_000 * 1_000_000;
             last_ns = target_ns;
 
             if index == 0
