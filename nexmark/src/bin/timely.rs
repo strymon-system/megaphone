@@ -16,7 +16,7 @@ use streaming_harness::util::ToNanos;
 use timely::dataflow::{InputHandle, ProbeHandle};
 use timely::dataflow::operators::{Map, Filter, Probe, Capture, capture::Replay, FrontierNotificator};
 
-use timely::dataflow::channels::pact::Exchange;
+use timely::dataflow::channels::pact::{Exchange, Pipeline};
 use timely::dataflow::operators::Operator;
 use timely::dataflow::operators::Capability;
 use timely::progress::nested::product::Product;
@@ -138,10 +138,47 @@ fn main() {
         let control = std::rc::Rc::new(timely::dataflow::operators::capture::event::link::EventLink::new());
 
         worker.dataflow(|scope| {
-            let input = input.to_stream(scope);
-            input.flat_map(|e| Bid::from(e)).capture_into(bids.clone());
-            input.flat_map(|e| Auction::from(e)).capture_into(auctions.clone());
-            input.flat_map(|e| Person::from(e)).capture_into(people.clone());
+            use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
+            let mut demux = OperatorBuilder::new("NEXMark demux".to_string(), scope.clone());
+
+            let mut input = demux.new_input(&input.to_stream(scope), Pipeline);
+
+            let (mut b_out, bids_stream) = demux.new_output();
+            let (mut a_out, auctions_stream) = demux.new_output();
+            let (mut p_out, people_stream) = demux.new_output();
+
+            let mut demux_buffer = Vec::new();
+
+            demux.build(move |_capability| {
+
+                move |_frontiers| {
+
+                    let mut b_out = b_out.activate();
+                    let mut a_out = a_out.activate();
+                    let mut p_out = p_out.activate();
+
+                    input.for_each(|time, data| {
+                        data.swap(&mut demux_buffer);
+                        let mut b_session = b_out.session(&time);
+                        let mut a_session = a_out.session(&time);
+                        let mut p_session = p_out.session(&time);
+
+                        for datum in demux_buffer.drain(..) {
+                            match datum {
+                                nexmark::event::Event::Bid(b) => { b_session.give(b) },
+                                nexmark::event::Event::Auction(a) => { a_session.give(a) },
+                                nexmark::event::Event::Person(p) =>  { p_session.give(p) },
+                            }
+                        }
+                    });
+
+                }
+
+            });
+
+            bids_stream.capture_into(bids.clone());
+            auctions_stream.capture_into(auctions.clone());
+            people_stream.capture_into(people.clone());
             control_input.to_stream(scope).broadcast().capture_into(control.clone());
         });
 
