@@ -502,7 +502,8 @@ impl<T: Timestamp, D> Notify<T, D> for FrontierNotificator<T, D> {
             self.make_available(frontiers);
         }
         self.available.pop().map(|front| {
-            while self.available.peek() == Some(&front) { self.available.pop(); }
+            while self.available.peek().map_or(false, |or| or.data.capacity() == ::std::usize::MAX)
+                && self.available.peek() == Some(&front) { self.available.pop(); }
             (front.element, front.data)
         })
     }
@@ -780,7 +781,8 @@ impl<T: Timestamp + TotalOrder, D> Notify<T, D> for TotalOrderFrontierNotificato
             self.make_available(frontiers);
         }
         self.available.pop().map(|front| {
-            while self.available.peek() == Some(&front) { self.available.pop(); }
+            while self.available.peek().map_or(false, |or| or.data.capacity() == ::std::usize::MAX)
+                && self.available.peek() == Some(&front) { self.available.pop(); }
             (front.element, front.data)
         })
     }
