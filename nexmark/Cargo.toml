@@ -8,8 +8,8 @@ default = ["dynamic_scaling_mechanism/bin-8"]
 fake_stateful = ["dynamic_scaling_mechanism/fake_stateful"]
 
 [dependencies]
-#differential-dataflow = { git = "https://github.com/frankmcsherry/differential-dataflow.git" }
-timely = { git = "https://github.com/frankmcsherry/timely-dataflow.git", branch = "dataplane_mockup" }
+differential-dataflow = { git = "https://github.com/frankmcsherry/differential-dataflow.git" }
+timely = { git = "https://github.com/frankmcsherry/timely-dataflow.git"}
 #timely = "0.6"
 abomonation = { git = "https://github.com/frankmcsherry/abomonation.git" }
 #abomonation = "^0.5"
@@ -19,7 +19,7 @@ serde_json = "*"
 serde_derive = "*"
 rand = "*"
 fnv="1.0"
-streaming-harness = { version = "^0.1", features = ["hdrhist-support", "timely-support"] }
+streaming-harness = { version = "^0.1", features = ["hdrhist-support"] }
 dynamic_scaling_mechanism = { version = "0.0.1", path = "..", default_features = false }
 
 [patch.crates-io]

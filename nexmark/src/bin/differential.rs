@@ -37,6 +37,8 @@ fn main() {
             let (mut a_out, auctions) = demux.new_output();
             let (mut p_out, people) = demux.new_output();
 
+            let mut demux_buffer = Vec::new();
+
             demux.build(move |_capability| {
 
                 move |_frontiers| {
@@ -46,15 +48,16 @@ fn main() {
                     let mut p_out = p_out.activate();
 
                     input.for_each(|time, data| {
+                        data.swap(&mut demux_buffer);
                         let mut b_session = b_out.session(&time);
                         let mut a_session = a_out.session(&time);
                         let mut p_session = p_out.session(&time);
 
-                        for datum in data.drain(..) {
+                        for datum in demux_buffer.drain(..) {
                             match datum {
-                                nexmark::event::Event::Bid(b) => { let temp = b.date_time; b_session.give((b, RootTimestamp::new(temp), 1 as isize)) },
-                                nexmark::event::Event::Auction(a) => { let temp = a.date_time; a_session.give(((a.id,a), RootTimestamp::new(temp), 1 as isize)) },
-                                nexmark::event::Event::Person(p) =>  { let temp = p.date_time; p_session.give(((p.id,p), RootTimestamp::new(temp), 1 as isize)) },
+                                nexmark::event::Event::Bid(b) => { let temp = b.date_time; b_session.give((b, RootTimestamp::new(*temp), 1 as isize)) },
+                                nexmark::event::Event::Auction(a) => { let temp = a.date_time; a_session.give(((a.id,a), RootTimestamp::new(*temp), 1 as isize)) },
+                                nexmark::event::Event::Person(p) =>  { let temp = p.date_time; p_session.give(((p.id,p), RootTimestamp::new(*temp), 1 as isize)) },
                             }
                         }
                     });
@@ -168,7 +171,7 @@ fn main() {
                     auctions
                         .as_collection(|&id,a| (id,a.clone()))
                         .inner
-                        .map_in_place(|x| x.1.inner = (x.0).1.expires)
+                        .map_in_place(|x| x.1.inner = *(x.0).1.expires)
                         .as_collection();
 
                     // Join leaders with time-shifted auctions to lock in winners.
@@ -368,7 +371,7 @@ fn main() {
 
             // Insert random events as long as their times precede `elapsed_ns`.
             let mut next_event = nexmark::event::Event::create(event_id, &mut rng, &mut config);
-            while next_event.time() <= elapsed_ns && next_event.time() <= duration_ns {
+            while *next_event.time() <= elapsed_ns && *next_event.time() <= duration_ns {
                 input.send(next_event);
                 event_id += 1;
                 next_event = nexmark::event::Event::create(event_id, &mut rng, &mut config);
