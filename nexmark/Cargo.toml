@@ -32,4 +32,4 @@ debug = true
 # lto = false
 # codegen-units = 16
 # debug-assertions = false
-panic = "abort"
+#panic = "abort"
