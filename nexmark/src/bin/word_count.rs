@@ -215,7 +215,9 @@ fn main() {
                     let count = ctrl_instructions.len();
 
                     let control_input = control_input.as_mut().unwrap();
-                    control_input.advance_to(ts as usize);
+                    if control_input.time().inner < ts as usize {
+                        control_input.advance_to(ts as usize);
+                    }
 
                     for instruction in ctrl_instructions {
                         control_input.send(Control::new(control_sequence, count, instruction));
