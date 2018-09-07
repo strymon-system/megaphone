@@ -57,10 +57,10 @@ def latency_plots(results_dir, files, filtering):
     def experiment_name(experiment_dict):
         if not experiment_dict["queries"].endswith("-flex"):
             return "Optimized"
-        elif experiment_dict['fake_stateful']:
+        elif experiment_dict.get('fake_stateful', False):
             return "Non-stateful"
         else:
-            return experiment_dict['migration']
+            return experiment_dict.get('migration', 'fluid')
 
     data = []
     for filename, config in [x for x in files if set(x[1]).issuperset(set(filtering))]:
