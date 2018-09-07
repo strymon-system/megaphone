@@ -174,6 +174,11 @@ fn main() {
             control_input.take().unwrap().close();
         } else {
             control_input.as_mut().unwrap().advance_to(1);
+            if let Some((visible, _, _)) = instructions.get(0) {
+                if *visible > 1 {
+                    control_input.as_mut().unwrap().advance_to(*visible as usize);
+                }
+            }
         }
         worker.step();
 
@@ -182,12 +187,6 @@ fn main() {
             input.as_mut().unwrap().send(word_generator.word_at(i));
             if (i & 0xFFF) == 0 {
                 worker.step();
-            }
-        }
-
-        if index == 0 {
-            if let Some((visible, _, _)) = instructions.get(0) {
-                control_input.as_mut().unwrap().advance_to(*visible as usize);
             }
         }
 
@@ -211,24 +210,24 @@ fn main() {
 
                 if last_migrated.map_or(true, |time| control_input.as_ref().map_or(false, |t| t.time().inner != time))
                     && instructions.get(0).map(|&(visible, _ts, _)| visible < target_ns).unwrap_or(false)
-                    {
-                        let (_visible, ts, ctrl_instructions) = instructions.remove(0);
-                        let count = ctrl_instructions.len();
+                {
+                    let (_visible, ts, ctrl_instructions) = instructions.remove(0);
+                    let count = ctrl_instructions.len();
 
-                        let control_input = control_input.as_mut().unwrap();
-                        control_input.advance_to(ts as usize);
+                    let control_input = control_input.as_mut().unwrap();
+                    control_input.advance_to(ts as usize);
 
-                        for instruction in ctrl_instructions {
-                            control_input.send(Control::new(control_sequence, count, instruction));
-                        }
-                        control_sequence += 1;
-                        last_migrated = Some(control_input.time().inner);
-                        if let Some((visible, _, _)) = instructions.get(0) {
-                            if control_input.time().inner < *visible as usize {
-                                control_input.advance_to(*visible as usize);
-                            }
+                    for instruction in ctrl_instructions {
+                        control_input.send(Control::new(control_sequence, count, instruction));
+                    }
+                    control_sequence += 1;
+                    last_migrated = Some(control_input.time().inner);
+                    if let Some((visible, _, _)) = instructions.get(0) {
+                        if control_input.time().inner < *visible as usize {
+                            control_input.advance_to(*visible as usize);
                         }
                     }
+                }
 
                 if instructions.is_empty() {
                     control_input.take();
