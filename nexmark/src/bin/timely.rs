@@ -634,7 +634,16 @@ fn main() {
                                     }
                                     if let Some(deletions) = deletions.remove(&time) {
                                         for auction in deletions.into_iter() {
-                                            *accumulations.entry(auction).or_insert(0) -= 1;
+                                            use std::collections::hash_map::Entry;
+                                            match accumulations.entry(auction) {
+                                                Entry::Occupied(mut entry) => {
+                                                    *entry.get_mut() -= 1;
+                                                    if *entry.get_mut() == 0 {
+                                                        entry.remove();
+                                                    }
+                                                },
+                                                _ => panic!("entry has to exist"),
+                                            }
                                         }
                                     }
                                     // TODO: This only accumulates per *worker*, not globally!
