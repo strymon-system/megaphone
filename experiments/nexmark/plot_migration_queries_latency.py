@@ -22,7 +22,7 @@ vega_lite = {
       "mark": "line",
       "encoding": {
         "x": { "field": "latency", "type": "quantitative", "axis": { "format": "e", "labelAngle": -90 }, "scale": { "type": "log" }},
-        "y": { "field": "ccdf", "type": "quantitative" },
+        "y": { "field": "ccdf", "type": "quantitative", "scale": { "type": "log" } },
         "row": { "field": "experiment", "type": "nominal" },
         "column": { "field": "queries", "type": "nominal" },
         "stroke": { "field": "rate", "type": "nominal", "legend": None },
