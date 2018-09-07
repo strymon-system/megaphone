@@ -410,6 +410,7 @@ def wc_exploratory_migrating(group, groups=4):
                 final_config="uniform_skew",
                 fake_stateful=False,
                 machine_local=True,
-                time_dilation="")
+                # time_dilation is key_space for word_count. Argh...
+                time_dilation=10000000)
             experiment.single_machine_id = group + 1
             experiment.run_commands(run, build)
