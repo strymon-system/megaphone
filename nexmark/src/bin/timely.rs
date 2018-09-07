@@ -31,6 +31,7 @@ use dynamic_scaling_mechanism::{ControlInst, Control};
 use dynamic_scaling_mechanism::operator::StatefulOperator;
 
 use nexmark::event::{Event, Auction, Bid, Person};
+use nexmark::tools::ExperimentMapMode;
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut h: ::fnv::FnvHasher = Default::default();
@@ -74,40 +75,10 @@ fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T
     )
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum ExperimentMapMode {
-    None,
-    Sudden,
-//    OneByOne,
-//    Fluid,
-    File(String),
-}
-
 fn main() {
 
     // Read and report RSS every 100ms
-    let statm_reporter_running = ::std::sync::Arc::new(::std::sync::atomic::AtomicBool::new(true));
-    {
-        let statm_reporter_running = statm_reporter_running.clone();
-        ::std::thread::spawn(move || {
-            use std::io::Read;
-            let timer = ::std::time::Instant::now();
-            let mut iteration = 0;
-            while statm_reporter_running.load(::std::sync::atomic::Ordering::SeqCst) {
-                let mut stat_s = String::new();
-                let mut statm_f = ::std::fs::File::open("/proc/self/statm").expect("can't open /proc/self/statm");
-                statm_f.read_to_string(&mut stat_s).expect("can't read /proc/self/statm");
-                let pages: u64 = stat_s.split_whitespace().nth(1).expect("wooo").parse().expect("not a number");
-                let rss = pages * 1024;
-
-                let elapsed_ns = timer.elapsed().to_nanos();
-                println!("statm_RSS\t{}\t{}", elapsed_ns, rss);
-                #[allow(deprecated)]
-                ::std::thread::sleep_ms(100 - (elapsed_ns / 1_000_000 - iteration * 100) as u32);
-                iteration += 1;
-            }
-        });
-    }
+    let statm_reporter_running = nexmark::tools::statm_reporter();
 
     // define a new computational scope, in which to run BFS
     let timelines: Vec<_> = timely::execute_from_args(std::env::args(), move |worker| {
@@ -1059,67 +1030,9 @@ fn main() {
 
         let duration_ns: u64 = std::env::args().nth(2).expect("duration absent").parse::<u64>().expect("couldn't parse duration") * 1_000_000_000;
 
-        let map_mode = match std::env::args().nth(3).expect("migration file absent").as_str() {
-            "none" => ExperimentMapMode::None,
-            "sudden" => ExperimentMapMode::Sudden,
-//            "one-by-one" => ExperimentMapMode::OneByOne,
-//            "fluid" => ExperimentMapMode::Fluid,
-            file_name => ExperimentMapMode::File(file_name.to_string()),
-        };
+        let map_mode: ExperimentMapMode = std::env::args().nth(3).expect("migration file absent").parse().unwrap();
 
-        let mut instructions: Vec<(u64, Vec<ControlInst>)> = match map_mode {
-            ExperimentMapMode::None => {
-                let mut map = vec![0; 1 << ::dynamic_scaling_mechanism::BIN_SHIFT];
-                for i in 0..map.len() {
-                    map[i] = i % peers;
-                };
-                vec![(0, vec![ControlInst::Map(map)])]
-            }
-            ExperimentMapMode::Sudden => {
-                let mut map = vec![0; 1 << ::dynamic_scaling_mechanism::BIN_SHIFT];
-                // TODO(moritzo) HAAAACCCCKKK
-                if peers != 2 {
-                    for (i, v) in map.iter_mut().enumerate() {
-                        *v = ((i / 2) * 2 + (i % 2) * peers / 2) % peers;
-                    }
-                }
-                let initial_map = map.clone();
-                for i in 0..map.len() {
-                    map[i] = i % peers;
-
-//                    if i % batches_per_migration == batches_per_migration - 1 {
-//                        eprintln!("debug: setting up reconfiguration: {:?}", map);
-//                        control_plan.push((rounds * 1_000_000_000, Control::new(control_counter, 1, ControlInst::Map(map.clone()))));
-//                        control_counter += 1;
-//                    }
-                };
-                vec![(0, vec![ControlInst::Map(initial_map)]), (duration_ns/2, vec![ControlInst::Map(map)])]
-            },
-            ExperimentMapMode::File(migrations_file) => {
-                let f = ::std::fs::File::open(migrations_file).unwrap();
-                let file = ::std::io::BufReader::new(&f);
-                use ::std::io::BufRead;
-                let mut instructions = Vec::new();
-                let mut ts = 0;
-                for line in file.lines() {
-                    let line = line.unwrap();
-                    let mut parts = line.split_whitespace();
-                    let instr = match parts.next().expect("Missing map/diff indicator") {
-                        "M" => (ts, vec![ControlInst::Map(parts.map(|x| x.parse().unwrap()).collect())]),
-                        "D" => {
-                            let parts: Vec<usize> = parts.map(|x| x.parse().unwrap()).collect();
-                            let inst = parts.chunks(2).map(|x|ControlInst::Move(::dynamic_scaling_mechanism::BinId::new(x[0]), x[1])).collect();
-                            (ts, inst)
-                        },
-                        _ => panic!("Incorrect input found in map file"),
-                    };
-                    instructions.push(instr);
-                    ts = duration_ns / 2;
-                }
-                instructions
-            },
-//            _ => panic!("unsupported map mode"),
-        };
+        let mut instructions: Vec<(u64, u64, Vec<ControlInst>)> = map_mode.instructions(peers, duration_ns).unwrap();
 
         if index == 0 {
             println!("time_dilation\t{}", time_dilation);
@@ -1162,6 +1075,10 @@ fn main() {
         let mut control_input = Some(control_input);
         if index != 0 {
             control_input.take().unwrap().close();
+        } else {
+            if let Some((visible, _, _)) = instructions.get(0) {
+                control_input.as_mut().unwrap().advance_to(*visible as usize);
+            }
         }
 
         let mut last_migrated = None;
@@ -1174,17 +1091,32 @@ fn main() {
             let target_ns = (elapsed_ns + 1) / 1_000_000 * 1_000_000;
             last_ns = target_ns;
 
-            if index == 0
-                && last_migrated.map_or(true, |time| control_input.as_ref().map_or(false, |t| t.time().inner != time))
-                && instructions.get(0).map(|&(ts, _)| ts < target_ns).unwrap_or(false)
-            {
-                let instructions = instructions.remove(0).1;
-                let count = instructions.len();
-                for instruction in instructions {
-                    control_input.as_mut().unwrap().send(Control::new(control_sequence, count, instruction));
+            if index == 0 {
+
+                if last_migrated.map_or(true, |time| control_input.as_ref().map_or(false, |t| t.time().inner != time))
+                    && instructions.get(0).map(|&(visible, _ts, _)| visible < target_ns).unwrap_or(false)
+                {
+                    let (_visible, ts, ctrl_instructions) = instructions.remove(0);
+                    let count = ctrl_instructions.len();
+
+                    let control_input = control_input.as_mut().unwrap();
+                    control_input.advance_to(ts as usize);
+
+                    for instruction in ctrl_instructions {
+                        control_input.send(Control::new(control_sequence, count, instruction));
+                    }
+                    control_sequence += 1;
+                    last_migrated = Some(control_input.time().inner);
+                    if let Some((visible, _, _)) = instructions.get(0) {
+                        if control_input.time().inner < *visible as usize {
+                            control_input.advance_to(*visible as usize);
+                        }
+                    }
                 }
-                control_sequence += 1;
-                last_migrated = Some(control_input.as_ref().unwrap().time().inner);
+
+                if instructions.is_empty() {
+                    control_input.take();
+                }
             }
 
             output_metric_collector.acknowledge_while(
@@ -1208,8 +1140,10 @@ fn main() {
                     events_so_far += worker.peers();
                 }
                 input.advance_to(target_ns as usize);
-                if index == 0 {
-                    control_input.as_mut().unwrap().advance_to(target_ns as usize);
+                if let Some(control_input) = control_input.as_mut() {
+                    if control_input.time().inner < target_ns as usize {
+                        control_input.advance_to(target_ns as usize);
+                    }
                 }
             } else {
                 input.take().unwrap();

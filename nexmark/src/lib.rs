@@ -8,6 +8,8 @@ extern crate serde_json;
 extern crate serde_derive;
 extern crate rand;
 extern crate streaming_harness;
+extern crate dynamic_scaling_mechanism;
 
 pub mod config;
 pub mod event;
+pub mod tools;

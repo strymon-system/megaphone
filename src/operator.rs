@@ -27,7 +27,7 @@ pub trait StatefulOperator<G, D1>
         B: Fn(&D1)->u64+'static,
         S: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,
         W: ExchangeData,                            // State format on the wire
-        F: Fn(&Capability<G::Timestamp>,
+        F: FnMut(&Capability<G::Timestamp>,
             &[D1],
             &mut Bin<G::Timestamp, S, D1>,
             &mut OutputHandle<G::Timestamp, D2, Tee<G::Timestamp, D2>>) + 'static,    // state update logic
@@ -40,7 +40,7 @@ pub trait StatefulOperator<G, D1>
         B: Fn(&D1)->u64+'static,                     // Key extraction function
         S: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static, // State type
         W: ExchangeData,                            // State format on the wire
-        F: Fn(Capability<G::Timestamp>,
+        F: FnMut(Capability<G::Timestamp>,
             &[N],
             &mut Bin<G::Timestamp, S, N>,
             &mut OutputHandle<G::Timestamp, D2, Tee<G::Timestamp, D2>>) + 'static,    // state update logic
@@ -120,11 +120,11 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
         B: Fn(&D1)->u64+'static,
         S: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,
         W: ExchangeData,                            // State format on the wire
-        F: Fn(&Capability<G::Timestamp>,
+        F: FnMut(&Capability<G::Timestamp>,
             &[D1],
             &mut Bin<G::Timestamp, S, D1>,
             &mut OutputHandle<G::Timestamp, D2, Tee<G::Timestamp, D2>>) + 'static,    // state update logic
-    >(&self, control: &Stream<G, Control>, key: B, name: &str, fold: F) -> Stream<G, D2>
+    >(&self, control: &Stream<G, Control>, key: B, name: &str, mut fold: F) -> Stream<G, D2>
     {
         let mut stateful = self.stateful(key, control);
         let states = stateful.state.clone();
@@ -181,7 +181,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
         B: Fn(&D1)->u64+'static,
         S: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,
         W: ExchangeData,                            // State format on the wire
-        F: Fn(Capability<G::Timestamp>,
+        F: FnMut(Capability<G::Timestamp>,
             &[N],
             &mut Bin<G::Timestamp, S, N>,
             &mut OutputHandle<G::Timestamp, D2, Tee<G::Timestamp, D2>>) + 'static,    // state update logic
@@ -189,7 +189,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
             Capability<G::Timestamp>,
             RefOrMut<Vec<(usize, Key, D1)>>,
             &mut OutputHandle<G::Timestamp, D2, Tee<G::Timestamp, D2>>) + 'static,
-    >(&self, control: &Stream<G, Control>, key: B, name: &str, mut consume: C, fold: F) -> Stream<G, D2>
+    >(&self, control: &Stream<G, Control>, key: B, name: &str, mut consume: C, mut fold: F) -> Stream<G, D2>
     {
         let mut stateful = self.stateful(key, control);
         let states = stateful.state.clone();

@@ -197,11 +197,19 @@ impl<T, D, N> State<T, D, N>
         self.get(key).state()
     }
 
+    pub fn get_bin(&mut self, bin: BinId) -> &mut Bin<T, D, N> {
+        self.bins[*bin].as_mut().expect("Trying to access non-available bin")
+    }
+
     /// Iterate all bins. This might go away.
     pub fn scan<F: FnMut(&mut D)>(&mut self, mut f: F) {
         for state in &mut self.bins {
             state.as_mut().map(|bin| f(&mut bin.data));
         }
+    }
+
+    pub fn key_to_bin(&self, key: Key) -> BinId {
+        BinId(key_to_bin(key))
     }
 }
 

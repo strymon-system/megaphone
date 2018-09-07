@@ -182,7 +182,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         // Data output of the F operator
         let (mut data_out, stream) = builder.new_output();
         // State output of the F operator
-        let (mut state_out, state) = builder.new_output();
+        let (mut state_out, state) = builder.new_output_connection(vec![Antichain::new(), Antichain::from_elem(Default::default())]);
 
         // Probe to be attached after the last stateful operator
         let probe1 = ProbeHandle::new();
@@ -234,8 +234,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                     for update in control_data_buffer.drain(..) {
                         builder.apply(update);
                     }
-                    let time = time.retain();
-                    control_notificator.notify_at(time.clone());
+                    control_notificator.notify_at(time.retain_for_output(1));
                 });
 
                 // Analyze control frontier
@@ -346,6 +345,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                         let mut data_vec = data_return_buffer.pop().unwrap_or_else(Vec::new);
                         data.swap(&mut data_vec);
                         data_stash.get_mut(time.time()).unwrap().push(data_vec);
+                        data_notificator.notify_at(time.retain_for_output(0));
                     } else {
                         // Yes, control frontier not <= `time`, process right-away
 
@@ -369,9 +369,6 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                         });
                         session.give_iterator(data_iter);
                     }
-
-                    // We need to notify in any case as we might be able to drop some configurations
-                    data_notificator.notify_at(time.retain());
                 });
 
             }
