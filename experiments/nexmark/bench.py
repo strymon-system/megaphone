@@ -59,6 +59,8 @@ class Experiment(object):
         self.single_machine_id = single_machine_id
         self.base_machine_id = base_machine_id
 
+        self.binary = self._config["binary"]
+
     def get_directory_name(self):
         keys = sorted(self._config.keys())
         kv_pairs = []
@@ -151,6 +153,7 @@ class Experiment(object):
             assert(self.single_machine_id is not None)
             def make_command(p):
                 params = {
+                    'binary': self.binary,
                     'dir': self.get_build_directory_name(),
                     'rate': self._rate // (self._processes * self._workers),
                     'duration': self._duration,
@@ -163,12 +166,13 @@ class Experiment(object):
                     'workers': self._workers,
                     'time_dilation': self._time_dilation,
                 }
-                return "RUST_BACKTRACE=1 /mnt/SG/strymon/local/bin/hwloc-bind socket:{p}.pu:even -- ./{dir}/release/timely {rate} {duration} {cwd}/{migration} {time_dilation} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
+                return "RUST_BACKTRACE=1 /mnt/SG/strymon/local/bin/hwloc-bind socket:{p}.pu:even -- ./{dir}/release/{binary} {rate} {duration} {cwd}/{migration} {time_dilation} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
             commands = [(self.single_machine_id, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
             return commands
         else:
             def make_command(p):
                 params = {
+                    'binary': self.binary,
                     'dir': self.get_build_directory_name(),
                     'rate': self._rate // (self._processes * self._workers),
                     'duration': self._duration,
@@ -181,7 +185,7 @@ class Experiment(object):
                     'workers': self._workers,
                     'time_dilation': self._time_dilation,
                 }
-                return "RUST_BACKTRACE=1 /mnt/SG/strymon/local/bin/hwloc-bind socket:0.pu:even -- ./{dir}/release/timely {rate} {duration} {cwd}/{migration} {time_dilation} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
+                return "RUST_BACKTRACE=1 /mnt/SG/strymon/local/bin/hwloc-bind socket:0.pu:even -- ./{dir}/release/{binary} {rate} {duration} {cwd}/{migration} {time_dilation} {queries} --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
             commands = [(self.base_machine_id + p, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
             return commands
 
@@ -193,15 +197,16 @@ class Experiment(object):
         if not dryrun:
             ensure_dir(self.get_result_directory_name())
         if build:
-            build_cmd = ". ~/eth_proxy.sh && cargo rustc --target-dir {} --bin timely --release --no-default-features --features {}".format(
-                shlex.quote(self.get_build_directory_name()), shlex.quote(" ".join(self.get_features())))
+            build_cmd = ". ~/eth_proxy.sh && cargo rustc --target-dir {} --bin {} --release --no-default-features --features {}".format(
+                shlex.quote(self.get_build_directory_name()), self.binary, shlex.quote(" ".join(self.get_features())))
             if self._machine_local:
                 run_cmd(build_cmd, node=self.single_machine_id, dryrun=dryrun)
             else:
                 run_cmd(build_cmd, node=self.base_machine_id, dryrun=dryrun)
         if run:
             wait_all([run_cmd(c, redirect=r, stderr=stderr, background=True, node=p, dryrun=dryrun) for p, c, r, stderr in self.commands()])
-            open(marker_file, 'a').close()
+            if not dryrun:
+                open(marker_file, 'a').close()
 
 duration=300
 
@@ -213,6 +218,7 @@ def non_migrating(group, groups=4):
         for query in queries:
             experiment = Experiment(
                     "non_migrating",
+                    binary="timely",
                     duration=duration,
                     rate=rate,
                     queries=[query,],
@@ -237,6 +243,7 @@ def exploratory_migrating(group, groups=4):
             for query in queries:
                 experiment = Experiment(
                     "migrating-mp",
+                    binary="timely",
                     duration=duration,
                     rate=rate,
                     queries=[query,],
@@ -261,6 +268,7 @@ def exploratory_migrating_mm(group, groups=2):
             for query in queries:
                 experiment = Experiment(
                     "migrating-mm",
+                    binary="timely",
                     duration=duration,
                     rate=rate,
                     queries=[query,],
@@ -285,6 +293,7 @@ def exploratory_baseline(group, groups=4):
             for query in queries:
                 experiment = Experiment(
                     "migrating-bl",
+                    binary="timely",
                     duration=duration,
                     rate=rate,
                     queries=[query,],
@@ -309,6 +318,7 @@ def exploratory_migrating_single_process(group, groups=4):
             for query in queries:
                 experiment = Experiment(
                         "migrating-sp",
+                        binary="timely",
                         duration=duration,
                         rate=rate,
                         queries=[query,],
@@ -334,6 +344,7 @@ def exploratory_bin_shift(group, groups=4):
             for query in queries:
                 experiment = Experiment(
                     "bin_shift",
+                    binary="timely",
                     duration=duration,
                     rate=rate,
                     queries=[query,],
@@ -362,6 +373,7 @@ def migrating_time_dilation(group, groups=4):
             for query in queries:
                 experiment = Experiment(
                     "migrating-td",
+                    binary="timely",
                     duration=duration,
                     rate=rate,
                     queries=[query,],
@@ -376,3 +388,28 @@ def migrating_time_dilation(group, groups=4):
                     time_dilation=time_dilation)
                 experiment.single_machine_id = group + 1
                 experiment.run_commands(run, build)
+
+
+def wc_exploratory_migrating(group, groups=4):
+    workers = 8
+    all_rates = [x * 200000 for x in [1, 2, 4, 8, 32]]
+    rates = all_rates[group * len(all_rates) // groups:(group + 1) * len(all_rates) // groups]
+    for rate in rates:
+        for migration in ["sudden", "fluid", "batched"]:
+            experiment = Experiment(
+                "wc-migrating-mp",
+                binary="word_count",
+                duration=duration,
+                rate=rate,
+                queries=["",],
+                migration=migration,
+                bin_shift=8,
+                workers=workers,
+                processes=2,
+                initial_config="uniform",
+                final_config="uniform_skew",
+                fake_stateful=False,
+                machine_local=True,
+                time_dilation="")
+            experiment.single_machine_id = group + 1
+            experiment.run_commands(run, build)
