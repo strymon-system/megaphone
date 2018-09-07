@@ -663,38 +663,56 @@ fn main() {
 
                 #[derive(Abomonation, Eq, PartialEq, Clone)]
                 enum InsDel<T> { Ins(T), Del(T) };
+                let mut buffer = Vec::new();
+                let mut buffer2 = Vec::new();
+                let mut in_buffer = Vec::new();
 
                 // Partitions by auction id
                 bids.stateful_unary_input(&control, |(auction, _time)| calculate_hash(auction), "q5-flex", move |state, time, data, _output| {
-//                    let _: &mut dynamic_scaling_mechanism::stateful::Notificator<_, (dynamic_scaling_mechanism::Key, InsDel<_>), _> = not;
-                    for &(_, key_id, (auction, a_time)) in data.iter() {
-                        let not = state.get(key_id).notificator();
-                        // Stash pending additions
-                        not.notify_at_data(time.delayed(&RootTimestamp::new(from_nexmark_time(a_time))), Some(InsDel::Ins(auction)));
-
-                        // Stash pending deletions
-                        let new_time = ::nexmark::event::Date::new(*a_time + (window_slice_count * window_slide_ns));
-                        not.notify_at_data(time.delayed(&RootTimestamp::new(from_nexmark_time(new_time))), Some(InsDel::Del(auction)));
+                    let mut current_time_key = None;
+                    data.swap(&mut in_buffer);
+                    in_buffer.sort_by_key(|&(_, key_id, (_auction, a_time))| (key_id, a_time));
+                    for (_, key_id, (auction, a_time)) in in_buffer.drain(..) {
+                        let bin_id = state.key_to_bin(key_id);
+                        if Some((a_time, bin_id)) == current_time_key {
+                            buffer.push(InsDel::Ins(auction));
+                        } else if current_time_key.is_none() {
+                            buffer.push(InsDel::Ins(auction));
+                            current_time_key = Some((a_time, bin_id));
+                        } else if let Some((current_time, current_bin)) = current_time_key.take() {
+                            let not = state.get_bin(current_bin).notificator();
+                            not.notify_at_data(time.delayed(&RootTimestamp::new(from_nexmark_time(current_time))), buffer.drain(..));
+                            current_time_key = Some((a_time, bin_id));
+                            buffer.push(InsDel::Ins(auction));
+                        }
                     }
-                }, |time, data, bid_bin, output| {
+                    if let Some((current_time, bin)) = current_time_key {
+                        let not = state.get_bin(bin).notificator();
+                        not.notify_at_data(time.delayed(&RootTimestamp::new(from_nexmark_time(current_time))), buffer.drain(..));
+                    }
+                }, move |time, data, bid_bin, output| {
                     // Process additions (if any)
-                    let bid_state: &mut HashMap<_, _> = bid_bin.state();
                     for action in data {
                         match action {
                             InsDel::Ins(auction) => {
+                                // Stash pending deletions
+                                let bid_state: &mut HashMap<_, _> = bid_bin.state();
                                 let slot = bid_state.entry(*auction).or_insert(0);
                                 *slot += 1;
+                                buffer2.push(InsDel::Del(*auction));
                             },
                             InsDel::Del(auction) => {
-                                let slot = bid_state.entry(*auction).or_insert(0);
+                                let slot = bid_bin.state().entry(*auction).or_insert(0);
                                 *slot -= 1;
                             }
                         }
+                        let new_time = ::nexmark::event::Date::new(*to_nexmark_time(time.time().inner) + (window_slice_count * window_slide_ns));
+                        bid_bin.notificator().notify_at_data(time.delayed(&RootTimestamp::new(from_nexmark_time(new_time))), buffer2.drain(..));
                     }
                     // Output results (if any)
                     let mut session = output.session(&time);
                     // TODO: This only accumulates per *bin*, not globally!
-                    if let Some((auction, _count)) = bid_state.iter().max_by_key(|(_auction_id, count)| *count) {
+                    if let Some((auction, _count)) = bid_bin.state().iter().max_by_key(|(_auction_id, count)| *count) {
                         session.give(*auction);
                     }
                 }).probe_with(&mut probe);
