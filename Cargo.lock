@@ -1,7 +1,7 @@
 [[package]]
 name = "abomonation"
 version = "0.5.0"
-source = "git+https://github.com/frankmcsherry/abomonation.git#8724e7e359faf8374c8c83d289e9b81f77b417af"
+source = "git+https://github.com/frankmcsherry/abomonation.git#1db147118d882deee03196fb6dcd658de34c3bb7"
 
 [[package]]
 name = "abomonation_derive"
@@ -21,7 +21,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "bytes"
 version = "0.1.0"
-source = "git+https://github.com/frankmcsherry/timely-dataflow.git#a78bc26a5d89b4f1ce7d91b541bab5bf4f6c3e0f"
+source = "git+https://github.com/frankmcsherry/timely-dataflow.git#70116ea627c8d259211b63bc3d31c931e8cbd6dd"
 
 [[package]]
 name = "cloudabi"
@@ -142,7 +142,7 @@ dependencies = [
 [[package]]
 name = "timely"
 version = "0.6.0"
-source = "git+https://github.com/frankmcsherry/timely-dataflow.git#a78bc26a5d89b4f1ce7d91b541bab5bf4f6c3e0f"
+source = "git+https://github.com/frankmcsherry/timely-dataflow.git#70116ea627c8d259211b63bc3d31c931e8cbd6dd"
 dependencies = [
  "abomonation 0.5.0 (git+https://github.com/frankmcsherry/abomonation.git)",
  "abomonation_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -154,7 +154,7 @@ dependencies = [
 [[package]]
 name = "timely_communication"
 version = "0.6.0"
-source = "git+https://github.com/frankmcsherry/timely-dataflow.git#a78bc26a5d89b4f1ce7d91b541bab5bf4f6c3e0f"
+source = "git+https://github.com/frankmcsherry/timely-dataflow.git#70116ea627c8d259211b63bc3d31c931e8cbd6dd"
 dependencies = [
  "abomonation 0.5.0 (git+https://github.com/frankmcsherry/abomonation.git)",
  "abomonation_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
