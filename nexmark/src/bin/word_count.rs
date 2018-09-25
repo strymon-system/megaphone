@@ -173,16 +173,26 @@ fn main() {
         if index != 0 {
             control_input.take().unwrap().close();
         } else {
-            control_input.as_mut().unwrap().advance_to(1);
-            if let Some((visible, _, _)) = instructions.get(0) {
+            let control_input = control_input.as_mut().unwrap();
+            if instructions.get(0).map_or(false, |(_, ts, _)| *ts == 0) {
+                let (_visible, _ts, ctrl_instructions) = instructions.remove(0);
+                let count = ctrl_instructions.len();
+
+                for instruction in ctrl_instructions {
+                    control_input.send(Control::new(control_sequence, count, instruction));
+                }
+                control_sequence += 1;
+            }
+
+            control_input.advance_to(1);
+            if let Some((visible, _ts, _)) = instructions.get(0) {
                 if *visible > 1 {
-                    control_input.as_mut().unwrap().advance_to(*visible as usize);
+                    control_input.advance_to(*visible as usize);
                 }
             }
         }
         worker.step();
 
-        let input_count = 1;
         for i in index * key_space .. (index + 1) * key_space {
             input.as_mut().unwrap().send(word_generator.word_at(i));
             if (i & 0xFFF) == 0 {
