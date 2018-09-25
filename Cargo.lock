@@ -1,7 +1,7 @@
 [[package]]
 name = "abomonation"
-version = "0.5.0"
-source = "git+https://github.com/frankmcsherry/abomonation.git#1db147118d882deee03196fb6dcd658de34c3bb7"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "abomonation_derive"
@@ -19,11 +19,6 @@ version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
-name = "bytes"
-version = "0.1.0"
-source = "git+https://github.com/frankmcsherry/timely-dataflow.git#70116ea627c8d259211b63bc3d31c931e8cbd6dd"
-
-[[package]]
 name = "cloudabi"
 version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -35,11 +30,11 @@ dependencies = [
 name = "dynamic_scaling_mechanism"
 version = "0.0.1"
 dependencies = [
- "abomonation 0.5.0 (git+https://github.com/frankmcsherry/abomonation.git)",
+ "abomonation 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "abomonation_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "timely 0.6.0 (git+https://github.com/frankmcsherry/timely-dataflow.git)",
+ "timely 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "zipf 4.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -98,11 +93,6 @@ version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
-name = "redox_syscall"
-version = "0.1.40"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
 name = "syn"
 version = "0.11.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -130,38 +120,38 @@ dependencies = [
 ]
 
 [[package]]
-name = "time"
-version = "0.1.40"
+name = "timely"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "libc 0.2.43 (registry+https://github.com/rust-lang/crates.io-index)",
- "redox_syscall 0.1.40 (registry+https://github.com/rust-lang/crates.io-index)",
- "winapi 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "abomonation 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "abomonation_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "timely_bytes 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "timely_communication 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "timely_logging 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
-name = "timely"
-version = "0.6.0"
-source = "git+https://github.com/frankmcsherry/timely-dataflow.git#70116ea627c8d259211b63bc3d31c931e8cbd6dd"
-dependencies = [
- "abomonation 0.5.0 (git+https://github.com/frankmcsherry/abomonation.git)",
- "abomonation_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "bytes 0.1.0 (git+https://github.com/frankmcsherry/timely-dataflow.git)",
- "time 0.1.40 (registry+https://github.com/rust-lang/crates.io-index)",
- "timely_communication 0.6.0 (git+https://github.com/frankmcsherry/timely-dataflow.git)",
-]
+name = "timely_bytes"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "timely_communication"
-version = "0.6.0"
-source = "git+https://github.com/frankmcsherry/timely-dataflow.git#70116ea627c8d259211b63bc3d31c931e8cbd6dd"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "abomonation 0.5.0 (git+https://github.com/frankmcsherry/abomonation.git)",
+ "abomonation 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "abomonation_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "bytes 0.1.0 (git+https://github.com/frankmcsherry/timely-dataflow.git)",
  "getopts 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
- "time 0.1.40 (registry+https://github.com/rust-lang/crates.io-index)",
+ "timely_bytes 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "timely_logging 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
+
+[[package]]
+name = "timely_logging"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "unicode-width"
@@ -201,10 +191,9 @@ dependencies = [
 ]
 
 [metadata]
-"checksum abomonation 0.5.0 (git+https://github.com/frankmcsherry/abomonation.git)" = "<none>"
+"checksum abomonation 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "f6b72851223d8747938515812ef24e3f678452a4e5201d61e1954ab378ad8601"
 "checksum abomonation_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "e0bb1889db0b87cd8ef839c56b5283e28c8db68cac904b400a6170c9af1e673c"
 "checksum bitflags 1.0.4 (registry+https://github.com/rust-lang/crates.io-index)" = "228047a76f468627ca71776ecdebd732a3423081fcf5125585bcd7c49886ce12"
-"checksum bytes 0.1.0 (git+https://github.com/frankmcsherry/timely-dataflow.git)" = "<none>"
 "checksum cloudabi 0.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "ddfc5b9aa5d4507acaf872de71051dfd0e309860e88966e1051e462a077aac4f"
 "checksum fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)" = "2fad85553e09a6f881f739c29f0b00b0f01357c743266d478b68951ce23285f3"
 "checksum fuchsia-zircon 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "2e9763c69ebaae630ba35f74888db465e49e259ba1bc0eda7d06f4a067615d82"
@@ -214,13 +203,13 @@ dependencies = [
 "checksum quote 0.3.15 (registry+https://github.com/rust-lang/crates.io-index)" = "7a6e920b65c65f10b2ae65c831a81a073a89edd28c7cce89475bff467ab4167a"
 "checksum rand 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)" = "e464cd887e869cddcae8792a4ee31d23c7edd516700695608f5b98c67ee0131c"
 "checksum rand_core 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "edecf0f94da5551fc9b492093e30b041a891657db7940ee221f9d2f66e82eef2"
-"checksum redox_syscall 0.1.40 (registry+https://github.com/rust-lang/crates.io-index)" = "c214e91d3ecf43e9a4e41e578973adeb14b474f2bee858742d127af75a0112b1"
 "checksum syn 0.11.11 (registry+https://github.com/rust-lang/crates.io-index)" = "d3b891b9015c88c576343b9b3e41c2c11a51c219ef067b264bd9c8aa9b441dad"
 "checksum synom 0.11.3 (registry+https://github.com/rust-lang/crates.io-index)" = "a393066ed9010ebaed60b9eafa373d4b1baac186dd7e008555b0f702b51945b6"
 "checksum synstructure 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)" = "3a761d12e6d8dcb4dcf952a7a89b475e3a9d69e4a69307e01a470977642914bd"
-"checksum time 0.1.40 (registry+https://github.com/rust-lang/crates.io-index)" = "d825be0eb33fda1a7e68012d51e9c7f451dc1a69391e7fdc197060bb8c56667b"
-"checksum timely 0.6.0 (git+https://github.com/frankmcsherry/timely-dataflow.git)" = "<none>"
-"checksum timely_communication 0.6.0 (git+https://github.com/frankmcsherry/timely-dataflow.git)" = "<none>"
+"checksum timely 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d28fcaaae6f0b858e05e5fd6fc6051d82675a6a48c019aea6e32be1a9c9006a9"
+"checksum timely_bytes 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "23e52a6661d7acf0385c83b596612710552ba40e34f548a5489096bcc93ceb89"
+"checksum timely_communication 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "aac189236ba6d4e17302290ebe55ce6ad9c5a992af3345bd4c3979ec5eb865e8"
+"checksum timely_logging 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "bc99fee0363f3c8f31a940a28901ae3fdcaad23a3e04a295c98ae4f6f983aa81"
 "checksum unicode-width 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "882386231c45df4700b275c7ff55b6f3698780a650026380e72dabe76fa46526"
 "checksum unicode-xid 0.0.4 (registry+https://github.com/rust-lang/crates.io-index)" = "8c1f860d7d29cf02cb2f3f359fd35991af3d30bac52c57d265a3c461074cb4dc"
 "checksum winapi 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)" = "773ef9dcc5f24b7d850d0ff101e542ff24c3b090a9768e03ff889fdef41f00fd"

@@ -4,8 +4,7 @@ use timely::order::TotalOrder;
 use timely::progress::frontier::{AntichainRef, MutableAntichain};
 use timely::progress::Timestamp;
 use timely::dataflow::operators::Capability;
-use timely::logging::Logger;
-use timely::logging;
+use timely::logging::TimelyLogger as Logger;
 
 pub trait Notify<T: Timestamp, D> {
     type NextData: IntoIterator<Item=D>;
@@ -109,11 +108,7 @@ impl<'a, T: Timestamp, D, I: Notify<T, D>> Notificator<'a, T, D, I> {
     #[inline]
     pub fn for_each<F: FnMut(Capability<T>, I::NextData, &mut Self)>(&mut self, mut logic: F) {
         while let Some((cap, data)) = self.next() {
-            self.logging.when_enabled(|l| l.log(logging::TimelyEvent::GuardedProgress(
-                    logging::GuardedProgressEvent { is_start: true })));
             logic(cap, data, self);
-            self.logging.when_enabled(|l| l.log(logging::TimelyEvent::GuardedProgress(
-                    logging::GuardedProgressEvent { is_start: false })));
         }
     }
 }
