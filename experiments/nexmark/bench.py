@@ -194,6 +194,7 @@ class Experiment(object):
         marker_file = self.get_result_done_marker()
         if os.path.exists(marker_file):
             eprint("not running experiment")
+            return
         if not dryrun:
             ensure_dir(self.get_result_directory_name())
         if build:
@@ -417,7 +418,7 @@ def wc_exploratory_migrating(group, groups=4):
             experiment.single_machine_id = group + 1
             experiment.run_commands(run, build)
 
-def wc_bin_shift(group, groups=4):
+def wc_bin_shift(group, groups=2):
     workers = 8
     processes = 2
     all_rates = [x * 100000 for x in [1, 2, 4, 8, 16, 32, 64]]
