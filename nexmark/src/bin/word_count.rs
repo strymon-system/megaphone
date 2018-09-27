@@ -50,7 +50,7 @@ impl WordGenerator {
     }
 
     #[inline(always)]
-    pub fn word_rand(&mut self) -> String {
+    pub fn word_rand(&mut self) -> usize {
         let index = match *self {
             WordGenerator::Uniform(ref mut rng, ref keys) => rng.gen_range(0, *keys),
         };
@@ -58,8 +58,8 @@ impl WordGenerator {
     }
 
     #[inline(always)]
-    pub fn word_at(&mut self, k: usize) -> String {
-        format!("word {}", k)
+    pub fn word_at(&mut self, k: usize) -> usize {
+        k
     }
 }
 
@@ -143,7 +143,7 @@ fn main() {
 //                .probe_with(&mut probe);
 
             input
-                .map(|x: String| (x, 1))
+                .map(|x: usize| (x, 1))
                 .stateful_state_machine(|key: &_, val, agg: &mut u64| {
                     *agg += val;
                     (false, Some((key.clone(), *agg)))
