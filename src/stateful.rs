@@ -407,7 +407,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                 (key.0 as usize, key, d)
             })
             .exchange(|d| d.0 as u64);
-        let state_stream = self
+        let state_stream = _control
             .filter(|_| false)
             .map(|_| (0, StateProtocol::Prepare(BinId(0))));
         StateStream::new(stream, state_stream, states, probe)
