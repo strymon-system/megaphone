@@ -1,3 +1,4 @@
+extern crate clap;
 extern crate fnv;
 extern crate rand;
 extern crate timely;
@@ -8,6 +9,8 @@ extern crate abomonation;
 
 use std::hash::Hash;
 use std::hash::Hasher;
+
+use clap::{Arg, App};
 
 use rand::{Rng, SeedableRng};
 use rand::rngs::SmallRng;
@@ -98,11 +101,28 @@ fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T
 
 fn main() {
 
+    let matches = App::new("word_count")
+        .arg(Arg::with_name("rate").long("rate").takes_value(true).required(true))
+        .arg(Arg::with_name("duration").long("duration").takes_value(true).required(true))
+        .arg(Arg::with_name("migration").long("migration").takes_value(true).required(true))
+        .arg(Arg::with_name("domain").long("domain").takes_value(true).required(true))
+        .arg(Arg::with_name("timely").multiple(true))
+        .get_matches();
+
+    let rate: u64 = matches.value_of("rate").expect("rate absent").parse::<u64>().expect("couldn't parse rate");
+
+    let duration_ns: u64 = matches.value_of("duration").expect("duration absent").parse::<u64>().expect("couldn't parse duration") * 1_000_000_000;
+
+    let map_mode: ExperimentMapMode = matches.value_of("migration").expect("migration file absent").parse().unwrap();
+
+    let key_space: usize = matches.value_of("domain").expect("key_space absent").parse::<usize>().expect("couldn't parse key_space");
+
+    let timely_args = matches.values_of("timely").map_or(Vec::new(), |vs| vs.map(String::from).collect());
     // Read and report RSS every 100ms
     let statm_reporter_running = nexmark::tools::statm_reporter();
 
     // define a new computational scope, in which to run BFS
-    let timelines: Vec<_> = timely::execute_from_args(std::env::args(), move |worker| {
+    let timelines: Vec<_> = timely::execute_from_args(timely_args.into_iter(), move |worker| {
 
         let peers = worker.peers();
         let index = worker.index();
@@ -132,14 +152,6 @@ fn main() {
 //                .inspect_time(move |time, data| println!("[{} {:?}] B count: {}", index, time.inner, data))
                 .probe_with(&mut probe);
         });
-
-        let rate: u64 = std::env::args().nth(1).expect("rate absent").parse::<u64>().expect("couldn't parse rate");
-
-        let duration_ns: u64 = std::env::args().nth(2).expect("duration absent").parse::<u64>().expect("couldn't parse duration") * 1_000_000_000;
-
-        let map_mode: ExperimentMapMode = std::env::args().nth(3).expect("migration file absent").parse().unwrap();
-
-        let key_space: usize = std::env::args().nth(4).expect("key_space absent").parse::<usize>().expect("couldn't parse key_space");
 
         let mut instructions = map_mode.instructions(peers, duration_ns).unwrap();
 

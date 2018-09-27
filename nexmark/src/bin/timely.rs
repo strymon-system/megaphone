@@ -1,3 +1,4 @@
+extern crate clap;
 extern crate fnv;
 extern crate rand;
 extern crate timely;
@@ -10,6 +11,8 @@ extern crate abomonation;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::collections::{HashMap, VecDeque};
+
+use clap::{Arg, App};
 
 use streaming_harness::util::ToNanos;
 
@@ -77,13 +80,32 @@ fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T
 
 fn main() {
 
+    let matches = App::new("word_count")
+        .arg(Arg::with_name("rate").long("rate").takes_value(true).required(true))
+        .arg(Arg::with_name("duration").long("duration").takes_value(true).required(true))
+        .arg(Arg::with_name("migration").long("migration").takes_value(true).required(true))
+        .arg(Arg::with_name("time_dilation").long("time_dilation").takes_value(true).required(false))
+        .arg(Arg::with_name("queries").long("queries").takes_value(true).required(true).multiple(true).value_delimiter(" "))
+        .arg(Arg::with_name("timely").multiple(true))
+        .get_matches();
+    let timely_args = matches.values_of("timely").map_or(Vec::new(), |vs| vs.map(String::from).collect());
+
+
+    let rate: u64 = matches.value_of("rate").expect("rate absent").parse::<u64>().expect("couldn't parse rate");
+
+    let duration_ns: u64 = matches.value_of("duration").expect("duration absent").parse::<u64>().expect("couldn't parse duration") * 1_000_000_000;
+
+    let map_mode: ExperimentMapMode = matches.value_of("migration").expect("migration file absent").parse().unwrap();
+
+    let time_dilation = matches.value_of("time_dilation").map_or(1, |arg| arg.parse().unwrap_or(1));
+
+    let queries: Vec<_> = matches.values_of("queries").unwrap().map(String::from).collect();
+
     // Read and report RSS every 100ms
     let statm_reporter_running = nexmark::tools::statm_reporter();
 
     // define a new computational scope, in which to run BFS
-    let timelines: Vec<_> = timely::execute_from_args(std::env::args(), move |worker| {
-
-        let time_dilation = std::env::args().nth(4).map_or(1, |arg| arg.parse().unwrap_or(1));
+    let timelines: Vec<_> = timely::execute_from_args(timely_args.into_iter(), move |worker| {
 
         let to_nexmark_time = move |x: usize| {
             debug_assert!(x.checked_mul(time_dilation).is_some(), "multiplication failed: {} * {}", x, time_dilation);
@@ -155,7 +177,7 @@ fn main() {
 
 
         // Q0: Do nothing in particular.
-        if std::env::args().any(|x| x == "q0") {
+        if queries.iter().any(|x| *x == "q0") {
             worker.dataflow(|scope| {
                 input.to_stream(scope)
                      .probe_with(&mut probe);
@@ -163,7 +185,7 @@ fn main() {
         }
 
         // Q0-flex: Do nothing in particular.
-        if std::env::args().any(|x| x == "q0-flex") {
+        if queries.iter().any(|x| *x == "q0-flex") {
             worker.dataflow(|scope| {
                 let control = Some(control.clone()).replay_into(scope);
                 input.to_stream(scope)
@@ -173,7 +195,7 @@ fn main() {
         }
 
         // Q1: Convert bids to euros.
-        if std::env::args().any(|x| x == "q1") {
+        if queries.iter().any(|x| *x == "q1") {
             worker.dataflow(|scope| {
                 Some(bids.clone()).replay_into(scope)
                      .map_in_place(|b| b.price = (b.price * 89)/100)
@@ -182,7 +204,7 @@ fn main() {
         }
 
         // Q1-flex: Convert bids to euros.
-        if std::env::args().any(|x| x == "q1-flex") {
+        if queries.iter().any(|x| *x == "q1-flex") {
             worker.dataflow(|scope| {
                 let control = Some(control.clone()).replay_into(scope);
                 let state_stream = Some(bids.clone())
@@ -194,7 +216,7 @@ fn main() {
         }
 
         // Q2: Filter some auctions.
-        if std::env::args().any(|x| x == "q2") {
+        if queries.iter().any(|x| *x == "q2") {
             worker.dataflow(|scope| {
                 let auction_skip = 123;
                 Some(bids.clone()).replay_into(scope)
@@ -205,7 +227,7 @@ fn main() {
         }
 
         // Q2-flex: Filter some auctions.
-        if std::env::args().any(|x| x == "q2-flex") {
+        if queries.iter().any(|x| *x == "q2-flex") {
             worker.dataflow(|scope| {
                 let auction_skip = 123;
                 let control = Some(control.clone()).replay_into(scope);
@@ -219,7 +241,7 @@ fn main() {
         }
 
         // Q3: Join some auctions.
-        if std::env::args().any(|x| x == "q3") {
+        if queries.iter().any(|x| *x == "q3") {
             worker.dataflow(|scope| {
 
                 let auctions = Some(auctions.clone()).replay_into(scope)
@@ -285,7 +307,7 @@ fn main() {
         }
 
         // Q3-flex: Join some auctions.
-        if std::env::args().any(|x| x == "q3-flex") {
+        if queries.iter().any(|x| *x == "q3-flex") {
             worker.dataflow(|scope| {
 
                 let control = Some(control.clone()).replay_into(scope);
@@ -330,7 +352,7 @@ fn main() {
 
         // Intermission: Close some auctions.
         let closed_auctions = std::rc::Rc::new(timely::dataflow::operators::capture::event::link::EventLink::new());
-        if std::env::args().any(|x| x == "q4" || x == "q6") {
+        if queries.iter().any(|x| *x == "q4" || *x == "q6") {
             worker.dataflow(|scope| {
                 let bids = Some(bids.clone()).replay_into(scope);
                 let auctions = Some(auctions.clone()).replay_into(scope);
@@ -460,7 +482,7 @@ fn main() {
 
         // Intermission: Close some auctions (using stateful).
         let closed_auctions_flex = std::rc::Rc::new(timely::dataflow::operators::capture::event::link::EventLink::new());
-        if std::env::args().any(|x| x == "q4-flex" || x == "q6-flex") {
+        if queries.iter().any(|x| *x == "q4-flex" || *x == "q6-flex") {
             worker.dataflow(|scope| {
                 let control = Some(control.clone()).replay_into(scope);
 
@@ -515,7 +537,7 @@ fn main() {
             });
         }
 
-        if std::env::args().any(|x| x == "q4") {
+        if queries.iter().any(|x| *x == "q4") {
             worker.dataflow(|scope| {
 
                 use timely::dataflow::channels::pact::Exchange;
@@ -549,7 +571,7 @@ fn main() {
             });
         }
 
-        if std::env::args().any(|x| x == "q4-flex") {
+        if queries.iter().any(|x| *x == "q4-flex") {
             worker.dataflow(|scope| {
 
                 let control = Some(control.clone()).replay_into(scope);
@@ -572,7 +594,7 @@ fn main() {
             });
         }
 
-        if std::env::args().any(|x| x == "q5") {
+        if queries.iter().any(|x| *x == "q5") {
             worker.dataflow(|scope| {
 
                 let window_slice_count = 60;
@@ -657,7 +679,7 @@ fn main() {
             });
         }
 
-        if std::env::args().any(|x| x == "q5-flex") {
+        if queries.iter().any(|x| *x == "q5-flex") {
             worker.dataflow(|scope| {
 
                 let control = Some(control.clone()).replay_into(scope);
@@ -728,7 +750,7 @@ fn main() {
             });
         }
 
-        if std::env::args().any(|x| x == "q6") {
+        if queries.iter().any(|x| *x == "q6") {
             worker.dataflow(|scope| {
 
                 use timely::dataflow::channels::pact::Exchange;
@@ -761,7 +783,7 @@ fn main() {
             });
         }
 
-        if std::env::args().any(|x| x == "q6-flex") {
+        if queries.iter().any(|x| *x == "q6-flex") {
             worker.dataflow(|scope| {
 
                 let control = Some(control.clone()).replay_into(scope);
@@ -785,7 +807,7 @@ fn main() {
         }
 
 
-        if std::env::args().any(|x| x == "q7") {
+        if queries.iter().any(|x| *x == "q7") {
             worker.dataflow(|scope| {
 
                 use timely::dataflow::channels::pact::{Pipeline, Exchange};
@@ -872,7 +894,7 @@ fn main() {
             });
         }
 
-        if std::env::args().any(|x| x == "q7-flex") {
+        if queries.iter().any(|x| *x == "q7-flex") {
             worker.dataflow(|scope| {
 
                 let control = Some(control.clone()).replay_into(scope);
@@ -930,7 +952,7 @@ fn main() {
             });
         }
 
-        if std::env::args().any(|x| x == "q8") {
+        if queries.iter().any(|x| *x == "q8") {
             worker.dataflow(|scope| {
 
                 let auctions = Some(auctions.clone()).replay_into(scope)
@@ -1007,7 +1029,7 @@ fn main() {
             });
         }
 
-        if std::env::args().any(|x| x == "q8-flex") {
+        if queries.iter().any(|x| *x == "q8-flex") {
             worker.dataflow(|scope| {
 
                 let control = Some(control.clone()).replay_into(scope);
@@ -1046,18 +1068,13 @@ fn main() {
         ::std::mem::drop(closed_auctions);
         ::std::mem::drop(closed_auctions_flex);
 
-        let rate: String = std::env::args().nth(1).expect("rate absent").parse().expect("couldn't parse rate");
         let mut config1 = nexmark::config::Config::new();
         // 0.06*60*60*12 = 0.06*60*60*12
         // auction_proportion*sec_in_12h
-        config1.insert("in-flight-auctions", format!("{}", rate.parse::<u64>().expect("failed to parse rate")*2592));
-        config1.insert("events-per-second", rate);
+        config1.insert("in-flight-auctions", format!("{}", rate * 2592));
+        config1.insert("events-per-second", format!("{}", rate));
         config1.insert("first-event-number", format!("{}", index));
         let mut config = nexmark::config::NEXMarkConfig::new(&config1);
-
-        let duration_ns: u64 = std::env::args().nth(2).expect("duration absent").parse::<u64>().expect("couldn't parse duration") * 1_000_000_000;
-
-        let map_mode: ExperimentMapMode = std::env::args().nth(3).expect("migration file absent").parse().unwrap();
 
         let mut instructions: Vec<(u64, u64, Vec<ControlInst>)> = map_mode.instructions(peers, duration_ns).unwrap();
 

@@ -22,6 +22,10 @@ fnv="1.0"
 streaming-harness = { version = "^0.1", features = ["hdrhist-support"] }
 dynamic_scaling_mechanism = { version = "0.0.1", path = "..", default_features = false }
 
+[dependencies.clap]
+version = "~2.32"
+default-features = false
+
 #[patch.crates-io]
 #timely = { git = 'https://github.com/frankmcsherry/timely-dataflow.git' }
 
@@ -33,3 +37,4 @@ debug = true
 # codegen-units = 16
 # debug-assertions = false
 #panic = "abort"
+
