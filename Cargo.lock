@@ -84,7 +84,7 @@ dependencies = [
  "fuchsia-zircon 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.43 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand_core 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "winapi 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "winapi 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -127,7 +127,7 @@ dependencies = [
  "abomonation 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "abomonation_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "timely_bytes 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "timely_communication 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "timely_communication 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "timely_logging 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -138,7 +138,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "timely_communication"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "abomonation 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -165,7 +165,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "winapi"
-version = "0.3.5"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "winapi-i686-pc-windows-gnu 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -208,11 +208,11 @@ dependencies = [
 "checksum synstructure 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)" = "3a761d12e6d8dcb4dcf952a7a89b475e3a9d69e4a69307e01a470977642914bd"
 "checksum timely 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d28fcaaae6f0b858e05e5fd6fc6051d82675a6a48c019aea6e32be1a9c9006a9"
 "checksum timely_bytes 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "23e52a6661d7acf0385c83b596612710552ba40e34f548a5489096bcc93ceb89"
-"checksum timely_communication 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "aac189236ba6d4e17302290ebe55ce6ad9c5a992af3345bd4c3979ec5eb865e8"
+"checksum timely_communication 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)" = "77ce130c8181fb53a2ef44f4ef8ec409f4dd6afb4c4c17b41ae7cefb4908d423"
 "checksum timely_logging 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "bc99fee0363f3c8f31a940a28901ae3fdcaad23a3e04a295c98ae4f6f983aa81"
 "checksum unicode-width 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "882386231c45df4700b275c7ff55b6f3698780a650026380e72dabe76fa46526"
 "checksum unicode-xid 0.0.4 (registry+https://github.com/rust-lang/crates.io-index)" = "8c1f860d7d29cf02cb2f3f359fd35991af3d30bac52c57d265a3c461074cb4dc"
-"checksum winapi 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)" = "773ef9dcc5f24b7d850d0ff101e542ff24c3b090a9768e03ff889fdef41f00fd"
+"checksum winapi 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)" = "92c1eb33641e276cfa214a0522acad57be5c56b10cb348b3c5117db75f3ac4b0"
 "checksum winapi-i686-pc-windows-gnu 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
 "checksum winapi-x86_64-pc-windows-gnu 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 "checksum zipf 4.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "44358b28adad817725a0ae75b8c9b5a410a85de6eb998d66d0e38c81f4520e4c"
