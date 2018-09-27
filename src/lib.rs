@@ -45,6 +45,7 @@ impl Key {
     }
 }
 
+#[inline(always)]
 pub fn key_to_bin(key: Key) -> usize {
     (key.0 >> ::std::mem::size_of::<KeyType>() * 8 - BIN_SHIFT) as usize
 }
@@ -208,6 +209,7 @@ impl<T, D, N> State<T, D, N>
         }
     }
 
+    #[inline(always)]
     pub fn key_to_bin(&self, key: Key) -> BinId {
         BinId(key_to_bin(key))
     }
