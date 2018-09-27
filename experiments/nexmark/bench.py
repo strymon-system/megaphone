@@ -393,7 +393,7 @@ def migrating_time_dilation(group, groups=4):
 duration = 60
 
 def wc_migrating_mm4(group, groups=1):
-    workers = 8
+    workers = 4
     all_rates = [x * 100000 for x in [1, 4, 16, 64, 256, 512]]
     rates = all_rates[group * len(all_rates) // groups:(group + 1) * len(all_rates) // groups]
     for rate in rates:
@@ -417,7 +417,7 @@ def wc_migrating_mm4(group, groups=1):
                 experiment.run_commands(run, build)
 
 def wc_non_migrating_mm4(group, groups=1):
-    workers = 8
+    workers = 4
     all_rates = [x * 100000 for x in [1, 4, 16, 64, 256, 512]]
     rates = all_rates[group * len(all_rates) // groups:(group + 1) * len(all_rates) // groups]
     for rate in rates:
@@ -441,7 +441,7 @@ def wc_non_migrating_mm4(group, groups=1):
                 experiment.run_commands(run, build)
 
 def wc_bin_shift(group, groups=1):
-    workers = 8
+    workers = 4
     processes = 4
     all_rates = [x * 100000 for x in [1, 4, 16, 64, 256, 512]]
     rates = all_rates[group * len(all_rates) // groups:(group + 1) * len(all_rates) // groups]
