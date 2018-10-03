@@ -16,7 +16,9 @@ echo $REVISION
 function plot {
     "$@" || exit $?
 
-    local gnuplot_file=`"$@" --gnuplot --terminal pdf | tail -1 || exit $?`
+    local gnuplot_file
+    gnuplot_file=$("$@" --gnuplot --terminal pdf) || exit $?
+    gnuplot_file="${gnuplot_file##*$'\n'}"
     if [ -f "${gnuplot_file}" ]
     then
         gnuplot "${gnuplot_file}" || exit $?
@@ -48,4 +50,49 @@ do
     plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ ('duration', ${duration}), ('bin_shift', ${bin_shift}), ('machine_local', True), ('processes', 2), ('workers', ${workers}), ('time_dilation', ${time_dilation}), ('migration', 'batched'), ('rate', 6400000), ('rate', 3200000), ('rate', 1600000), ('queries', 'q${i}-flex'), ]"
 done
 
+binary="word_count"
+duration=" ('duration', 60), "
+processes=" ('processes', 4), "
+workers=4
+# all rates and domains for a single migration type
+for migration in 'fluid' 'batched' 'sudden'
+do
+    echo $migration
+    plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('bin_shift', ${bin_shift}), ('machine_local', False), ${processes} ('workers', ${workers}), ('migration', '${migration}'), ('final_config', 'uniform_skew'), ('fake_stateful', False),   ]"
+done
+
+# all experiments with defined rate
+for i in $(seq 0 2 8)
+do
+    rate=$((2**$i*100000))
+    plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('machine_local', False), ${processes} ('workers', ${workers}), ('bin_shift', 8), ('rate', ${rate}), ('final_config', 'uniform_skew'), ('fake_stateful', False), ]"
+done
+
+# experiments with defined domain
+for i in $(seq 0 2 6)
+do
+    domain=$((2**$i*1000000))
+    plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('machine_local', False), ${processes} ('workers', ${workers}), ('domain', ${domain}), ('bin_shift', 8), ('final_config', 'uniform_skew'), ('fake_stateful', False), ]"
+
+    # experiments with defined domain and rate
+    for i in $(seq 0 1 9)
+    do
+        rate=$((2**$i*100000))
+        echo $domain $rate
+        # bin_shift experiment
+        plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('machine_local', False), ${processes} ('workers', ${workers}), ('final_config', 'uniform'), ('migration', 'sudden'), ('domain', ${domain}), ('rate', ${rate}), ]"
+
+        # bin_shift ${bin_shift}
+        plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('machine_local', False), ${processes} ('workers', ${workers}), ('domain', ${domain}), ('bin_shift', ${bin_shift}), ('final_config', 'uniform_skew'), ('fake_stateful', False), ('rate', ${rate}), ]"
+        plot ./plot_latency_timeline.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('machine_local', False), ${processes} ('workers', ${workers}), ('domain', ${domain}), ('bin_shift', ${bin_shift}), ('final_config', 'uniform_skew'), ('fake_stateful', False), ('rate', ${rate}), ]"
+        for migration in 'fluid' 'batched' 'sudden'
+        do
+            echo $migration
+            plot ./plot_memory_timeline.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('bin_shift', ${bin_shift}), ('machine_local', False), ${processes} ('workers', ${workers}), ('domain', ${domain}), ('migration', '${migration}'), ('final_config', 'uniform_skew'), ('fake_stateful', False), ('rate', ${rate}), ]"
+        done
+            plot ./plot_memory_timeline.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('bin_shift', ${bin_shift}), ('machine_local', False), ${processes} ('workers', ${workers}), ('domain', ${domain}), ('migration', 'sudden'), ('final_config', 'uniform'), ('fake_stateful', False), ('rate', ${rate}), ]"
+            plot ./plot_memory_timeline.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('bin_shift', ${bin_shift}), ('machine_local', False), ${processes} ('workers', ${workers}), ('domain', ${domain}), ('rate', ${rate}), ]"
+
+    done
+done
 #./plot_bin_shift_cdf.py "results/$REVISION/" "[ ('duration', ${duration}), ('machine_local', True), ('processes', 1), ('workers', ${workers}), ('binary', '${binary}'), ('time_dilation', ${time_dilation}), ]"

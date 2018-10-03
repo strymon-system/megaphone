@@ -44,7 +44,7 @@ def get_chart_filename(extension):
 
 chart_filename = get_chart_filename(extension)
 # title = ", ".join("{}: {}".format(k, v) for k, v in sorted(graph_filtering.items(), key=lambda t: t[0]))
-title = plot.kv_to_name(dict(graph_filtering))
+title = plot.kv_to_name(graph_filtering)
 
 if args.gnuplot:
 
@@ -64,7 +64,7 @@ if args.gnuplot:
     with open(dataset_filename, 'w') as c:
         # print(" ".join(all_headers), file=c)
         for ds, config in zip(iter(data), iter(experiments)):
-            print("\"{} {}\"".format(config.get('queries', ""), config.get('rate', "")), file=c)
+            print("\"{}\"".format(plot.kv_to_name(config).replace("_", "\\\\_")), file=c)
             for d in ds:
                 print(" ".join(map(plot.quote_str, [d[k] for k in all_headers])), file=c)
             print("\n", file=c)
@@ -88,6 +88,8 @@ set logscale y
 set format x "10^{{%T}}"
 set format y "10^{{%T}}"
 set grid xtics ytics
+
+set yrange [.0001:1]
 
 set xlabel "Latency [ns]"
 set ylabel "CCDF"
@@ -139,7 +141,7 @@ else: # json or html
         with open(chart_filename, 'w') as c:
             print(json.dumps(vega_lite), file=c)
     else:
-        print(sorted(graph_filtering.items(), key=lambda t: t[0]))
+        print(sorted(graph_filtering, key=lambda t: t[0]))
         vega_lite["title"] = title
         html = """
         <!DOCTYPE html>
