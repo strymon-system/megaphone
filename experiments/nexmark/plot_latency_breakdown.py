@@ -21,7 +21,7 @@ files = plot.get_files(results_dir)
 #      print(f[1])
 filtering = eval(args.filtering)
 
-graph_filtering, data, experiments = plot.latency_timeline_plots(results_dir, files, filtering)
+graph_filtering, data, experiments = plot.latency_breakdown_plots(results_dir, files, filtering)
 
 commit = results_dir.rstrip('/').split('/')[-1]
 # print("commit:", commit, file=sys.stderr)
@@ -53,19 +53,18 @@ chart_filename = get_chart_filename(extension)
 # title = ", ".join("{}: {}".format(k, v) for k, v in sorted(graph_filtering.items(), key=lambda t: t[0]))
 title = plot.kv_to_name(graph_filtering)
 
+for ds in data:
+    print(ds)
+
 if args.gnuplot:
 
     # Generate dataset
     all_headers = set()
-    all_percentiles = set()
-    all_migrations = set()
 
     for ds in data:
         for d in ds:
             for k in d.keys():
                 all_headers.add(k)
-            all_percentiles.add(d["p"])
-            all_migrations.add(d["migration"])
     all_headers.remove("experiment")
     all_headers = sorted(all_headers)
 
@@ -86,25 +85,21 @@ if args.gnuplot:
     with open(dataset_filename, 'w') as c:
         index = 0
         # print(" ".join(all_headers), file=c)
-        for p in sorted(all_percentiles):
-            for ds, config in zip(iter(data), iter(experiments)):
-                migration_to_index[get_key(config, "migration")].append(index)
-                config_with_p = config + [('p', p)]
-                all_configs.append(config_with_p)
-                print("\"{}\"".format(plot.kv_to_name(config_with_p).replace("_", "\\\\_")), file=c)
-                for d in ds:
-                    if d["p"] == p:
-                        print(" ".join(map(plot.quote_str, [d[k] for k in all_headers])), file=c)
-                print("\n", file=c)
-                index += 1
+        for ds, config in zip(iter(data), iter(experiments)):
+            all_configs.append(config)
+            print("\"{}\"".format(plot.kv_to_name(config).replace("_", "\\\\_")), file=c)
+            for d in ds:
+                print(" ".join(map(plot.quote_str, [d[k] for k in all_headers])), file=c)
+            print("\n", file=c)
+            index += 1
 
     config_reorder = sorted(map(lambda x: (x[1], x[0]), enumerate(all_configs)))
 
     # Generate gnuplot script
     gnuplot_terminal = args.terminal
     gnuplot_out_filename = get_chart_filename(gnuplot_terminal)
-    time_index = all_headers.index("time") + 1
-    latency_index = all_headers.index("latency") + 1
+    duration_index = all_headers.index("migration_duration") + 1
+    p_index = all_headers.index("max_p_1") + 1
     # fix long titles
     if len(title) > 79:
         idx = title.find(" ", int(len(title) / 2))
@@ -114,45 +109,33 @@ if args.gnuplot:
         print("""\
 set terminal {gnuplot_terminal} font \"LinuxLibertine, 10\"
 set logscale y
+set logscale x
 
 set format y "10^{{%T}}"
 set grid xtics ytics
 
-# set ylabel "Latency [ns]"
-set xlabel "Time"
-
-set xrange [{duration}*.25:{duration}*.75]
+set xlabel "Max latency [ns]"
+set ylabel "Duration"
 
 set key out vert
-set key bottom center
+set key right center
 # unset key
 
 set output '{gnuplot_out_filename}'
-stats '{dataset_filename}' using {latency_index} nooutput
+stats '{dataset_filename}' using 0 nooutput
 if (STATS_blocks == 0) exit
-set for [i=1:STATS_blocks] linetype i dashtype i
-set yrange [10**floor(log10(STATS_min)): 10**ceil(log10(STATS_max))]
-set multiplot layout 1, {num_plots} title "{title}"
+# set for [i=1:STATS_blocks] linetype i dashtype i
+# set yrange [10**floor(log10(STATS_min)): 10**ceil(log10(STATS_max))]
+plot for [i=0:*] '{dataset_filename}' using {p_index}:{duration_index} index (i+0) title columnheader(1) with points
         """.format(dataset_filename=dataset_filename,
                    gnuplot_terminal=gnuplot_terminal,
                    gnuplot_out_filename=gnuplot_out_filename,
-                   latency_index=latency_index,
-                   time_index=time_index,
+                   duration_index=duration_index,
+                   p_index=p_index,
                    title=title.replace("_", "\\\\_"),
                    duration=duration,
                    num_plots=len(migration_to_index)
                    ), file=c)
-
-        for key in sorted(migration_to_index):
-            print("""\
-set title "{key}"
-plot for [i in "{indexes}"] '{dataset_filename}' using {time_index}:{latency_index} index (i+0) title columnheader(1) with lines
-            """.format(key=key,
-                       indexes=" ".join(map(str, migration_to_index[key])),
-                       dataset_filename=dataset_filename,
-                       time_index=time_index,
-                       latency_index=latency_index
-                       ), file=c)
 
 else: # json or html
 

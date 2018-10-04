@@ -135,12 +135,63 @@ def latency_timeline_plots(results_dir, files, filtering):
                 for vals in [x.split('\t')[1:] for x in f.readlines() if x.startswith('summary_timeline')]:
                     for p, l in [(.25, 1), (.5, 2), (.75, 3), (.99, 4), (.999, 5), (1, 6)]:
                         experiment_data.append(dict(list({
-                            "time": float(vals[0]) / 1000000000,
-                            "latency": int(vals[l]),
-                            "p": p,
-                            "experiment": "m: {}, r: {}, f: {}".format(experiment_dict.get('migration', "?"), experiment_dict.get('rate', 0), experiment_dict.get('fake_stateful', False)),
-                        }.items()) + list(experiment_dict.items())))
+                                                             "time": float(vals[0]) / 1000000000,
+                                                             "latency": int(vals[l]),
+                                                             "p": p,
+                                                             "experiment": "m: {}, r: {}, f: {}".format(experiment_dict.get('migration', "?"), experiment_dict.get('rate', 0), experiment_dict.get('fake_stateful', False)),
+                                                         }.items()) + list(experiment_dict.items())))
                 data.append(experiment_data)
+        except IOError as e:
+            print("Unexpected error:", e)
+            pass
+
+    return (filtering, data, experiments)
+
+def latency_breakdown_plots(results_dir, files, filtering):
+    filtering = _filtering_params(files, filtering)
+    # print(filtering)
+    # [0.75, 0.50, 0.25, 0.05, 0.01, 0.001, 0.0]
+
+    data = []
+    experiments = []
+    for filename, config in [x for x in sorted(files, key=lambda x: x[1]) if set(x[1]).issuperset(set(filtering))]:
+        experiment_dict = dict(set(config).difference(set(filtering)))
+        experiments.append(sorted(experiment_dict.items()))
+        experiment_data = []
+        try:
+            with open("{}/{}/stdout.0".format(results_dir, filename), 'r') as f:
+                max_latency = [0 for _ in range(6)]
+                migration_start = None
+                migration_end = None
+                for vals in [x.strip().split('\t')[1:] for x in f.readlines() if x.startswith('summary_timeline')]:
+                    # print(vals, migration_start, migration_end, max_latency)
+                    if int(vals[1]) > 1000000:
+                        if migration_start is None:
+                            migration_start = int(vals[0])
+                        for i in range(0, len(max_latency)):
+                            v = int(vals[i + 1])
+                            max_latency[i] = max(max_latency[i], v)
+                    elif migration_start is not None and migration_end is None:
+                        migration_end = int(vals[0])
+
+                if migration_end is None:
+                    # migration did not terminate, or classifier is wrong
+                    migration_end = int(vals[0])
+                if migration_start is not None:
+                    # We found start of migration
+                    experiment_data.append(dict(list({
+                            "migration_start": migration_start,
+                            "migration_end": migration_end,
+                            "migration_duration": migration_end - migration_start,
+                             "max_p_.25": max_latency[0],
+                             "max_p_.5": max_latency[1],
+                             "max_p_.75": max_latency[2],
+                             "max_p_.99": max_latency[3],
+                             "max_p_.999": max_latency[4],
+                             "max_p_1": max_latency[5],
+                            "experiment": "m: {}, r: {}, f: {}".format(experiment_dict.get('migration', "?"), experiment_dict.get('rate', 0), experiment_dict.get('fake_stateful', False)),
+                         }.items()) + list(experiment_dict.items())))
+                    data.append(experiment_data)
         except IOError as e:
             print("Unexpected error:", e)
             pass
