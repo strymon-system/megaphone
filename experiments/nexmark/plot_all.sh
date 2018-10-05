@@ -70,7 +70,8 @@ do
     # defined rate and bin_shift
     for bin_shift in $(seq 6 2 12)
     do
-        plot ./plot_latency_breakdown.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('machine_local', False), ${processes} ('workers', ${workers}), ('bin_shift', 8), ('rate', ${rate}), ('final_config', 'uniform_skew'), ('fake_stateful', False), ]"
+        true
+        plot ./plot_latency_breakdown.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('machine_local', False), ${processes} ('workers', ${workers}), ('bin_shift', 8), ('rate', ${rate}), ('final_config', 'uniform_skew'), ('fake_stateful', False), ]" "migration" "domain"
     done
 done
 
@@ -81,19 +82,18 @@ do
     plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('machine_local', False), ${processes} ('workers', ${workers}), ('domain', ${domain}), ('bin_shift', 8), ('final_config', 'uniform_skew'), ('fake_stateful', False), ]"
 
     # defined domain and bin_shift
-#    for bin_shift in $(seq 6 2 12)
-#    do
-#        plot ./plot_latency_breakdown.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('machine_local', False), ${processes} ('workers', ${workers}), ('domain', ${domain}), ('bin_shift', ${bin_shift}), ('final_config', 'uniform_skew'), ('fake_stateful', False), ]"
-#    done
+    for bin_shift in $(seq 6 2 12)
+    do
+        plot ./plot_latency_breakdown.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('machine_local', False), ${processes} ('workers', ${workers}), ('domain', ${domain}), ('bin_shift', ${bin_shift}), ('final_config', 'uniform_skew'), ('fake_stateful', False), ]" rate migration
+    done
 
     # experiments with defined domain and rate
     for i in $(seq 0 1 9)
     do
         rate=$((2**$i*100000))
-        echo $domain $rate
         # bin_shift experiment
         plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('machine_local', False), ${processes} ('workers', ${workers}), ('final_config', 'uniform'), ('migration', 'sudden'), ('domain', ${domain}), ('rate', ${rate}), ]"
-#        plot ./plot_latency_breakdown.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('machine_local', False), ${processes} ('workers', ${workers}), ('domain', ${domain}), ('final_config', 'uniform_skew'), ('fake_stateful', False), ('rate', ${rate}), ]"
+        plot ./plot_latency_breakdown.py "results/$REVISION/" "[ ('binary', '${binary}'), ${duration} ('machine_local', False), ${processes} ('workers', ${workers}), ('domain', ${domain}), ('final_config', 'uniform_skew'), ('fake_stateful', False), ('rate', ${rate}), ]" migration bin_shift
 
         for bin_shift in $(seq 6 2 12)
         do
