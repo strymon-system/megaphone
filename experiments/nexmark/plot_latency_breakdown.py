@@ -99,7 +99,7 @@ if args.gnuplot:
         index = 0
         # print(" ".join(all_headers), file=c)
         for key, item in sorted(all_primary.items()):
-            print("\"{}\"".format(str(key).replace("_", "\\\\_")), file=c)
+            print("\"{}\"".format(plot.kv_to_name([(args.primary_group, key)]).replace("_", "\\\\_")), file=c)
             for config, ds in item:
                 all_configs.append(config)
                 # print("\"{}\"".format(plot.kv_to_name(config).replace("_", "\\\\_")), file=c)
@@ -110,7 +110,7 @@ if args.gnuplot:
             print("\n", file=c)
 
         for key, item in sorted(all_secondary.items()):
-            print("\"{}\"".format(str(key).replace("_", "\\\\_")), file=c)
+            print("\"{}\"".format(plot.kv_to_name([(args.secondary_group, key)]).replace("_", "\\\\_")), file=c)
             for config, ds in item:
                 all_configs.append(config)
                 # print("\"{}\"".format(plot.kv_to_name(config).replace("_", "\\\\_")), file=c)
@@ -151,7 +151,9 @@ set size square
 set output '{gnuplot_out_filename}'
 stats '{dataset_filename}' using 0 nooutput
 if (STATS_blocks == 0) exit
+set for [i=1:STATS_blocks] linetype i dashtype i
 # set for [i=1:STATS_blocks] linetype i dashtype i
+set title "{title}"
 # set yrange [10**floor(log10(STATS_min)): 10**ceil(log10(STATS_max))]
 plot for [i={index}:*] '' using {p_index}:{duration_index} index (i+0) with points title columnheader(1), \\
  for [i=0:{index}-1] '{dataset_filename}' using {p_index}:{duration_index} index (i+0) with lines title columnheader(1)
