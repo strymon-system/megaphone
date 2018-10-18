@@ -268,7 +268,7 @@ fn main() {
         }
         worker.step();
 
-        for i in index * key_space .. (index + 1) * key_space {
+        for i in index * key_space / peers .. (index + 1) * key_space / peers {
             input.as_mut().unwrap().send(word_generator.word_at(i));
             if (i & 0xFFF) == 0 {
                 worker.step();
