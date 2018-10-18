@@ -103,7 +103,7 @@ pub fn statm_reporter() -> ::std::sync::Arc<::std::sync::atomic::AtomicBool> {
                 let mut statm_f = ::std::fs::File::open("/proc/self/statm").expect("can't open /proc/self/statm");
                 statm_f.read_to_string(&mut stat_s).expect("can't read /proc/self/statm");
                 let pages: u64 = stat_s.split_whitespace().nth(1).expect("wooo").parse().expect("not a number");
-                let rss = pages * 1024;
+                let rss = pages * 4096;
 
                 let elapsed_ns = timer.elapsed().to_nanos();
                 println!("statm_RSS\t{}\t{}", elapsed_ns, rss);
