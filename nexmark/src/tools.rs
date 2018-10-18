@@ -108,7 +108,7 @@ pub fn statm_reporter() -> ::std::sync::Arc<::std::sync::atomic::AtomicBool> {
                 let elapsed_ns = timer.elapsed().to_nanos();
                 println!("statm_RSS\t{}\t{}", elapsed_ns, rss);
                 #[allow(deprecated)]
-                    ::std::thread::sleep_ms(100 - (elapsed_ns / 1_000_000 - iteration * 100) as u32);
+                    ::std::thread::sleep_ms(500 - (elapsed_ns / 1_000_000 - iteration * 500) as u32);
                 iteration += 1;
             }
         });
