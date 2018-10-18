@@ -157,35 +157,35 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
                 // stash each input and request a notification when ready
                 while let Some((time, data)) = input.next() {
                     data.swap(&mut data_buffer);
-                    if !frontiers[0].less_than(time.time()) && !frontiers[1].less_equal(time.time()) {
-                        let time = time.retain();
-                        data_buffer.sort_by_key(|&(_, key_id, _)| states.key_to_bin(key_id));
-                        for (_, key_id, d) in data_buffer.drain(..) {
-                            notif_key_buffer.push(key_id);
-                            notif_data_buffer.push(d);
-                        }
-
-                        let mut bin = None;
-                        let mut begin_run = 0;
-                        for i in 0..notif_key_buffer.len() {
-                            let current_bin = states.key_to_bin(notif_key_buffer[i]);
-                            if Some(current_bin) != bin {
-                                if let Some(bin) = bin {
-                                    fold(&time, &mut notif_data_buffer[begin_run..i], states.get_bin(bin), &mut output_handle);
-                                }
-                                bin = Some(current_bin);
-                                begin_run = i;
-                            }
-                        }
-                        assert!(bin.is_some());
-                        if begin_run < notif_key_buffer.len() {
-                            fold(&time, &mut notif_data_buffer[begin_run..], states.get_bin(bin.unwrap()), &mut output_handle);
-                        }
-                        notif_key_buffer.clear();
-                        notif_data_buffer.clear();
-                    } else {
+//                    if !frontiers[0].less_than(time.time()) && !frontiers[1].less_equal(time.time()) {
+//                        let time = time.retain();
+//                        data_buffer.sort_by_key(|&(_, key_id, _)| states.key_to_bin(key_id));
+//                        for (_, key_id, d) in data_buffer.drain(..) {
+//                            notif_key_buffer.push(key_id);
+//                            notif_data_buffer.push(d);
+//                        }
+//
+//                        let mut bin = None;
+//                        let mut begin_run = 0;
+//                        for i in 0..notif_key_buffer.len() {
+//                            let current_bin = states.key_to_bin(notif_key_buffer[i]);
+//                            if Some(current_bin) != bin {
+//                                if let Some(bin) = bin {
+//                                    fold(&time, &mut notif_data_buffer[begin_run..i], states.get_bin(bin), &mut output_handle);
+//                                }
+//                                bin = Some(current_bin);
+//                                begin_run = i;
+//                            }
+//                        }
+//                        assert!(bin.is_some());
+//                        if begin_run < notif_key_buffer.len() {
+//                            fold(&time, &mut notif_data_buffer[begin_run..], states.get_bin(bin.unwrap()), &mut output_handle);
+//                        }
+//                        notif_key_buffer.clear();
+//                        notif_data_buffer.clear();
+//                    } else {
                         notificator.notify_at_data(time.retain(), data_buffer.drain(..).map(|(_, key_id, d)| (key_id, d)));
-                    }
+//                    }
                 }
 
                 for (time, mut keyed_data) in notificator.next(&[&frontiers[0], &frontiers[1]]) {
@@ -269,12 +269,12 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
                 }
                 // stash each input and request a notification when ready
                 while let Some((time, data)) = input.next() {
-                    if !frontiers[0].less_than(time.time()) && !frontiers[1].less_equal(time.time()) {
-                        consume(&mut states, time.retain(), data, &mut output_handle);
-                    } else {
+//                    if !frontiers[0].less_than(time.time()) && !frontiers[1].less_equal(time.time()) {
+//                        consume(&mut states, time.retain(), data, &mut output_handle);
+//                    } else {
                         data.swap(&mut data_buffer);
                         notificator.notify_at_data(time.retain(), data_buffer.drain(..));
-                    }
+//                    }
                 }
 
                 for (time, mut data) in notificator.next(&[&frontiers[0], &frontiers[1]]) {
