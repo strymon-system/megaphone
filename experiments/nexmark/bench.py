@@ -259,31 +259,6 @@ def exploratory_migrating(group, groups=4):
                 experiment.single_machine_id = group + 1
                 experiment.run_commands(run, build)
 
-def exploratory_migrating_mm(group, groups=2):
-    workers = 8
-    all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
-    queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
-    for rate in [x * 200000 for x in [1, 2, 4, 8, 16, 32]]:
-        for migration in ["sudden", "fluid", "batched"]:
-            for query in queries:
-                experiment = Experiment(
-                    "migrating-mm",
-                    binary="timely",
-                    duration=duration,
-                    rate=rate,
-                    queries=query,
-                    migration=migration,
-                    bin_shift=default_bin_shift,
-                    workers=workers,
-                    processes=2,
-                    initial_config="uniform",
-                    final_config="uniform_skew",
-                    fake_stateful=False,
-                    machine_local=False,
-                    time_dilation=1)
-                experiment.base_machine_id = group*groups + 1
-                experiment.run_commands(run, build)
-
 def exploratory_baseline(group, groups=4):
     workers = 8
     all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
@@ -361,8 +336,34 @@ def exploratory_bin_shift(group, groups=4):
                 experiment.run_commands(run, build)
 
 
-def migrating_time_dilation(group, groups=4):
-    workers = 8
+
+def exploratory_migrating_mm(group, groups=1):
+    workers = 4
+    all_queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
+    queries = all_queries[group * len(all_queries) // groups:(group + 1) * len(all_queries) // groups]
+    for rate in [x * 200000 for x in [1, 2, 4, 8, 16, 32]]:
+        for migration in ["sudden", "fluid", "batched"]:
+            for query in queries:
+                experiment = Experiment(
+                    "migrating-mm",
+                    binary="timely",
+                    duration=duration,
+                    rate=rate,
+                    queries=query,
+                    migration=migration,
+                    bin_shift=default_bin_shift,
+                    workers=workers,
+                    processes=4,
+                    initial_config="uniform",
+                    final_config="uniform_skew",
+                    fake_stateful=False,
+                    machine_local=False,
+                    time_dilation=1)
+                experiment.base_machine_id = group*groups + 1
+                experiment.run_commands(run, build)
+
+def migrating_time_dilation(group, groups=1):
+    workers = 4
     # Time dilation: Two 12h-windows in duration seconds plus padding
     time_dilation = int(12*60*60/(duration * 2)*1.1)
     base_rate = int(200000 / time_dilation)
@@ -380,7 +381,7 @@ def migrating_time_dilation(group, groups=4):
                     migration=migration,
                     bin_shift=default_bin_shift,
                     workers=workers,
-                    processes=1,
+                    processes=4,
                     initial_config="uniform",
                     final_config="uniform_skew",
                     fake_stateful=False,
@@ -392,54 +393,6 @@ def migrating_time_dilation(group, groups=4):
 # Word count experiments
 duration = 60
 
-def wc_migrating_mm4(group, groups=1):
-    workers = 4
-    all_rates = [x * 100000 for x in [1, 4, 16, 64, 256, 512]]
-    rates = all_rates[group * len(all_rates) // groups:(group + 1) * len(all_rates) // groups]
-    for rate in rates:
-        for migration in ["sudden", "fluid", "batched"]:
-            for domain in [1000000 * x for x in [1, 4, 16, 64]]:
-                experiment = Experiment(
-                    "wc-migrating-mm",
-                    binary="word_count",
-                    duration=duration,
-                    rate=rate,
-                    migration=migration,
-                    bin_shift=default_bin_shift,
-                    workers=workers,
-                    processes=4,
-                    initial_config="uniform",
-                    final_config="uniform_skew",
-                    fake_stateful=False,
-                    machine_local=False,
-                    domain=domain)
-                experiment.base_machine_id = group*groups + 1
-                experiment.run_commands(run, build)
-
-def wc_non_migrating_mm4(group, groups=1):
-    workers = 4
-    all_rates = [x * 100000 for x in [1, 4, 16, 64, 256, 512]]
-    rates = all_rates[group * len(all_rates) // groups:(group + 1) * len(all_rates) // groups]
-    for rate in rates:
-        for migration in ["sudden"]:
-            for domain in [1000000 * x for x in [1, 4, 16, 64]]:
-                experiment = Experiment(
-                    "wc-migrating-mm",
-                    binary="word_count",
-                    duration=duration,
-                    rate=rate,
-                    migration=migration,
-                    bin_shift=default_bin_shift,
-                    workers=workers,
-                    processes=4,
-                    initial_config="uniform",
-                    final_config="uniform",
-                    fake_stateful=False,
-                    machine_local=False,
-                    domain=domain)
-                experiment.base_machine_id = group*groups + 1
-                experiment.run_commands(run, build)
-
 def wc_bin_shift(group, groups=1):
     workers = 4
     processes = 4
@@ -449,7 +402,7 @@ def wc_bin_shift(group, groups=1):
         for domain in [1000000 * x for x in [1, 4, 16, 64]]:
             for bin_shift in range(int(math.log2(workers * processes)), 21):
                     experiment = Experiment(
-                        "wc-migrating-mp",
+                        "wc-migrating-bin_shift-mm",
                         binary="word_count",
                         duration=duration,
                         rate=rate,
@@ -467,7 +420,7 @@ def wc_bin_shift(group, groups=1):
 
             # Fake stateful
             experiment = Experiment(
-                "wc-migrating-mp",
+                "wc-migrating-fake-mp",
                 binary="word_count",
                 duration=duration,
                 rate=rate,
@@ -487,7 +440,7 @@ def wc_bin_shift(group, groups=1):
     rates = all_rates[group * len(all_rates) // groups:(group + 1) * len(all_rates) // groups]
     for rate in rates:
         for domain in [1000000 * x for x in [1, 4, 16, 64]]:
-            for bin_shift in range(int(math.log2(workers * processes)), 14, 2):
+            for bin_shift in range(int(math.log2(workers * processes)), 15, 2):
                 for migration in ["sudden", "fluid", "batched"]:
                     experiment = Experiment(
                         "wc-migrating-mp",
@@ -503,5 +456,74 @@ def wc_bin_shift(group, groups=1):
                         fake_stateful=False,
                         machine_local=False,
                         domain=domain)
+                    experiment.base_machine_id = group*groups + 1
+                    experiment.run_commands(run, build)
+
+def wc_bin_shift_vec(group, groups=1):
+    workers = 4
+    processes = 4
+    all_rates = [x * 1000000 for x in [1, 4, 16, 64, 256]]
+    rates = all_rates[group * len(all_rates) // groups:(group + 1) * len(all_rates) // groups]
+    for rate in rates:
+        for domain in [1000000 * x for x in [1, 4, 16, 64, 256, 1024, 2048]]:
+            for bin_shift in range(int(math.log2(workers * processes)), 21):
+                experiment = Experiment(
+                    "wc-migrating-mp",
+                    binary="word_count",
+                    duration=duration,
+                    rate=rate,
+                    migration="sudden",
+                    bin_shift=bin_shift,
+                    workers=workers,
+                    processes=processes,
+                    initial_config="uniform",
+                    final_config="uniform",
+                    fake_stateful=False,
+                    machine_local=False,
+                    domain=domain,
+                    backend="vec")
+                experiment.base_machine_id = group*groups + 1
+                experiment.run_commands(run, build)
+
+            # Fake stateful
+            experiment = Experiment(
+                "wc-migrating-mp",
+                binary="word_count",
+                duration=duration,
+                rate=rate,
+                migration="sudden",
+                bin_shift=default_bin_shift,
+                workers=workers,
+                processes=processes,
+                initial_config="uniform",
+                final_config="uniform",
+                fake_stateful=True,
+                machine_local=False,
+                domain=domain,
+                backend="vec")
+            experiment.base_machine_id = group*groups + 1
+            experiment.run_commands(run, build)
+
+    all_rates = [x * 100000 for x in [16]]
+    rates = all_rates[group * len(all_rates) // groups:(group + 1) * len(all_rates) // groups]
+    for rate in rates:
+        for domain in [1000000 * x for x in [1, 4, 16, 64]]:
+            for bin_shift in range(int(math.log2(workers * processes)), 15, 2):
+                for migration in ["sudden", "fluid", "batched"]:
+                    experiment = Experiment(
+                        "wc-migrating-mp",
+                        binary="word_count",
+                        duration=duration,
+                        rate=rate,
+                        migration=migration,
+                        bin_shift=bin_shift,
+                        workers=workers,
+                        processes=processes,
+                        initial_config="uniform",
+                        final_config="uniform_skew",
+                        fake_stateful=False,
+                        machine_local=False,
+                        domain=domain,
+                        backend="vec")
                     experiment.base_machine_id = group*groups + 1
                     experiment.run_commands(run, build)
