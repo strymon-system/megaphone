@@ -348,6 +348,7 @@ fn main() {
             }
 
             if input.is_some() {
+                worker.step();
                 while probe.less_than(&RootTimestamp::new(wait_ns as usize)) { worker.step(); }
             } else {
                 while worker.step() { }
