@@ -482,3 +482,26 @@ def wc_bin_shift(group, groups=1):
                 domain=domain)
             experiment.base_machine_id = group*groups + 1
             experiment.run_commands(run, build)
+
+    all_rates = [x * 100000 for x in [16]]
+    rates = all_rates[group * len(all_rates) // groups:(group + 1) * len(all_rates) // groups]
+    for rate in rates:
+        for domain in [1000000 * x for x in [1, 4, 16, 64]]:
+            for bin_shift in range(int(math.log2(workers * processes)), 14, 2):
+                for migration in ["sudden", "fluid", "batched"]:
+                    experiment = Experiment(
+                        "wc-migrating-mp",
+                        binary="word_count",
+                        duration=duration,
+                        rate=rate,
+                        migration=migration,
+                        bin_shift=bin_shift,
+                        workers=workers,
+                        processes=processes,
+                        initial_config="uniform",
+                        final_config="uniform_skew",
+                        fake_stateful=False,
+                        machine_local=False,
+                        domain=domain)
+                    experiment.base_machine_id = group*groups + 1
+                    experiment.run_commands(run, build)
