@@ -22,7 +22,7 @@ use timely::order::TotalOrder;
 use timely::progress::Timestamp;
 use timely::progress::frontier::Antichain;
 
-use ::{BIN_SHIFT, BinId, Control, ControlSetBuilder, ControlSet, Key, key_to_bin, State};
+use ::{BIN_SHIFT, Bin, BinId, Control, ControlSetBuilder, ControlSet, Key, key_to_bin, State};
 
 const BUFFER_CAP: usize = 16;
 
@@ -41,7 +41,7 @@ pub type Notificator<T, D> = ::notificator::TotalOrderFrontierNotificator<T, D>;
 #[derive(Abomonation, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub enum StateProtocol<T, S, D> {
     /// Provide a piece of state for a bin
-    State(BinId, S),
+    State(BinId, Vec<S>),
     /// Announce an outstanding time stamp
     Pending(BinId, T, Vec<D>),
     /// Prepare for receiving state
@@ -110,7 +110,7 @@ pub fn apply_state_updates<
             }
             // Extend state
             StateProtocol::State(bin, s) => {
-                states.bins[*bin].as_mut().map(|bin| bin.data.extend(Some(s)));
+                states.bins[*bin].as_mut().map(|bin| bin.data.extend(s.into_iter()));
             },
             // Request notification
             StateProtocol::Pending(bin, t, data) =>
@@ -292,10 +292,17 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                 // actually contains data. Also, we must be the current owner of the bin.
                                 if (*old % peers == index) && (old != new) {
                                     // Capture bin's values as a stream of data
-                                    let state = states.bins[bin].take().expect("Instructed to move bin but it is None");
+                                    let mut state = states.bins[bin].take().expect("Instructed to move bin but it is None");
+                                    let Bin { data, notificator } = state;
                                     session.give((*new, StateProtocol::Prepare(BinId(bin))));
-                                    session.give_iterator(state.data.into_iter().map(|s| (*new, StateProtocol::State(BinId(bin), s))));
-                                    session.give_iterator(state.notificator.pending().into_iter().map(|(t, d)| (*new, StateProtocol::Pending(BinId(bin), t, d))));
+                                    let mut state_iter = data.into_iter();
+                                    while let Some(e) = state_iter.next() {
+                                        let mut chunk = Vec::with_capacity(1024);
+                                        chunk.push(e);
+                                        chunk.extend((&mut state_iter).take(1023));
+                                        session.give((*new, StateProtocol::State(BinId(bin), chunk)));
+                                    }
+                                    session.give_iterator(notificator.pending().into_iter().map(|(t, d)| (*new, StateProtocol::Pending(BinId(bin), t, d))));
                                 }
                             }
                         }
