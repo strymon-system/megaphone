@@ -99,6 +99,11 @@ fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T
     )
 }
 
+#[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Debug, Hash)]
+enum Backend {
+    HashMap, Vector,
+}
+
 fn main() {
 
     let matches = App::new("word_count")
@@ -106,7 +111,9 @@ fn main() {
         .arg(Arg::with_name("duration").long("duration").takes_value(true).required(true))
         .arg(Arg::with_name("migration").long("migration").takes_value(true).required(true))
         .arg(Arg::with_name("domain").long("domain").takes_value(true).required(true))
+        .arg(Arg::with_name("validate").long("validate"))
         .arg(Arg::with_name("timely").multiple(true))
+        .arg(Arg::with_name("backend").long("backend").takes_value(true).possible_values(&["hashmap", "vec"]).default_value("hashmap"))
         .get_matches();
 
     let rate: u64 = matches.value_of("rate").expect("rate absent").parse::<u64>().expect("couldn't parse rate");
@@ -116,6 +123,15 @@ fn main() {
     let map_mode: ExperimentMapMode = matches.value_of("migration").expect("migration file absent").parse().unwrap();
 
     let key_space: usize = matches.value_of("domain").expect("key_space absent").parse::<usize>().expect("couldn't parse key_space");
+
+    let validate: bool = matches.is_present("validate");
+
+    let backend: Backend = match matches.value_of("backend").expect("backend missing") {
+        "hashmap" => Backend::HashMap,
+        "vec" => Backend::Vector,
+        _ => panic!("Unknown backend"),
+    };
+    println!("backend\t{:?}", backend);
 
     let timely_args = matches.values_of("timely").map_or(Vec::new(), |vs| vs.map(String::from).collect());
     // Read and report RSS every 100ms
@@ -136,21 +152,68 @@ fn main() {
         worker.dataflow(|scope| {
             let control = control_input.to_stream(scope).broadcast();
 
-            let input = input.to_stream(scope);
+            let input = input
+                .to_stream(scope)
+                .map(|x: usize| (x, 1));
 //            input
 //                .count()
 //                .inspect_time(move |time, data| println!("[{} {:?}] A count: {}", index, time.inner, data))
 //                .probe_with(&mut probe);
 
-            input
-                .map(|x: usize| (x, 1))
-                .stateful_state_machine(|key: &_, val, agg: &mut u64| {
-                    *agg += val;
-                    (false, Some((key.clone(), *agg)))
-                }, |key| calculate_hash(key), &control)
+            let sst_output = if backend == Backend::HashMap {
+                Some(input
+                    .stateful_state_machine(|key: &_, val, agg: &mut u64| {
+                        *agg += val;
+                        (false, Some((key.clone(), *agg)))
+                    }, |key| calculate_hash(key), &control)
 //                .count()
 //                .inspect_time(move |time, data| println!("[{} {:?}] B count: {}", index, time.inner, data))
-                .probe_with(&mut probe);
+                    .probe_with(&mut probe))
+            } else {
+                None
+            };
+            use dynamic_scaling_mechanism::operator::StatefulOperator;
+            let vec_output = if backend == Backend::Vector {
+                let output = input
+                    .stateful_unary(&control, move |(k, _v)| (*k as u64) << (64 - ::dynamic_scaling_mechanism::BIN_SHIFT), "StateMachine", move |time, data, bin, output| {
+                        let mut session = output.session(&time);
+                        let states: &mut Vec<u64> = bin.state();
+                        for (key, val) in data {
+                            let position = key >> ::dynamic_scaling_mechanism::BIN_SHIFT;
+                            let states_len = states.len();
+                            if states.capacity() <= position {
+                                states.reserve(position - states_len + 1)
+                            }
+                            if states_len <= position {
+                                for _ in states_len..states.capacity() {
+                                    states.push(Default::default());
+                                }
+                            }
+                            states[position] += val;
+                            session.give((*key, states[position]));
+                        }
+                    })
+                    .probe_with(&mut probe);
+                Some(output)
+            } else {
+                None
+            };
+
+            if validate {
+                use timely::dataflow::operators::aggregation::StateMachine;
+                let correct = input
+                    .state_machine(|_key: &_, val, agg: &mut u64| {
+                        *agg += val;
+                        (false, Some((*_key, *agg)))
+                    }, |key| calculate_hash(key));
+                if let Some(sst_output) = sst_output {
+                    verify(&sst_output, &correct).probe_with(&mut probe);
+                }
+                if let Some(vec_output) = vec_output {
+                    verify(&vec_output, &correct).probe_with(&mut probe);
+                }
+            }
+
         });
 
         let mut instructions = map_mode.instructions(peers, duration_ns).unwrap();
