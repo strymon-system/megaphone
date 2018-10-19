@@ -288,7 +288,7 @@ fn main() {
         loop {
             let elapsed_ns = timer.elapsed().to_nanos();
             let wait_ns = last_ns;
-            let target_ns = (elapsed_ns + 1) / 1_000_000 * 1_000_000 + 2;
+            let target_ns = (elapsed_ns + 1) / 100_000 * 100_000 + 2;
             last_ns = target_ns;
 
             if index == 0 {
