@@ -414,6 +414,7 @@ def wc_bin_shift(group, groups=1):
                         final_config="uniform",
                         fake_stateful=False,
                         machine_local=False,
+                        backend="hashmap",
                         domain=domain)
                     experiment.base_machine_id = group*groups + 1
                     experiment.run_commands(run, build)
@@ -432,6 +433,7 @@ def wc_bin_shift(group, groups=1):
                 final_config="uniform",
                 fake_stateful=True,
                 machine_local=False,
+                backend="hashmap",
                 domain=domain)
             experiment.base_machine_id = group*groups + 1
             experiment.run_commands(run, build)
@@ -455,6 +457,7 @@ def wc_bin_shift(group, groups=1):
                         final_config="uniform_skew",
                         fake_stateful=False,
                         machine_local=False,
+                        backend="hashmap",
                         domain=domain)
                     experiment.base_machine_id = group*groups + 1
                     experiment.run_commands(run, build)
