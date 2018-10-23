@@ -47,6 +47,7 @@ class Experiment(object):
         self._workers = config.pop("workers")
         self._processes = config.pop("processes")
         self._rate = config.pop("rate")
+        self._duration = config.get("duration")
         self._initial_config = config.pop("initial_config")
         self._final_config = config.pop("final_config")
         self._machine_local = config.pop("machine_local")
@@ -135,7 +136,9 @@ class Experiment(object):
 
         with open(migration_pattern_file_name, "w") as f:
             eprint("writing migration pattern to {}".format(migration_pattern_file_name))
-            PatternGenerator(pattern, initial_config, final_config).write(f)
+            pattern_generator = PatternGenerator(pattern, initial_config, final_config)
+            pattern_generator.write_pattern(f, pattern_generator._initial_pattern, 0)
+            pattern_generator.write(f, self._duration * 1000000000)
 
         hostfile_file_name = self.get_setup_file_name("hostfile")
         with open(hostfile_file_name, 'w') as f:

@@ -94,15 +94,19 @@ class PatternGenerator(object):
         self._initial_pattern = initial_pattern
         self._target_pattern = target_pattern
 
-    def write_pattern(self, file, pattern):
+    def write_pattern(self, file, pattern, time):
         file.write("M ")
+        file.write(str(time))
+        file.write(" ")
         for w in pattern:
             file.write(str(w))
             file.write(" ")
         file.write('\n')
 
-    def write_diff(self, file, pattern):
+    def write_diff(self, file, pattern, time):
         file.write("D ")
+        file.write(str(time))
+        file.write(" ")
         for b, w in sorted(pattern.items()):
             file.write(str(b))
             file.write(" ")
@@ -110,16 +114,15 @@ class PatternGenerator(object):
             file.write(" ")
         file.write('\n')
 
-    def write(self, file):
+    def write(self, file, time):
         generator = self._migration_pattern(self._initial_pattern, self._target_pattern)
         i = 1
-        self.write_pattern(file, self._initial_pattern)
         for (type, pattern) in generator.generate():
             i += 1
             if type == "diff":
-                self.write_diff(file, pattern)
+                self.write_diff(file, pattern, time)
             elif type == "map":
-                self.write_pattern(file, pattern)
+                self.write_pattern(file, pattern, time)
             else:
                 raise ValueError("Incorrect type: {}".format(type))
 

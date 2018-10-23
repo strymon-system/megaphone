@@ -63,10 +63,10 @@ impl ExperimentMapMode {
                 let file = ::std::io::BufReader::new(&f);
                 use ::std::io::BufRead;
                 let mut instructions = Vec::new();
-                let mut ts = 0;
                 for line in file.lines() {
                     let line = line.map_err(|e| e.to_string())?;
                     let mut parts = line.split_whitespace();
+                    let ts: u64 = parts.next().expect("missing time stamp").parse();
                     let instr = match parts.next().expect("Missing map/diff indicator") {
                         "M" => (ts, vec![ControlInst::Map(parts.map(|x| x.parse().expect("Failed to parse parts")).collect())]),
                         "D" => {
@@ -77,7 +77,6 @@ impl ExperimentMapMode {
                         _ => return Err("Incorrect input found in map file".to_string()),
                     };
                     instructions.push(instr);
-                    ts = duration_ns / 2;
                 }
                 Ok(instructions)
             },
