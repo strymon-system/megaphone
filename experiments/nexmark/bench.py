@@ -544,7 +544,7 @@ def sigmod_micro_no_migr(group, groups=1):
     # VEC
     rate = 4 * 1000000
     for domain in [1000000 * x for x in [256, 8192]]:
-        for bin_shift in range(int(math.log2(workers * processes)), 21, 2):
+        for bin_shift in range(int(math.log2(workers * processes)), 17, 2):
             experiment = Experiment(
                 "sigmod_migro_no_migr_vec",
                 binary="word_count",
