@@ -66,7 +66,7 @@ impl ExperimentMapMode {
                 for line in file.lines() {
                     let line = line.map_err(|e| e.to_string())?;
                     let mut parts = line.split_whitespace();
-                    let ts: u64 = parts.next().expect("missing time stamp").parse();
+                    let ts: u64 = parts.next().expect("missing time stamp").parse().expect("Failed to parse time stamp");
                     let instr = match parts.next().expect("Missing map/diff indicator") {
                         "M" => (ts, vec![ControlInst::Map(parts.map(|x| x.parse().expect("Failed to parse parts")).collect())]),
                         "D" => {
