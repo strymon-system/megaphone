@@ -7,6 +7,11 @@ extern crate streaming_harness;
 extern crate dynamic_scaling_mechanism;
 extern crate abomonation;
 
+use std::alloc::System;
+
+#[global_allocator]
+static GLOBAL: System = System;
+
 use std::hash::Hash;
 use std::hash::Hasher;
 
