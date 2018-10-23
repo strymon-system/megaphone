@@ -254,8 +254,8 @@ fn main() {
             control_input.take().unwrap().close();
         } else {
             let control_input = control_input.as_mut().unwrap();
-            if instructions.get(0).map_or(false, |(_, ts, _)| *ts == 0) {
-                let (_visible, _ts, ctrl_instructions) = instructions.remove(0);
+            if instructions.get(0).map_or(false, |(ts, _)| *ts == 0) {
+                let (_ts, ctrl_instructions) = instructions.remove(0);
                 let count = ctrl_instructions.len();
 
                 for instruction in ctrl_instructions {
@@ -265,11 +265,6 @@ fn main() {
             }
 
             control_input.advance_to(1);
-            if let Some((visible, _ts, _)) = instructions.get(0) {
-                if *visible > 1 {
-                    control_input.advance_to(*visible as usize);
-                }
-            }
         }
         worker.step();
 
@@ -293,31 +288,29 @@ fn main() {
         loop {
             let elapsed_ns = timer.elapsed().to_nanos();
             let wait_ns = last_ns;
-            let target_ns = (elapsed_ns + 1) / 100_000 * 100_000 + 2;
+            let target_ns = (elapsed_ns + 1) / 1_000_000 * 1_000_000 + 2;
             last_ns = target_ns;
 
             if index == 0 {
+                if let Some(control_input) = control_input.as_mut() {
+                    if last_migrated.map_or(true, |time| control_input.time().inner != time)
+                        && instructions.get(0).map(|&(ts, _)| ts <= control_input.time().inner as u64).unwrap_or(false)
+                    {
+                        let (ts, ctrl_instructions) = instructions.remove(0);
+                        let count = ctrl_instructions.len();
 
-                if last_migrated.map_or(true, |time| control_input.as_ref().map_or(false, |t| t.time().inner != time))
-                    && instructions.get(0).map(|&(visible, _ts, _)| visible < target_ns).unwrap_or(false)
-                {
-                    let (_visible, ts, ctrl_instructions) = instructions.remove(0);
-                    let count = ctrl_instructions.len();
-
-                    let control_input = control_input.as_mut().unwrap();
-                    if control_input.time().inner < ts as usize {
-                        control_input.advance_to(ts as usize);
-                    }
-
-                    for instruction in ctrl_instructions {
-                        control_input.send(Control::new(control_sequence, count, instruction));
-                    }
-                    control_sequence += 1;
-                    last_migrated = Some(control_input.time().inner);
-                    if let Some((visible, _, _)) = instructions.get(0) {
-                        if control_input.time().inner < *visible as usize {
-                            control_input.advance_to(*visible as usize);
+                        if control_input.time().inner < ts as usize {
+                            control_input.advance_to(ts as usize);
                         }
+
+                        println!("control_time\t{}", control_input.time().inner);
+
+                        for instruction in ctrl_instructions {
+                            control_input.send(Control::new(control_sequence, count, instruction));
+                        }
+
+                        control_sequence += 1;
+                        last_migrated = Some(control_input.time().inner);
                     }
                 }
 

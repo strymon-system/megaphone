@@ -29,14 +29,14 @@ impl ::std::str::FromStr for ExperimentMapMode {
 }
 
 impl ExperimentMapMode {
-    pub fn instructions(&self, peers: usize, duration_ns: u64) -> Result<Vec<(u64, u64, Vec<ControlInst>)>, String> {
+    pub fn instructions(&self, peers: usize, duration_ns: u64) -> Result<Vec<(u64, Vec<ControlInst>)>, String> {
         match self {
             ExperimentMapMode::None => {
                 let mut map = vec![0; 1 << ::dynamic_scaling_mechanism::BIN_SHIFT];
                 for i in 0..map.len() {
                     map[i] = i % peers;
                 };
-                Ok(vec![(0, 0, vec![ControlInst::Map(map)])])
+                Ok(vec![(0, vec![ControlInst::Map(map)])])
             }
             ExperimentMapMode::Sudden => {
                 let mut map = vec![0; 1 << ::dynamic_scaling_mechanism::BIN_SHIFT];
@@ -56,7 +56,7 @@ impl ExperimentMapMode {
 //                        control_counter += 1;
 //                    }
                 };
-                Ok(vec![((duration_ns as f64 * 0.3) as u64, duration_ns/3, vec![ControlInst::Map(initial_map)]), ((duration_ns as f64 * 0.6) as u64, 2*duration_ns/3, vec![ControlInst::Map(map)])])
+                Ok(vec![(duration_ns/3, vec![ControlInst::Map(initial_map)]), (2*duration_ns/3, vec![ControlInst::Map(map)])])
             },
             ExperimentMapMode::File(migrations_file) => {
                 let f = ::std::fs::File::open(migrations_file).map_err(|e| e.to_string())?;
@@ -68,11 +68,11 @@ impl ExperimentMapMode {
                     let line = line.map_err(|e| e.to_string())?;
                     let mut parts = line.split_whitespace();
                     let instr = match parts.next().expect("Missing map/diff indicator") {
-                        "M" => (0, ts, vec![ControlInst::Map(parts.map(|x| x.parse().expect("Failed to parse parts")).collect())]),
+                        "M" => (ts, vec![ControlInst::Map(parts.map(|x| x.parse().expect("Failed to parse parts")).collect())]),
                         "D" => {
                             let parts: Vec<usize> = parts.map(|x| x.parse().unwrap()).collect();
                             let inst = parts.chunks(2).map(|x| ControlInst::Move(::dynamic_scaling_mechanism::BinId::new(x[0]), x[1])).collect();
-                            (0, ts, inst)
+                            (ts, inst)
                         },
                         _ => return Err("Incorrect input found in map file".to_string()),
                     };
