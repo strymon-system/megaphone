@@ -28,6 +28,7 @@ use timely::dataflow::operators::{Map, Probe};
 use timely::dataflow::operators::Operator;
 use timely::progress::timestamp::RootTimestamp;
 use timely::dataflow::operators::{Accumulate, Broadcast, Inspect};
+use timely::dataflow::channels::pact::Exchange;
 use timely::dataflow::Stream;
 use timely::dataflow::Scope;
 use timely::ExchangeData;
@@ -106,7 +107,10 @@ fn verify<S: Scope, T: ExchangeData+Ord+::std::fmt::Debug>(correct: &Stream<S, T
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Debug, Hash)]
 enum Backend {
-    HashMap, Vector,
+    HashMap,
+    HashMapNative,
+    Vector,
+    VectorNative,
 }
 
 fn main() {
@@ -133,7 +137,9 @@ fn main() {
 
     let backend: Backend = match matches.value_of("backend").expect("backend missing") {
         "hashmap" => Backend::HashMap,
+        "hashmapnative" => Backend::HashMapNative,
         "vec" => Backend::Vector,
+        "vecnative" => Backend::VectorNative,
         _ => panic!("Unknown backend"),
     };
     println!("backend\t{:?}", backend);
@@ -160,48 +166,101 @@ fn main() {
             let input = input
                 .to_stream(scope)
                 .map(|x: usize| (x, 1));
-//            input
-//                .count()
-//                .inspect_time(move |time, data| println!("[{} {:?}] A count: {}", index, time.inner, data))
-//                .probe_with(&mut probe);
 
-            let sst_output = if backend == Backend::HashMap {
-                Some(input
-                    .stateful_state_machine(|key: &_, val, agg: &mut u64| {
-                        *agg += val;
-                        (false, Some((key.clone(), *agg)))
-                    }, |key| calculate_hash(key), &control)
-//                .count()
-//                .inspect_time(move |time, data| println!("[{} {:?}] B count: {}", index, time.inner, data))
-                    .probe_with(&mut probe))
-            } else {
-                None
+            let sst_output = match backend {
+                Backend::HashMap => {
+                    Some(input
+                        .stateful_state_machine(|key: &_, val, agg: &mut u64| {
+                            *agg += val;
+                            (false, Some((key.clone(), *agg)))
+                        }, |key| calculate_hash(key), &control)
+                        .probe_with(&mut probe))
+                },
+                Backend::HashMapNative => {
+                    Some(input
+                         .unary_frontier(Exchange::new(|(x, _)| *x as u64 & !((1 << ::dynamic_scaling_mechanism::BIN_SHIFT) - 1)),
+                                         "WordCount", |_cap, _| {
+                             let mut states = ::std::collections::HashMap::<usize, u64>::new();
+                             let mut vector = Vec::new();
+                             let mut notificator = dynamic_scaling_mechanism::notificator::TotalOrderFrontierNotificator::new();
+                             move |input, output| {
+                                 while let Some((time, data)) = input.next() {
+                                     data.swap(&mut vector);
+                                     notificator.notify_at_data(time.retain(), vector.drain(..));
+                                 }
+                                 notificator.for_each_data(&[input.frontier], |time, mut vec, _| {
+                                     let mut session = output.session(&time);
+                                     for (key, val) in vec.drain(..) {
+                                         let entry = states.entry(key).or_insert(0);
+                                         *entry += val;
+                                         session.give((key, *entry));
+                                     }
+                                 });
+                             }
+                         })
+                         .probe_with(&mut probe))
+                }
+                _ => None,
             };
             use dynamic_scaling_mechanism::operator::StatefulOperator;
-            let vec_output = if backend == Backend::Vector {
-                let output = input
-                    .stateful_unary(&control, move |(k, _v)| (*k as u64) << (64 - ::dynamic_scaling_mechanism::BIN_SHIFT), "StateMachine", move |time, data, bin, output| {
-                        let mut session = output.session(&time);
-                        let states: &mut Vec<u64> = bin.state();
-                        for (key, val) in data {
-                            let position = key >> ::dynamic_scaling_mechanism::BIN_SHIFT;
-                            let states_len = states.len();
-                            if states.capacity() <= position {
-                                states.reserve(position - states_len + 1)
-                            }
-                            if states_len <= position {
-                                for _ in states_len..states.capacity() {
-                                    states.push(Default::default());
+            let vec_output = match backend {
+                Backend::Vector => {
+                    Some(input
+                        .stateful_unary(&control, move |(k, _v)| (*k as u64) << (64 - ::dynamic_scaling_mechanism::BIN_SHIFT), "StateMachine", move |time, data, bin, output| {
+                            let mut session = output.session(&time);
+                            let states: &mut Vec<u64> = bin.state();
+                            for (key, val) in data {
+                                let position = key >> ::dynamic_scaling_mechanism::BIN_SHIFT;
+                                let states_len = states.len();
+                                if states.capacity() <= position {
+                                    states.reserve(position - states_len + 1)
                                 }
+                                if states_len <= position {
+                                    for _ in states_len..states.capacity() {
+                                        states.push(Default::default());
+                                    }
+                                }
+                                states[position] += val;
+                                session.give((*key, states[position]));
                             }
-                            states[position] += val;
-                            session.give((*key, states[position]));
-                        }
-                    })
-                    .probe_with(&mut probe);
-                Some(output)
-            } else {
-                None
+                        })
+                        .probe_with(&mut probe))
+                },
+                Backend::VectorNative => {
+                    Some(input
+                         .unary_frontier(Exchange::new(|(x, _)| *x as u64 & !((1 << ::dynamic_scaling_mechanism::BIN_SHIFT) - 1)),
+                                         "WordCount", |_cap, _| {
+                             let mut states = Vec::<u64>::new();
+                             let mut vector = Vec::new();
+                             let mut notificator = dynamic_scaling_mechanism::notificator::TotalOrderFrontierNotificator::new();
+                             move |input, output| {
+                                 while let Some((time, data)) = input.next() {
+                                     data.swap(&mut vector);
+                                     notificator.notify_at_data(time.retain(), vector.drain(..));
+                                 }
+                                 notificator.for_each_data(&[input.frontier], |time, mut vec, _| {
+                                     let mut session = output.session(&time);
+                                     for (key, val) in vec.drain(..) {
+                                         let states_len = states.len();
+                                         let position = key >> ::dynamic_scaling_mechanism::BIN_SHIFT;
+                                         let target_size = position.next_power_of_two();
+                                         if states.capacity() <= target_size {
+                                             states.reserve(position - states_len + 1);
+                                         }
+                                         if states_len <= target_size {
+                                             for _ in states_len..states.capacity() {
+                                                 states.push(Default::default());
+                                             }
+                                         }
+                                         states[position] += val;
+                                         session.give((key, states[position]));
+                                     }
+                                 });
+                             }
+                         })
+                         .probe_with(&mut probe))
+                },
+                _ => None,
             };
 
             if validate {
