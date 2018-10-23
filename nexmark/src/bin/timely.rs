@@ -1076,7 +1076,7 @@ fn main() {
         config1.insert("first-event-number", format!("{}", index));
         let mut config = nexmark::config::NEXMarkConfig::new(&config1);
 
-        let mut instructions: Vec<(u64, u64, Vec<ControlInst>)> = map_mode.instructions(peers, duration_ns).unwrap();
+        let mut instructions: Vec<(u64, Vec<ControlInst>)> = map_mode.instructions(peers, duration_ns).unwrap();
 
         if index == 0 {
             println!("time_dilation\t{}", time_dilation);
@@ -1120,8 +1120,15 @@ fn main() {
         if index != 0 {
             control_input.take().unwrap().close();
         } else {
-            if let Some((visible, _, _)) = instructions.get(0) {
-                control_input.as_mut().unwrap().advance_to(*visible as usize);
+            let control_input = control_input.as_mut().unwrap();
+            if instructions.get(0).map_or(false, |(ts, _)| *ts == 0) {
+                let (_ts, ctrl_instructions) = instructions.remove(0);
+                let count = ctrl_instructions.len();
+
+                for instruction in ctrl_instructions {
+                    control_input.send(Control::new(control_sequence, count, instruction));
+                }
+                control_sequence += 1;
             }
         }
 
@@ -1137,25 +1144,26 @@ fn main() {
 
             if index == 0 {
 
-                if last_migrated.map_or(true, |time| control_input.as_ref().map_or(false, |t| t.time().inner != time))
-                    && instructions.get(0).map(|&(visible, _ts, _)| visible < target_ns).unwrap_or(false)
-                {
-                    let (_visible, ts, ctrl_instructions) = instructions.remove(0);
-                    let count = ctrl_instructions.len();
+                if let Some(control_input) = control_input.as_mut() {
+                    if last_migrated.map_or(true, |time| control_input.time().inner != time)
+                        && instructions.get(0).map(|&(ts, _)| ts <= control_input.time().inner as u64).unwrap_or(false)
+                        {
+                            let (ts, ctrl_instructions) = instructions.remove(0);
+                            let count = ctrl_instructions.len();
 
-                    let control_input = control_input.as_mut().unwrap();
-                    control_input.advance_to(ts as usize);
+                            if control_input.time().inner < ts as usize {
+                                control_input.advance_to(ts as usize);
+                            }
 
-                    for instruction in ctrl_instructions {
-                        control_input.send(Control::new(control_sequence, count, instruction));
-                    }
-                    control_sequence += 1;
-                    last_migrated = Some(control_input.time().inner);
-                    if let Some((visible, _, _)) = instructions.get(0) {
-                        if control_input.time().inner < *visible as usize {
-                            control_input.advance_to(*visible as usize);
+                            println!("control_time\t{}", control_input.time().inner);
+
+                            for instruction in ctrl_instructions {
+                                control_input.send(Control::new(control_sequence, count, instruction));
+                            }
+
+                            control_sequence += 1;
+                            last_migrated = Some(control_input.time().inner);
                         }
-                    }
                 }
 
                 if instructions.is_empty() {
