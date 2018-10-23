@@ -89,7 +89,7 @@ pub struct ControlSet<T> {
     pub sequence: u64,
     /// The frontier at which to apply the instructions
     pub frontier: Antichain<T>,
-    /// Collection of instructions
+    /// Explicit mapping of bins to workers
     pub map: Vec<usize>,
 }
 
