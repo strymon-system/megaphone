@@ -760,7 +760,7 @@ def sigmod_nx(group, groups=1):
     duration = 120
     bin_shift = 12
 
-    queries = ["q0-flex", "q1-flex", "q2-flex", "q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
+    queries = ["q3", "q3-flex", "q4", "q4-flex", "q5", "q5-flex", "q6", "q6-flex", "q7", "q7-flex", "q8", "q8-flex"]
 
     rate = 1000000
     migration = "batched"
@@ -772,7 +772,7 @@ def sigmod_nx(group, groups=1):
             rate=rate,
             queries=query,
             migration=migration,
-            bin_shift=default_bin_shift,
+            bin_shift=bin_shift,
             workers=workers,
             processes=4,
             initial_config="uniform",
@@ -793,7 +793,7 @@ def sigmod_nx(group, groups=1):
             rate=dilated_rate,
             queries=query,
             migration=migration,
-            bin_shift=default_bin_shift,
+            bin_shift=bin_shift,
             workers=workers,
             processes=4,
             initial_config="uniform",
