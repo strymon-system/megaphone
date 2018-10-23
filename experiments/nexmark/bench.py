@@ -182,6 +182,7 @@ class Experiment(object):
                     'workers': self._workers,
                     'ARGS': self.other_args,
                 }
+                # return "RUST_BACKTRACE=1 perf record -o perf.{p} --switch-output=2s -- /mnt/SG/strymon/local/bin/hwloc-bind socket:0.pu:even -- ./{dir}/release/{binary} --migration {cwd}/{migration} --rate {rate} {ARGS} -- --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
                 return "RUST_BACKTRACE=1 /mnt/SG/strymon/local/bin/hwloc-bind socket:0.pu:even -- ./{dir}/release/{binary} --migration {cwd}/{migration} --rate {rate} {ARGS} -- --hostfile {cwd}/{hostfile} -n {processes} -p {p} -w {workers}".format(**params)
             commands = [(self.base_machine_id + p, make_command(p), self.get_result_file_name("stdout", p), self.get_result_file_name("stderr", p)) for p in range(0, self._processes)]
             return commands
