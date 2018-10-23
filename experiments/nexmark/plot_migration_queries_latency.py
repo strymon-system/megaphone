@@ -95,7 +95,7 @@ set xlabel "Latency [ns]"
 set ylabel "CCDF"
 set title "{title}"
 
-set key left bottom box
+set key outside right
 
 set output '{gnuplot_out_filename}'
 stats '{dataset_filename}' using 0 nooutput

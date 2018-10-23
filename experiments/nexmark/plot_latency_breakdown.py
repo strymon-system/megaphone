@@ -81,7 +81,7 @@ if args.gnuplot:
         all_secondary[get_key(config, args.secondary_group)].append((config, ds))
 
     if len(all_primary) <= 1 or len(all_secondary) <= 1:
-        print("")
+        print("nothing found")
         exit(0)
 
     all_headers.remove("experiment")

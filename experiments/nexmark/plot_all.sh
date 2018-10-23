@@ -39,6 +39,33 @@ function plot {
 #        | inkscape /dev/stdin --export-area-drawing --without-gui "--export-pdf=${json_file%.json}.pdf"
 }
 
+binary="('binary', 'word_count'), "
+processes="('processes', 4), "
+duration="('duration', 30), "
+migration="('migration', 'sudden'), "
+initial_config="('initial_config', 'uniform'), "
+final_config="('final_config', 'uniform'), "
+fake_stateful="('fake_stateful', False), "
+rate="('rate', 4000000), "
+backend="" #"('backend', 'vec'), "
+
+for domain in "('domain', 256000000), " "('domain', 8192000000), "
+do
+    plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]"
+done
+
+rate="('rate', 2000000), "
+domain="('domain', 64000000), "
+plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]"
+
+rate="('rate', 4000000), "
+final_config="('final_config', 'uniform_skew'), "
+bin_shift="('bin_shift', 12), "
+duration="('duration', 120), "
+
+plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $rate $backend ]" domain migration
+
+exit
 
 
 for i in $(seq 0 8)
