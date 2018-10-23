@@ -122,7 +122,7 @@ fn main() {
         .arg(Arg::with_name("domain").long("domain").takes_value(true).required(true))
         .arg(Arg::with_name("validate").long("validate"))
         .arg(Arg::with_name("timely").multiple(true))
-        .arg(Arg::with_name("backend").long("backend").takes_value(true).possible_values(&["hashmap", "vec"]).default_value("hashmap"))
+        .arg(Arg::with_name("backend").long("backend").takes_value(true).possible_values(&["hashmap", "hashmapnative", "vec", "vecnative"]).default_value("hashmap"))
         .get_matches();
 
     let rate: u64 = matches.value_of("rate").expect("rate absent").parse::<u64>().expect("couldn't parse rate");
@@ -178,7 +178,7 @@ fn main() {
                 },
                 Backend::HashMapNative => {
                     Some(input
-                         .unary_frontier(Exchange::new(|(x, _)| *x as u64 & !((1 << ::dynamic_scaling_mechanism::BIN_SHIFT) - 1)),
+                         .unary_frontier(Exchange::new(move |(x, _)| *x as u64 & !(peers as u64 - 1)),
                                          "WordCount", |_cap, _| {
                              let mut states = ::std::collections::HashMap::<usize, u64>::new();
                              let mut vector = Vec::new();
@@ -210,15 +210,10 @@ fn main() {
                             let mut session = output.session(&time);
                             let states: &mut Vec<u64> = bin.state();
                             for (key, val) in data {
-                                let position = key >> ::dynamic_scaling_mechanism::BIN_SHIFT;
                                 let states_len = states.len();
-                                if states.capacity() <= position {
-                                    states.reserve(position - states_len + 1)
-                                }
-                                if states_len <= position {
-                                    for _ in states_len..states.capacity() {
-                                        states.push(Default::default());
-                                    }
+                                let position = key >> ::dynamic_scaling_mechanism::BIN_SHIFT;
+                                if states.len() <= position {
+                                    states.extend(::std::iter::repeat(0).take(position - states_len + 1))
                                 }
                                 states[position] += val;
                                 session.give((*key, states[position]));
@@ -228,7 +223,7 @@ fn main() {
                 },
                 Backend::VectorNative => {
                     Some(input
-                         .unary_frontier(Exchange::new(|(x, _)| *x as u64 & !((1 << ::dynamic_scaling_mechanism::BIN_SHIFT) - 1)),
+                         .unary_frontier(Exchange::new(move |(x, _)| *x as u64 & !(peers as u64 - 1)),
                                          "WordCount", |_cap, _| {
                              let mut states = Vec::<u64>::new();
                              let mut vector = Vec::new();
@@ -242,15 +237,9 @@ fn main() {
                                      let mut session = output.session(&time);
                                      for (key, val) in vec.drain(..) {
                                          let states_len = states.len();
-                                         let position = key >> ::dynamic_scaling_mechanism::BIN_SHIFT;
-                                         let target_size = position.next_power_of_two();
-                                         if states.capacity() <= target_size {
-                                             states.reserve(position - states_len + 1);
-                                         }
-                                         if states_len <= target_size {
-                                             for _ in states_len..states.capacity() {
-                                                 states.push(Default::default());
-                                             }
+                                         let position = key / peers;
+                                         if states.len() <= position {
+                                             states.extend(::std::iter::repeat(0).take(position - states_len + 1))
                                          }
                                          states[position] += val;
                                          session.give((key, states[position]));
