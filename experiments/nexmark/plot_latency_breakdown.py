@@ -126,6 +126,7 @@ if args.gnuplot:
     gnuplot_out_filename = get_chart_filename(gnuplot_terminal)
     duration_index = all_headers.index("migration_duration") + 1
     p_index = all_headers.index("max_p_1") + 1
+    p50_index = all_headers.index("max_p_.5") + 1
     # fix long titles
     if len(title) > 79:
         idx = title.find(" ", int(len(title) / 2))
@@ -155,13 +156,18 @@ set for [i=1:STATS_blocks] linetype i dashtype i
 # set for [i=1:STATS_blocks] linetype i dashtype i
 set title "{title}"
 # set yrange [10**floor(log10(STATS_min)): 10**ceil(log10(STATS_max))]
-plot for [i={index}:*] '' using {p_index}:{duration_index} index (i+0) with points title columnheader(1), \\
- for [i=0:{index}-1] '{dataset_filename}' using {p_index}:{duration_index} index (i+0) with lines title columnheader(1)
+plot for [i={index}:*] '{dataset_filename}' using {p_index}:{duration_index} index (i+0) with points title columnheader(1), \\
+ for [i=0:{index}-1] '' using {p_index}:{duration_index} index (i+0) with lines title columnheader(1)
+
+set xlabel "50% latency [ns]"
+plot for [i={index}:*] '{dataset_filename}' using {p50_index}:{duration_index} index (i+0) with points title columnheader(1), \\
+ for [i=0:{index}-1] '' using {p50_index}:{duration_index} index (i+0) with lines title columnheader(1)
         """.format(dataset_filename=dataset_filename,
                    gnuplot_terminal=gnuplot_terminal,
                    gnuplot_out_filename=gnuplot_out_filename,
                    duration_index=duration_index,
                    p_index=p_index,
+                   p50_index=p50_index,
                    title=title.replace("_", "\\\\_"),
                    duration=duration,
                    num_plots=len(migration_to_index),

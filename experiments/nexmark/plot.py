@@ -161,28 +161,31 @@ def latency_breakdown_plots(results_dir, files, filtering):
         try:
             with open("{}/{}/stdout.0".format(results_dir, filename), 'r') as f:
                 max_latency = [0 for _ in range(6)]
-                migration_start = None
-                migration_end = None
-                for vals in [x.strip().split('\t')[1:] for x in f.readlines() if x.startswith('summary_timeline')]:
-                    # print(vals, migration_start, migration_end, max_latency)
-                    if int(vals[1]) > 1000000:
-                        if migration_start is None:
-                            migration_start = int(vals[0])
-                        for i in range(0, len(max_latency)):
-                            v = int(vals[i + 1])
-                            max_latency[i] = max(max_latency[i], v)
-                    elif migration_start is not None and migration_end is None:
-                        migration_end = int(vals[0])
+                lines = [x.strip().split('\t') for x in f.readlines()]
+                median = "undef"
+                for vals in lines:
+                    if vals[0].startswith('latency_ccdf'):
+                        if float(vals[2]) <= 0.5:
+                            median = int(vals[1])
+                            break
+                print(median, file=sys.stderr)
+                duration = 0
+                for vals in lines:
+                    # print(vals, file=sys.stderr)
+                    if vals[0].startswith('summary_timeline'):
+                        # print(vals, migration_start, migration_end, max_latency)
+                        print(vals, median, file=sys.stderr)
+                        if int(vals[3]) > 2 * median:
+                            print(vals, file=sys.stderr)
+                            print(filename, file=sys.stderr)
+                            for i in range(0, len(max_latency)):
+                                v = int(vals[i + 2])
+                                max_latency[i] = max(max_latency[i], v)
+                            duration += .25
 
-                if migration_end is None:
-                    # migration did not terminate, or classifier is wrong
-                    migration_end = int(vals[0])
-                if migration_start is not None:
-                    # We found start of migration
+                if duration > 0:
                     experiment_data.append(dict(list({
-                            "migration_start": migration_start,
-                            "migration_end": migration_end,
-                            "migration_duration": migration_end - migration_start,
+                            "migration_duration": duration,
                              "max_p_.25": max_latency[0],
                              "max_p_.5": max_latency[1],
                              "max_p_.75": max_latency[2],
