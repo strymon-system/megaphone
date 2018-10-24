@@ -14,7 +14,7 @@ binary='timely'
 echo $REVISION
 
 function plot {
-    "$@" || exit $?
+#    "$@" || exit $?
 
     local gnuplot_file
     gnuplot_file=$("$@" --gnuplot --terminal pdf) || exit $?
