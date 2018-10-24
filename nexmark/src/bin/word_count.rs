@@ -178,7 +178,7 @@ fn main() {
                 },
                 Backend::HashMapNative => {
                     Some(input
-                         .unary_frontier(Exchange::new(move |(x, _)| *x as u64 & !(peers as u64 - 1)),
+                         .unary_frontier(Exchange::new(move |(x, _)| *x as u64),
                                          "WordCount", |_cap, _| {
                              let mut states = ::std::collections::HashMap::<usize, u64>::new();
                              let mut vector = Vec::new();
@@ -223,7 +223,7 @@ fn main() {
                 },
                 Backend::VectorNative => {
                     Some(input
-                         .unary_frontier(Exchange::new(move |(x, _)| *x as u64 & !(peers as u64 - 1)),
+                         .unary_frontier(Exchange::new(move |(x, _)| *x as u64),
                                          "WordCount", |_cap, _| {
                              let mut states = Vec::<u64>::new();
                              let mut vector = Vec::new();
@@ -318,7 +318,7 @@ fn main() {
 
         for i in index * key_space / peers .. (index + 1) * key_space / peers {
             input.as_mut().unwrap().send(word_generator.word_at(i));
-            if (i & 0xFFF) == 0 {
+            if (i & 0xFFFF) == 0 {
                 worker.step();
             }
         }
