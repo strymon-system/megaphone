@@ -170,18 +170,19 @@ def latency_breakdown_plots(results_dir, files, filtering):
                             break
                 print(median, file=sys.stderr)
                 duration = 0
+                last_vals = None
                 for vals in lines:
                     # print(vals, file=sys.stderr)
-                    if vals[0].startswith('summary_timeline'):
+                    if last_vals is not None and vals[0].startswith('summary_timeline'):
                         # print(vals, migration_start, migration_end, max_latency)
-                        print(vals, median, file=sys.stderr)
+                        # print(vals, median, file=sys.stderr)
                         if int(vals[3]) > 2 * median:
                             print(vals, file=sys.stderr)
-                            print(filename, file=sys.stderr)
                             for i in range(0, len(max_latency)):
                                 v = int(vals[i + 2])
                                 max_latency[i] = max(max_latency[i], v)
-                            duration += .25
+                            duration += int(vals[1]) - int(last_vals[1])
+                    last_vals = vals
 
                 if duration > 0:
                     experiment_data.append(dict(list({

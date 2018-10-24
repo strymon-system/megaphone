@@ -52,18 +52,51 @@ backend="" #"('backend', 'vec'), "
 for domain in "('domain', 256000000), " "('domain', 8192000000), "
 do
     plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]"
+         ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]" --table
 done
 
 rate="('rate', 2000000), "
 domain="('domain', 64000000), "
 plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]"
+     ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]" --table
+
+rate="('rate', 4000000), "
+final_config="('final_config', 'uniform_skew'), "
+bin_shift="('bin_shift', 12), "
+duration="('duration', 120), "
+backend="('backend', 'vec'), "
+
+
+#plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $rate $backend ]" migration domain
+
+rate="('rate', 2000000), "
+backend="('backend', 'hashmap'), "
+#plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $rate $backend ]" migration domain
 
 rate="('rate', 4000000), "
 final_config="('final_config', 'uniform_skew'), "
 bin_shift="('bin_shift', 12), "
 duration="('duration', 120), "
 
-plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $rate $backend ]" domain migration
+#plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $rate $backend ]" migration domain
+
+domain="('domain', 4096000000), "
+backend="('backend', 'vec'), "
+plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $domain $backend ]" migration rate
+
+backend="('backend', 'vec'), "
+for domain in "('domain', 256000000), " "('domain', 512000000), " "('domain', 1024000000), " "('domain', 2048000000), " "('domain', 4096000000), " "('domain', 8192000000), "
+do
+    true
+#    plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]"
+done
+
+backend="('backend', 'hashmap'), "
+for domain in "('domain', 8000000), " "('domain', 16000000), " "('domain', 32000000), " "('domain', 64000000), " "('domain', 128000000), "
+do
+    true
+#    plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]"
+done
 
 exit
 

@@ -80,8 +80,9 @@ if args.gnuplot:
         all_primary[get_key(config, args.primary_group)].append((config, ds))
         all_secondary[get_key(config, args.secondary_group)].append((config, ds))
 
-    if len(all_primary) <= 1 or len(all_secondary) <= 1:
-        print("nothing found")
+    if len(all_primary) < 1 or len(all_secondary) < 1:
+        print("nothing found", file=sys.stderr)
+        print("all_primary: {}, all_secondary={}".format(all_primary.keys(), all_secondary.keys()), file=sys.stderr)
         exit(0)
 
     all_headers.remove("experiment")

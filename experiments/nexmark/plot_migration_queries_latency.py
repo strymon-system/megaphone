@@ -11,6 +11,7 @@ parser.add_argument('results_dir')
 parser.add_argument('filtering')
 parser.add_argument('--json', action='store_true')
 parser.add_argument('--gnuplot', action='store_true')
+parser.add_argument('--table', action='store_true')
 parser.add_argument('--terminal', default="pdf")
 args = parser.parse_args()
 
@@ -33,6 +34,8 @@ if args.json:
     extension = "json"
 elif args.gnuplot:
     extension = "gnuplot"
+elif args.table:
+    extension = "tex"
 else:
     extension = "html"
 
@@ -47,6 +50,11 @@ chart_filename = get_chart_filename(extension)
 title = plot.kv_to_name(graph_filtering)
 
 if args.gnuplot:
+    def name(config):
+        config = dict(config)
+        if "native" in config.get('backend', ""):
+            return "Native"
+        return config.get("bin_shift", "UNKNOWN FIXME")
 
     # Generate dataset
     all_headers = set()
@@ -57,14 +65,13 @@ if args.gnuplot:
                 all_headers.add(k)
     # all_headers.remove("bin_shift")
     all_headers = sorted(all_headers)
-    graph_filtering_bin_shift = dict(graph_filtering)
 
     dataset_filename = get_chart_filename("dataset")
 
     with open(dataset_filename, 'w') as c:
         # print(" ".join(all_headers), file=c)
         for ds, config in zip(iter(data), iter(experiments)):
-            print("\"{}\"".format(plot.kv_to_name(config).replace("_", "\\\\_")), file=c)
+            print("\"{}\"".format(name(config)), file=c)
             for d in ds:
                 print(" ".join(map(plot.quote_str, [d[k] for k in all_headers])), file=c)
             print("\n", file=c)
@@ -81,7 +88,7 @@ if args.gnuplot:
             title = "{}\\n{}".format(title[:idx], title[idx:])
     with open(chart_filename, 'w') as c:
         print("""\
-set terminal {gnuplot_terminal} font \"LinuxLibertine, 10\"
+set terminal {gnuplot_terminal} font \"LinuxLibertine, 14\"
 set logscale x
 set logscale y
 
@@ -93,7 +100,7 @@ set yrange [.0001:1]
 
 set xlabel "Latency [ns]"
 set ylabel "CCDF"
-set title "{title}"
+#set title "{title}"
 
 set key outside right
 
@@ -107,6 +114,43 @@ plot for [i=0:(STATS_blocks - 1)] '{dataset_filename}' using {latency_index}:{cc
                    ccdf_index=ccdf_index,
                    title=title.replace("_", "\\\\_"),
                    ), file=c)
+elif args.table:
+    tex_filename = get_chart_filename(extension)
+
+    with open(tex_filename, 'w') as c:
+        def name(config):
+            config = dict(config)
+            if "native" in config.get('backend', ""):
+                return "Native"
+            return config.get("bin_shift", "UNKNOWN FIXME")
+
+        def format_lat(d, c):
+            print("& {} ".format(round(d['latency']/1000000, 2)), file=c)
+
+
+        # print(" ".join(all_headers), file=c)
+
+        print("Experiment & 90\\% & 99\\% & 99.99\\% & max \\tabularnewline", file=c)
+
+        for ds, config in zip(iter(data), iter(experiments)):
+            # print(config, file=sys.stderr)
+            print("{} ".format(name(config)), file=c)
+            for d in ds:
+                if d['ccdf'] <= 0.1:
+                    format_lat(d, c)
+                    break
+            for d in ds:
+                if d['ccdf'] <= 0.01:
+                    format_lat(d, c)
+                    break
+            for d in ds:
+                if d['ccdf'] <= 0.001:
+                    format_lat(d, c)
+                    break
+            format_lat(ds[-1], c)
+
+        # print(" ".join(map(plot.quote_str, [d[k] for k in all_headers])), file=c)
+            print("\\tabularnewline\n", file=c)
 
 else: # json or html
     vega_lite = {
