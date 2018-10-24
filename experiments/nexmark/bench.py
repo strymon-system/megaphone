@@ -138,7 +138,10 @@ class Experiment(object):
             eprint("writing migration pattern to {}".format(migration_pattern_file_name))
             pattern_generator = PatternGenerator(pattern, initial_config, final_config)
             pattern_generator.write_pattern(f, pattern_generator._initial_pattern, 0)
-            pattern_generator.write(f, self._duration / 2 * 1000000000)
+            pattern_generator.write(f, int(1 * self._duration / 3 * 1000000000))
+            pattern_generator = PatternGenerator(pattern, final_config, initial_config)
+            pattern_generator.write(f, int(2 * self._duration / 3 * 1000000000))
+
 
         hostfile_file_name = self.get_setup_file_name("hostfile")
         with open(hostfile_file_name, 'w') as f:
