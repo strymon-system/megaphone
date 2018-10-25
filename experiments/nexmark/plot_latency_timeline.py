@@ -65,7 +65,7 @@ if args.gnuplot:
             for k in d.keys():
                 all_headers.add(k)
             all_percentiles.add(d["p"])
-            all_migrations.add(d["migration"])
+            all_migrations.add(d.get("migration", None))
     all_headers.remove("experiment")
     all_headers = sorted(all_headers)
 
@@ -91,7 +91,7 @@ if args.gnuplot:
                 migration_to_index[get_key(config, "migration")].append(index)
                 config_with_p = config + [('p', p)]
                 all_configs.append(config_with_p)
-                print("\"{}\"".format(plot.kv_to_name(config_with_p).replace("_", "\\\\_")), file=c)
+                print("\"{}\"".format(plot.kv_to_name([('p', p)]).replace("_", "\\\\_")), file=c)
                 for d in ds:
                     if d["p"] == p:
                         print(" ".join(map(plot.quote_str, [d[k] for k in all_headers])), file=c)
@@ -112,7 +112,7 @@ if args.gnuplot:
             title = "{}\\n{}".format(title[:idx], title[idx:])
     with open(chart_filename, 'w') as c:
         print("""\
-set terminal {gnuplot_terminal} font \"LinuxLibertine, 10\"
+set terminal {gnuplot_terminal} font \"LinuxLibertine, 14\"
 set logscale y
 
 set format y "10^{{%T}}"
@@ -120,11 +120,11 @@ set grid xtics ytics
 
 # set ylabel "Latency [ns]"
 set xlabel "Time"
+set xtics 10
 
-set xrange [{duration}*.45:{duration}*.95]
+set xrange [{duration}*.64:{duration}*.92]
 
-set key out vert
-set key bottom center
+set key at screen .5, screen 0.05 center bottom maxrows 1 maxcols 10 
 # unset key
 
 set output '{gnuplot_out_filename}'
@@ -132,7 +132,8 @@ stats '{dataset_filename}' using {latency_index} nooutput
 if (STATS_blocks == 0) exit
 set for [i=1:STATS_blocks] linetype i dashtype i
 set yrange [10**floor(log10(STATS_min)): 10**ceil(log10(STATS_max))]
-set multiplot layout 1, {num_plots} title "{title}"
+set bmargin at screen 0.25
+set multiplot layout 1, {num_plots} #title "{title}"
         """.format(dataset_filename=dataset_filename,
                    gnuplot_terminal=gnuplot_terminal,
                    gnuplot_out_filename=gnuplot_out_filename,
@@ -143,12 +144,14 @@ set multiplot layout 1, {num_plots} title "{title}"
                    num_plots=len(migration_to_index)
                    ), file=c)
 
-        for key in sorted(migration_to_index):
+        for key in sorted(migration_to_index, reverse=True):
             print("""\
 set title "{key}"
-plot for [i in "{indexes}"] '{dataset_filename}' using {time_index}:{latency_index} index (i+0) title columnheader(1) with lines
+plot for [i in "{indexes}"] '{dataset_filename}' using {time_index}:{latency_index} index (i+0) title columnheader(1) with lines linewidth 1
+unset key
+set format y ''; unset ylabel
             """.format(key=key,
-                       indexes=" ".join(map(str, migration_to_index[key])),
+                       indexes=" ".join(map(str, sorted(migration_to_index[key], reverse=True))),
                        dataset_filename=dataset_filename,
                        time_index=time_index,
                        latency_index=latency_index

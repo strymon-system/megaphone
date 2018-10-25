@@ -128,6 +128,7 @@ if args.gnuplot:
     duration_index = all_headers.index("migration_duration") + 1
     p_index = all_headers.index("max_p_1") + 1
     p50_index = all_headers.index("max_p_.5") + 1
+    filtered_p_index = all_headers.index("filtered_max_p_1") + 1
     # fix long titles
     if len(title) > 79:
         idx = title.find(" ", int(len(title) / 2))
@@ -135,7 +136,7 @@ if args.gnuplot:
             title = "{}\\n{}".format(title[:idx], title[idx:])
     with open(chart_filename, 'w') as c:
         print("""\
-set terminal {gnuplot_terminal} font \"LinuxLibertine, 10\" dashed #size 3, 3
+set terminal {gnuplot_terminal} font \"LinuxLibertine, 16\" dashed #size 3, 3
 set logscale y
 set logscale x
 
@@ -150,25 +151,34 @@ set key right center
 set size square
 # unset key
 
+# set xrange [10**7:10**11]
+
 set output '{gnuplot_out_filename}'
 stats '{dataset_filename}' using 0 nooutput
 if (STATS_blocks == 0) exit
 set for [i=1:STATS_blocks] linetype i dashtype i
 # set for [i=1:STATS_blocks] linetype i dashtype i
-set title "{title}"
+# set title "{title}"
 # set yrange [10**floor(log10(STATS_min)): 10**ceil(log10(STATS_max))]
+set yrange [10**9:10**11]
+set xrange [10**7: 10**11]
 plot for [i={index}:*] '{dataset_filename}' using {p_index}:{duration_index} index (i+0) with points title columnheader(1), \\
  for [i=0:{index}-1] '' using {p_index}:{duration_index} index (i+0) with lines title columnheader(1)
 
-set xlabel "50% latency [ns]"
-plot for [i={index}:*] '{dataset_filename}' using {p50_index}:{duration_index} index (i+0) with points title columnheader(1), \\
- for [i=0:{index}-1] '' using {p50_index}:{duration_index} index (i+0) with lines title columnheader(1)
+# set xlabel "50% latency [ns]"
+# plot for [i={index}:*] '{dataset_filename}' using {p50_index}:{duration_index} index (i+0) with points title columnheader(1), \\
+#  for [i=0:{index}-1] '' using {p50_index}:{duration_index} index (i+0) with lines title columnheader(1)
+
+set xlabel "Filtered max latency [ns]"
+plot for [i={index}:*] '{dataset_filename}' using {filtered_p_index}:{duration_index} index (i+0) with points title columnheader(1), \\
+ for [i=0:{index}-1] '' using {filtered_p_index}:{duration_index} index (i+0) with lines title columnheader(1)
         """.format(dataset_filename=dataset_filename,
                    gnuplot_terminal=gnuplot_terminal,
                    gnuplot_out_filename=gnuplot_out_filename,
                    duration_index=duration_index,
                    p_index=p_index,
                    p50_index=p50_index,
+                   filtered_p_index=filtered_p_index,
                    title=title.replace("_", "\\\\_"),
                    duration=duration,
                    num_plots=len(migration_to_index),

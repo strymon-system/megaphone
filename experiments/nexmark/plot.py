@@ -133,7 +133,8 @@ def latency_timeline_plots(results_dir, files, filtering):
         try:
             with open("{}/{}/stdout.0".format(results_dir, filename), 'r') as f:
                 for vals in [x.split('\t')[1:] for x in f.readlines() if x.startswith('summary_timeline')]:
-                    for p, l in [(.25, 1), (.5, 2), (.75, 3), (.99, 4), (.999, 5), (1, 6)]:
+                    # for p, l in [(.25, 1), (.5, 2), (.75, 3), (.99, 4), (.999, 5), (1, 6)]:
+                    for p, l in [(.25, 1), (.5, 2), (.99, 4), (1, 6)]:
                         experiment_data.append(dict(list({
                                                              "time": float(vals[0]) / 1000000000,
                                                              "latency": int(vals[l]),
@@ -160,29 +161,45 @@ def latency_breakdown_plots(results_dir, files, filtering):
         experiment_data = []
         try:
             with open("{}/{}/stdout.0".format(results_dir, filename), 'r') as f:
+                filtered_max_latency = [0 for _ in range(6)]
                 max_latency = [0 for _ in range(6)]
                 lines = [x.strip().split('\t') for x in f.readlines()]
                 median = "undef"
                 for vals in lines:
                     if vals[0].startswith('latency_ccdf'):
-                        if float(vals[2]) <= 0.5:
+                        if float(vals[2]) <= 0.7:
                             median = int(vals[1])
                             break
                 print(median, file=sys.stderr)
                 duration = 0
                 last_vals = None
+                ignore_count = 2
+                last_was_migrating = False
+                cached_vals = []
                 for vals in lines:
-                    # print(vals, file=sys.stderr)
-                    if last_vals is not None and vals[0].startswith('summary_timeline'):
-                        # print(vals, migration_start, migration_end, max_latency)
-                        # print(vals, median, file=sys.stderr)
-                        if int(vals[3]) > 2 * median:
-                            print(vals, file=sys.stderr)
-                            for i in range(0, len(max_latency)):
-                                v = int(vals[i + 2])
-                                max_latency[i] = max(max_latency[i], v)
-                            duration += int(vals[1]) - int(last_vals[1])
-                    last_vals = vals
+                    if vals[0].startswith('summary_timeline'):
+                        # print(vals, file=sys.stderr)
+                        if last_vals is not None: # and int(vals[1]) * 2 > int(lines[-1][1]):
+                            # print(vals, migration_start, migration_end, max_latency)
+                            # print(vals, median, file=sys.stderr)
+                            if int(vals[3]) > 2 * median:
+                                last_was_migrating = True
+                                if ignore_count == 0:
+                                    # print(vals, file=sys.stderr)
+                                    for i in range(0, len(max_latency)):
+                                        v = int(vals[i + 2])
+                                        filtered_max_latency[i] = max(filtered_max_latency[i], v)
+                                else:
+                                    ignore_count -= 1
+                                    cached_vals.append(vals)
+                                for i in range(0, len(max_latency)):
+                                    v = int(vals[i + 2])
+                                    max_latency[i] = max(max_latency[i], v)
+                                duration += int(vals[1]) - int(last_vals[1])
+                            elif last_was_migrating:
+                                ignore_count = 2
+                                last_was_migrating = False
+                        last_vals = vals
 
                 if duration > 0:
                     experiment_data.append(dict(list({
@@ -193,6 +210,12 @@ def latency_breakdown_plots(results_dir, files, filtering):
                              "max_p_.99": max_latency[3],
                              "max_p_.999": max_latency[4],
                              "max_p_1": max_latency[5],
+                             "filtered_max_p_.25": filtered_max_latency[0],
+                             "filtered_max_p_.5": filtered_max_latency[1],
+                             "filtered_max_p_.75": filtered_max_latency[2],
+                             "filtered_max_p_.99": filtered_max_latency[3],
+                             "filtered_max_p_.999": filtered_max_latency[4],
+                             "filtered_max_p_1": filtered_max_latency[5],
                             "experiment": "m: {}, r: {}, f: {}".format(experiment_dict.get('migration', "?"), experiment_dict.get('rate', 0), experiment_dict.get('fake_stateful', False)),
                          }.items()) + list(experiment_dict.items())))
                     data.append(experiment_data)

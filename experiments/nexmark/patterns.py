@@ -43,7 +43,6 @@ class FluidMigrationPattern(MigrationPattern):
         current_map = self._current_map
         for (i, (src, dst)) in enumerate(zip(current_map, self._target_map)):
             if src != dst:
-                current_map[i] = dst
                 yield ("diff", {i: dst})
 
 class BatchedFluidMigrationPattern(MigrationPattern):

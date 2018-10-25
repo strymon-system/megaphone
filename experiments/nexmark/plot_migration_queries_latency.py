@@ -97,6 +97,7 @@ set format y "10^{{%T}}"
 set grid xtics ytics
 
 set yrange [.0001:1]
+set xrange [500000:2000000000]
 
 set xlabel "Latency [ns]"
 set ylabel "CCDF"
@@ -106,7 +107,9 @@ set key outside right
 
 set output '{gnuplot_out_filename}'
 stats '{dataset_filename}' using 0 nooutput
-plot for [i=0:(STATS_blocks - 1)] '{dataset_filename}' using {latency_index}:{ccdf_index} index i title columnheader(1) with linespoints
+if (STATS_blocks == 0) exit
+set for [i=1:STATS_blocks] linetype i dashtype i
+plot for [i=0:(STATS_blocks - 1)] '{dataset_filename}' using {latency_index}:{ccdf_index} index i title columnheader(1) with lines linewidth 2
         """.format(dataset_filename=dataset_filename,
                    gnuplot_terminal=gnuplot_terminal,
                    gnuplot_out_filename=gnuplot_out_filename,
