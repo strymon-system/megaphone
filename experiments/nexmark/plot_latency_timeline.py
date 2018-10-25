@@ -112,7 +112,7 @@ if args.gnuplot:
             title = "{}\\n{}".format(title[:idx], title[idx:])
     with open(chart_filename, 'w') as c:
         print("""\
-set terminal {gnuplot_terminal} font \"LinuxLibertine, 14\"
+set terminal {gnuplot_terminal} font \"LinuxLibertine, 16\"
 set logscale y
 
 set format y "10^{{%T}}"
@@ -122,9 +122,9 @@ set grid xtics ytics
 set xlabel "Time"
 set xtics 10
 
-set xrange [{duration}*.64:{duration}*.92]
+set xrange [{duration}*.56:{duration}*.99]
 
-set key at screen .5, screen 0.05 center bottom maxrows 1 maxcols 10 
+set key at screen .5, screen 0.01 center bottom maxrows 1 maxcols 10 
 # unset key
 
 set output '{gnuplot_out_filename}'
@@ -132,7 +132,7 @@ stats '{dataset_filename}' using {latency_index} nooutput
 if (STATS_blocks == 0) exit
 set for [i=1:STATS_blocks] linetype i dashtype i
 set yrange [10**floor(log10(STATS_min)): 10**ceil(log10(STATS_max))]
-set bmargin at screen 0.25
+set bmargin at screen 0.24
 set multiplot layout 1, {num_plots} #title "{title}"
         """.format(dataset_filename=dataset_filename,
                    gnuplot_terminal=gnuplot_terminal,
