@@ -415,7 +415,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
                     consume1(&mut states1, time, RefOrMut::Mut(&mut data), &mut output_handle);
                 }
 
-                for (time, mut data) in notificator2.next(&[&frontiers[0], &frontiers[1]]) {
+                for (time, mut data) in notificator2.next(&[&frontiers[2], &frontiers[3]]) {
                     consume2(&mut states2, time, RefOrMut::Mut(&mut data), &mut output_handle);
                 }
 
