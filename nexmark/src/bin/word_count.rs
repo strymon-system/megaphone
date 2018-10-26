@@ -311,20 +311,49 @@ fn main() {
                 }
                 control_sequence += 1;
             }
-
-            control_input.advance_to(1);
         }
-        worker.step();
 
-        for i in index * key_space / peers .. (index + 1) * key_space / peers {
-            input.as_mut().unwrap().send(word_generator.word_at(i));
-            if (i & 0xFFFF) == 0 {
-                worker.step();
+        let mut count: usize = 0;
+
+        if let Some(input) = input.as_mut() {
+            match backend {
+                Backend::Vector => {
+                    let max_number = (key_space >> ::dynamic_scaling_mechanism::BIN_SHIFT).next_power_of_two();
+                    println!("max_number: {}", max_number);
+                    let bin_count = 1 << ::dynamic_scaling_mechanism::BIN_SHIFT;
+                    for bin in index * bin_count / peers..(index + 1) * bin_count / peers {
+                        let number = word_generator.word_at((max_number << ::dynamic_scaling_mechanism::BIN_SHIFT) + bin);
+                        assert!(number < 2 * key_space);
+                        input.send(number);
+                    }
+                    input.advance_to(count);
+                    if let Some(control_input) = control_input.as_mut() {
+                        control_input.advance_to(count);
+                    }
+                    while probe.less_than(&RootTimestamp::new(count)) { worker.step(); }
+                    count += 1;
+                },
+                _ => {
+                    for i in index * key_space / peers..(index + 1) * key_space / peers {
+                        input.send(word_generator.word_at(key_space - i - 1));
+                        if (i & 0xFFF) == 0 {
+                            input.advance_to(count);
+                            if let Some(control_input) = control_input.as_mut() {
+                                control_input.advance_to(count);
+                            }
+                            while probe.less_than(&RootTimestamp::new(count)) { worker.step(); }
+                            count += 1;
+                        }
+                    }
+                }
             }
         }
-
-        input.as_mut().unwrap().advance_to(1);
-        while probe.less_than(&RootTimestamp::new(1)) { worker.step(); }
+        count += 1;
+        input.as_mut().unwrap().advance_to(count);
+        if let Some(control_input) = control_input.as_mut() {
+            control_input.advance_to(count);
+        }
+        while probe.less_than(&RootTimestamp::new(count)) { worker.step(); }
         eprintln!("Loading done");
 
         let timer = ::std::time::Instant::now();
@@ -336,19 +365,19 @@ fn main() {
         loop {
             let elapsed_ns = timer.elapsed().to_nanos();
             let wait_ns = last_ns;
-            let target_ns = (elapsed_ns + 1) / 1_000_000 * 1_000_000 + 2;
+            let target_ns = (elapsed_ns + 1) / 1_000_000 * 1_000_000;
             last_ns = target_ns;
 
             if index == 0 {
                 if let Some(control_input) = control_input.as_mut() {
                     if last_migrated.map_or(true, |time| control_input.time().inner != time)
-                        && instructions.get(0).map(|&(ts, _)| ts <= control_input.time().inner as u64).unwrap_or(false)
+                        && instructions.get(0).map(|&(ts, _)| ts as usize + count <= control_input.time().inner).unwrap_or(false)
                     {
                         let (ts, ctrl_instructions) = instructions.remove(0);
                         let count = ctrl_instructions.len();
 
-                        if control_input.time().inner < ts as usize {
-                            control_input.advance_to(ts as usize);
+                        if control_input.time().inner < ts as usize + count {
+                            control_input.advance_to(ts as usize + count);
                         }
 
                         println!("control_time\t{}", control_input.time().inner);
@@ -370,7 +399,7 @@ fn main() {
             output_metric_collector.acknowledge_while(
                 elapsed_ns,
                 |t| {
-                    !probe.less_than(&RootTimestamp::new(t as usize))
+                    !probe.less_than(&RootTimestamp::new(t as usize + count))
                 });
 
             if input.is_none() {
@@ -382,10 +411,10 @@ fn main() {
                 for _t in it {
                     input.send(word_generator.word_rand());
                 }
-                input.advance_to(target_ns as usize);
+                input.advance_to(target_ns as usize + count);
                 if let Some(control_input) = control_input.as_mut() {
-                    if control_input.time().inner < target_ns as usize {
-                        control_input.advance_to(target_ns as usize);
+                    if control_input.time().inner < target_ns as usize + count {
+                        control_input.advance_to(target_ns as usize + count);
                     }
                 }
             } else {
@@ -395,7 +424,7 @@ fn main() {
 
             if input.is_some() {
                 worker.step();
-                while probe.less_than(&RootTimestamp::new(wait_ns as usize)) { worker.step(); }
+                while probe.less_than(&RootTimestamp::new(wait_ns as usize + count)) { worker.step(); }
             } else {
                 while worker.step() { }
             }

@@ -9,7 +9,7 @@ pub enum ExperimentMapMode {
     None,
     Sudden,
     //    OneByOne,
-//    Fluid,
+    Fluid,
     File(String),
 }
 
@@ -21,7 +21,7 @@ impl ::std::str::FromStr for ExperimentMapMode {
             "none" => ExperimentMapMode::None,
             "sudden" => ExperimentMapMode::Sudden,
 //            "one-by-one" => ExperimentMapMode::OneByOne,
-//            "fluid" => ExperimentMapMode::Fluid,
+            "fluid" => ExperimentMapMode::Fluid,
             file_name => ExperimentMapMode::File(file_name.to_string()),
         };
         Ok(map_mode)
@@ -57,6 +57,23 @@ impl ExperimentMapMode {
 //                    }
                 };
                 Ok(vec![(duration_ns/3, vec![ControlInst::Map(initial_map)]), (2*duration_ns/3, vec![ControlInst::Map(map)])])
+            },
+            ExperimentMapMode::Fluid => {
+                let mut map = vec![0; 1 << ::dynamic_scaling_mechanism::BIN_SHIFT];
+                // TODO(moritzo) HAAAACCCCKKK
+                if peers != 2 {
+                    for (i, v) in map.iter_mut().enumerate() {
+                        *v = ((i / 2) * 2 + (i % 2) * peers / 2) % peers;
+                    }
+                }
+                let initial_map = map.clone();
+                let mut configurations = Vec::new();
+                configurations.push((duration_ns / 3, vec![ControlInst::Map(initial_map)]));
+                for i in 0..map.len() {
+                    map[i] = i % peers;
+                    configurations.push((2 * duration_ns / 3, vec![ControlInst::Move(::dynamic_scaling_mechanism::BinId::new(i), i % peers)]));
+                };
+                Ok(configurations)
             },
             ExperimentMapMode::File(migrations_file) => {
                 let f = ::std::fs::File::open(migrations_file).map_err(|e| e.to_string())?;
