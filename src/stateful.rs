@@ -295,16 +295,9 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                     let mut state = states.bins[bin].take().expect("Instructed to move bin but it is None");
                                     let Bin { data, notificator } = state;
                                     session.give((*new, StateProtocol::Prepare(BinId(bin))));
-                                    let mut state_iter = data.into_iter();
-                                    let mut count = 0;
-                                    while let Some(e) = state_iter.next() {
-                                        let mut chunk = Vec::with_capacity(1024);
-                                        chunk.push(e);
-                                        chunk.extend((&mut state_iter).take(1023));
-                                        session.give((*new, StateProtocol::State(BinId(bin), chunk)));
-                                        count += 1024;
-                                    }
-                                    println!("migration\t{}\t{}\t{}\t{}", bin, old, new, count);
+                                    let chunk: Vec<_> = data.into_iter().collect();
+                                    println!("migration\t{}\t{}\t{}\t{}", bin, old, new, chunk.len());
+                                    session.give((*new, StateProtocol::State(BinId(bin), chunk)));
                                     session.give_iterator(notificator.pending().into_iter().map(|(t, d)| (*new, StateProtocol::Pending(BinId(bin), t, d))));
                                 }
                             }
