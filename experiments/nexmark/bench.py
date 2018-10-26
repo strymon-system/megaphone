@@ -604,7 +604,7 @@ def sigmod_micro_no_migr(group, groups=1):
 
     # HASHMAP
     rate = 2 * 1000000
-    for domain in [1000000 * x for x in [64]]:
+    for domain in [1000000 * x for x in [256]]:
         for bin_shift in range(int(math.log2(workers * processes)), 21, 2):
             experiment = Experiment(
                 "sigmod_migro_no_migr_hashmap",
@@ -664,12 +664,12 @@ def sigmod_micro_no_migr(group, groups=1):
 def sigmod_micro_migr(group, groups=1):
     workers = 4
     processes = 4
-    duration = 120
+    duration = 240
     bin_shift = 12
 
     # VEC
     rate = 4 * 1000000
-    for domain in [1000000 * x for x in [256, 512, 1024, 2048, 4096, 8192]]:
+    for domain in [1000000 * x for x in [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]]:
         for migration in ["sudden", "fluid", "batched"]:
             experiment = Experiment(
                 "sigmod_migro_migr_vec",
@@ -691,7 +691,7 @@ def sigmod_micro_migr(group, groups=1):
 
     # HASHMAP
     rate = 2 * 1000000
-    for domain in [1000000 * x for x in [8, 16, 32, 64, 128]]:
+    for domain in [1000000 * x for x in [32, 64, 128, 256, 512]]:
         for migration in ["sudden", "fluid", "batched"]:
             experiment = Experiment(
                 "sigmod_migro_migr_hashmap",
@@ -736,7 +736,7 @@ def sigmod_micro_migr(group, groups=1):
 
     # HASHMAP
     rate = 2 * 1000000
-    domain = 64 * 1000000
+    domain = 128 * 1000000
     for bin_shift in range(int(math.log2(workers * processes)), 15, 2):
         for migration in ["sudden", "fluid", "batched"]:
             experiment = Experiment(
@@ -760,24 +760,44 @@ def sigmod_micro_migr(group, groups=1):
 def sigmod_nx(group, groups=1):
     workers = 4
     processes = 4
-    duration = 120
+    duration = 600
     bin_shift = 12
 
-    queries = ["q3", "q3-flex", "q4", "q4-flex", "q5", "q5-flex", "q6", "q6-flex", "q7", "q7-flex", "q8", "q8-flex"]
+    queries_native = ["q3", "q4", "q5", "q6", "q7", "q8"]
+    queries_flex = ["q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
 
-    rate = 1000000
-    migration = "batched"
-    for query in queries:
+    rate = 2000000
+
+    for migration in ["batched", "sudden"]:
+        for query in queries_flex:
+            experiment = Experiment(
+                "sigmod_nx",
+                binary="timely",
+                duration=duration,
+                rate=rate,
+                queries=query,
+                migration=migration,
+                bin_shift=bin_shift,
+                workers=workers,
+                processes=processes,
+                initial_config="uniform",
+                final_config="uniform_skew",
+                fake_stateful=False,
+                machine_local=False,
+                time_dilation=1)
+            experiment.base_machine_id = group*groups + 1
+            experiment.run_commands(run, build)
+    for query in queries_native:
         experiment = Experiment(
             "sigmod_nx",
             binary="timely",
             duration=duration,
             rate=rate,
+            migration="sudden",
             queries=query,
-            migration=migration,
             bin_shift=bin_shift,
             workers=workers,
-            processes=4,
+            processes=processes,
             initial_config="uniform",
             final_config="uniform_skew",
             fake_stateful=False,
@@ -788,17 +808,17 @@ def sigmod_nx(group, groups=1):
 
     time_dilation = int(12*60*60/(duration * 2)*1.1)
     dilated_rate = int(rate / time_dilation)
-    for query in queries:
+    for query in queries_native:
         experiment = Experiment(
             "sigmod_nx_td",
             binary="timely",
             duration=duration,
             rate=dilated_rate,
+            migration="sudden",
             queries=query,
-            migration=migration,
             bin_shift=bin_shift,
             workers=workers,
-            processes=4,
+            processes=processes,
             initial_config="uniform",
             final_config="uniform_skew",
             fake_stateful=False,
@@ -806,3 +826,22 @@ def sigmod_nx(group, groups=1):
             time_dilation=time_dilation)
         experiment.base_machine_id = group*groups + 1
         experiment.run_commands(run, build)
+    for migration in ["batched", "sudden"]:
+        for query in queries_flex:
+            experiment = Experiment(
+                "sigmod_nx_td",
+                binary="timely",
+                duration=duration,
+                rate=dilated_rate,
+                queries=query,
+                migration=migration,
+                bin_shift=bin_shift,
+                workers=workers,
+                processes=processes,
+                initial_config="uniform",
+                final_config="uniform_skew",
+                fake_stateful=False,
+                machine_local=False,
+                time_dilation=time_dilation)
+            experiment.base_machine_id = group*groups + 1
+            experiment.run_commands(run, build)
