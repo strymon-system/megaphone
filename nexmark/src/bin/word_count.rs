@@ -362,6 +362,8 @@ fn main() {
 
         let mut last_ns = 0;
 
+        let mut migration_separation = 0;
+
         loop {
             let elapsed_ns = timer.elapsed().to_nanos();
             let wait_ns = last_ns;
@@ -373,21 +375,26 @@ fn main() {
                     if last_migrated.map_or(true, |time| control_input.time().inner != time)
                         && instructions.get(0).map(|&(ts, _)| ts as usize + count <= control_input.time().inner).unwrap_or(false)
                     {
-                        let (ts, ctrl_instructions) = instructions.remove(0);
-                        let count = ctrl_instructions.len();
+                        if migration_separation == 0 {
+                            let (ts, ctrl_instructions) = instructions.remove(0);
+                            let count = ctrl_instructions.len();
 
-                        if control_input.time().inner < ts as usize + count {
-                            control_input.advance_to(ts as usize + count);
+                            if control_input.time().inner < ts as usize + count {
+                                control_input.advance_to(ts as usize + count);
+                            }
+
+                            println!("control_time\t{}", control_input.time().inner);
+
+                            for instruction in ctrl_instructions {
+                                control_input.send(Control::new(control_sequence, count, instruction));
+                            }
+
+                            control_sequence += 1;
+                            last_migrated = Some(control_input.time().inner);
+                            migration_separation = 2;
+                        } else {
+                            migration_separation -= 1;
                         }
-
-                        println!("control_time\t{}", control_input.time().inner);
-
-                        for instruction in ctrl_instructions {
-                            control_input.send(Control::new(control_sequence, count, instruction));
-                        }
-
-                        control_sequence += 1;
-                        last_migrated = Some(control_input.time().inner);
                     }
                 }
 
