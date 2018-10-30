@@ -40,8 +40,8 @@ where
         where
             V2: ExchangeData+Eq,
     {
-        self.stateful_binary(&control, other, |t| calculate_hash(&t.0), |t| calculate_hash(&t.0), name, |time, data, bin1: &mut Bin<_, HashMap<K, V>, _>, bin2: &mut Bin<_, HashMap<K, Vec<V2>>, _>, output| {
-            let mut session = output.session(&time);
+        self.stateful_binary(&control, other, |t| calculate_hash(&t.0), |t| calculate_hash(&t.0), name, |cap, time, data, bin1: &mut Bin<_, HashMap<K, V>, _>, bin2: &mut Bin<_, HashMap<K, Vec<V2>>, _>, output| {
+            let mut session = output.session(&cap);
             let bin: &mut HashMap<_, _> = bin2.state();
             for (key, value) in data {
                 if let Some(mut d2) = bin.remove(&key) {
@@ -49,8 +49,8 @@ where
                 }
                 bin1.state().insert(key.clone(), value.clone());
             };
-        }, |time, data, bin1, bin2, output| {
-            let mut session = output.session(&time);
+        }, |cap, time, data, bin1, bin2, output| {
+            let mut session = output.session(&cap);
             let state1 = bin1.state();
             let state2 = bin2.state();
             for (key, value) in data {

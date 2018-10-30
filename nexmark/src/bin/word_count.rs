@@ -181,15 +181,16 @@ fn main() {
                          .unary_frontier(Exchange::new(move |(x, _)| *x as u64),
                                          "WordCount", |_cap, _| {
                              let mut states = ::std::collections::HashMap::<usize, u64>::new();
-                             let mut vector = Vec::new();
                              let mut notificator = dynamic_scaling_mechanism::notificator::TotalOrderFrontierNotificator::new();
                              move |input, output| {
                                  while let Some((time, data)) = input.next() {
+                                     let mut vector = Vec::new();
                                      data.swap(&mut vector);
-                                     notificator.notify_at_data(time.retain(), vector.drain(..));
+                                     let cap = time.retain();
+                                     notificator.notify_at_data(&cap, cap.time().clone(), vector);
                                  }
-                                 notificator.for_each_data(&[input.frontier], |time, mut vec, _| {
-                                     let mut session = output.session(&time);
+                                 notificator.for_each_data(&[input.frontier], |cap, time, mut vec, _| {
+                                     let mut session = output.session(&cap);
                                      for (key, val) in vec.drain(..) {
                                          let entry = states.entry(key).or_insert(0);
                                          *entry += val;
@@ -206,8 +207,9 @@ fn main() {
             let vec_output = match backend {
                 Backend::Vector => {
                     Some(input
-                        .stateful_unary(&control, move |(k, _v)| (*k as u64) << (64 - ::dynamic_scaling_mechanism::BIN_SHIFT), "StateMachine", move |time, data, bin, output| {
-                            let mut session = output.session(&time);
+                        .stateful_unary(&control, move |(k, _v)| (*k as u64) << (64 - ::dynamic_scaling_mechanism::BIN_SHIFT), "StateMachine", move |cap, time, data, bin, output| {
+                            let cap = cap.delayed(&time);
+                            let mut session = output.session(&cap);
                             let states: &mut Vec<u64> = bin.state();
                             for (key, val) in data {
                                 let states_len = states.len();
@@ -226,15 +228,17 @@ fn main() {
                          .unary_frontier(Exchange::new(move |(x, _)| *x as u64),
                                          "WordCount", |_cap, _| {
                              let mut states = Vec::<u64>::new();
-                             let mut vector = Vec::new();
                              let mut notificator = dynamic_scaling_mechanism::notificator::TotalOrderFrontierNotificator::new();
                              move |input, output| {
                                  while let Some((time, data)) = input.next() {
+                                     let mut vector = Vec::new();
                                      data.swap(&mut vector);
-                                     notificator.notify_at_data(time.retain(), vector.drain(..));
+                                     let cap = time.retain();
+                                     notificator.notify_at_data(&cap, cap.time().clone(), vector);
                                  }
-                                 notificator.for_each_data(&[input.frontier], |time, mut vec, _| {
-                                     let mut session = output.session(&time);
+                                 notificator.for_each_data(&[input.frontier], |cap, time, mut vec, _| {
+                                     let cap = cap.delayed(&time);
+                                     let mut session = output.session(&cap);
                                      for (key, val) in vec.drain(..) {
                                          let states_len = states.len();
                                          let position = key / peers;
