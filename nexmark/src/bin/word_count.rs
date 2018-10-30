@@ -354,7 +354,7 @@ fn main() {
             control_input.advance_to(count);
         }
         while probe.less_than(&RootTimestamp::new(count)) { worker.step(); }
-        eprintln!("Loading done");
+        println!("loading_done");
 
         let timer = ::std::time::Instant::now();
 
