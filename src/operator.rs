@@ -188,7 +188,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
 //                    }
                 }
 
-                for (time, mut keyed_data) in notificator.next(&[&frontiers[0], &frontiers[1]]) {
+                while let Some((time, mut keyed_data)) = notificator.next(&[&frontiers[0], &frontiers[1]]) {
                     keyed_data.sort_by_key(|&(key_id, _)| states.key_to_bin(key_id));
                     for (key_id, d) in keyed_data.drain(..) {
                         notif_key_buffer.push(key_id);
@@ -277,7 +277,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
 //                    }
                 }
 
-                for (time, mut data) in notificator.next(&[&frontiers[0], &frontiers[1]]) {
+                while let Some((time, mut data)) = notificator.next(&[&frontiers[0], &frontiers[1]]) {
                     consume(&mut states, time, RefOrMut::Mut(&mut data), &mut output_handle);
                 }
 
@@ -411,11 +411,11 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
                     notificator2.notify_at_data(time.retain(), data2_buffer.drain(..));
                 }
 
-                for (time, mut data) in notificator1.next(&[&frontiers[0], &frontiers[1]]) {
+                while let Some((time, mut data)) = notificator1.next(&[&frontiers[0], &frontiers[1]]) {
                     consume1(&mut states1, time, RefOrMut::Mut(&mut data), &mut output_handle);
                 }
 
-                for (time, mut data) in notificator2.next(&[&frontiers[2], &frontiers[3]]) {
+                while let Some((time, mut data)) = notificator2.next(&[&frontiers[2], &frontiers[3]]) {
                     consume2(&mut states2, time, RefOrMut::Mut(&mut data), &mut output_handle);
                 }
 
