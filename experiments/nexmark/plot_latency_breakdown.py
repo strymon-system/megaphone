@@ -160,8 +160,8 @@ set for [i=1:STATS_blocks] linetype i dashtype i
 # set for [i=1:STATS_blocks] linetype i dashtype i
 # set title "{title}"
 # set yrange [10**floor(log10(STATS_min)): 10**ceil(log10(STATS_max))]
-set yrange [10**9:10**11]
-set xrange [10**7: 10**11]
+# set yrange [10**9:10**11]
+# set xrange [10**7: 10**11]
 plot for [i={index}:*] '{dataset_filename}' using {p_index}:{duration_index} index (i+0) with points title columnheader(1), \\
  for [i=0:{index}-1] '' using {p_index}:{duration_index} index (i+0) with lines title columnheader(1)
 
