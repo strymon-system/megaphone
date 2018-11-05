@@ -701,30 +701,37 @@ fn main() {
                     let mut current_time_key = None;
                     data.swap(&mut in_buffer);
                     in_buffer.sort_by_key(|&(_, key_id, (_auction, a_time))| (key_id, a_time));
-                    let mut buffer = Vec::with_capacity(in_buffer.len());
+                    let mut buffer = Vec::new();
+                    let mut delete_buffer = Vec::new();
 
                     for (_, key_id, (auction, a_time)) in in_buffer.drain(..) {
                         let bin_id = state.key_to_bin(key_id);
                         if Some((a_time, bin_id)) == current_time_key {
+                            // a_time, bin_id matches current_time_key
                             buffer.push(InsDel::Ins(auction));
+                            delete_buffer.push(InsDel::Del(auction));
                         } else if current_time_key.is_none() {
+                            // We don't have a current_time_key
                             buffer.push(InsDel::Ins(auction));
+                            delete_buffer.push(InsDel::Del(auction));
                             current_time_key = Some((a_time, bin_id));
                         } else if let Some((current_time, current_bin)) = current_time_key.take() {
+                            // we have a current_time_key and it does not match a_time, bin_id
                             let not = state.get_bin(current_bin).notificator();
                             not.notify_at_data(cap, RootTimestamp::new(from_nexmark_time(current_time)), buffer.drain(..).collect());
+                            not.notify_at_data(cap, RootTimestamp::new(from_nexmark_time(::nexmark::event::Date::new(*current_time + window_slice_count * window_slide_ns))), delete_buffer.drain(..).collect());
                             current_time_key = Some((a_time, bin_id));
                             buffer.push(InsDel::Ins(auction));
+                            delete_buffer.push(InsDel::Del(auction));
                         }
                     }
                     if let Some((current_time, bin)) = current_time_key {
                         let not = state.get_bin(bin).notificator();
                         not.notify_at_data(cap, RootTimestamp::new(from_nexmark_time(current_time)), buffer);
+                        not.notify_at_data(cap, RootTimestamp::new(from_nexmark_time(::nexmark::event::Date::new(*current_time + window_slice_count * window_slide_ns))), delete_buffer.drain(..).collect());
                     }
                 }, move |cap, time, data, bid_bin, output| {
                     // Process additions (if any)
-                    let mut buffer2 = Vec::new();
-
                     for action in data {
                         match action {
                             InsDel::Ins(auction) => {
@@ -732,20 +739,17 @@ fn main() {
                                 let bid_state: &mut HashMap<_, _> = bid_bin.state();
                                 let slot = bid_state.entry(*auction).or_insert(0);
                                 *slot += 1;
-                                buffer2.push(InsDel::Del(*auction));
                             },
                             InsDel::Del(auction) => {
                                 let slot = bid_bin.state().entry(*auction).or_insert(0);
                                 *slot -= 1;
                             }
                         }
-                        let new_time = ::nexmark::event::Date::new(*to_nexmark_time(time.inner) + (window_slice_count * window_slide_ns));
-                        bid_bin.notificator().notify_at_data(cap, RootTimestamp::new(from_nexmark_time(new_time)), buffer2.clone());
                     }
                     // Output results (if any)
-                    let mut session = output.session(&cap);
                     // TODO: This only accumulates per *bin*, not globally!
                     if let Some((auction, _count)) = bid_bin.state().iter().max_by_key(|(_auction_id, count)| *count) {
+                        let mut session = output.session(&cap);
                         session.give(*auction);
                     }
                 }).probe_with(&mut probe);
