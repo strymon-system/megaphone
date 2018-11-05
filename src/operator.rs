@@ -28,6 +28,7 @@ pub trait StatefulOperator<G, D1>
         S: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,
         W: ExchangeData,                            // State format on the wire
         F: FnMut(&Capability<G::Timestamp>,
+            &G::Timestamp,
             &[D1],
             &mut Bin<G::Timestamp, S, D1>,
             &mut OutputHandle<G::Timestamp, D2, Tee<G::Timestamp, D2>>) + 'static,    // state update logic
@@ -40,12 +41,14 @@ pub trait StatefulOperator<G, D1>
         B: Fn(&D1)->u64+'static,                     // Key extraction function
         S: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static, // State type
         W: ExchangeData,                            // State format on the wire
-        F: FnMut(Capability<G::Timestamp>,
+        F: FnMut(&Capability<G::Timestamp>,
+            G::Timestamp,
             &[N],
             &mut Bin<G::Timestamp, S, N>,
             &mut OutputHandle<G::Timestamp, D2, Tee<G::Timestamp, D2>>) + 'static,    // state update logic
         C: FnMut(&mut State<G::Timestamp, S, N>,
-            Capability<G::Timestamp>,
+            &Capability<G::Timestamp>,
+            G::Timestamp,
             RefOrMut<Vec<(usize, Key, D1)>>,
             &mut OutputHandle<G::Timestamp, D2, Tee<G::Timestamp, D2>>) + 'static,
     >(&self, control: &Stream<G, Control>, key: B, name: &str, consume: C, fold: F) -> Stream<G, D2>
@@ -61,11 +64,13 @@ pub trait StatefulOperator<G, D1>
         W1: ExchangeData,                            // State format on the wire, input 1
         W2: ExchangeData,                            // State format on the wire, input 2
         F1: FnMut(&Capability<G::Timestamp>,
+            G::Timestamp,
             &[D1],
             &mut Bin<G::Timestamp, S1, D1>,
             &mut Bin<G::Timestamp, S2, D2>,
             &mut OutputHandle<G::Timestamp, D3, Tee<G::Timestamp, D3>>) + 'static,    // state update logic, input 1
         F2: FnMut(&Capability<G::Timestamp>,
+            G::Timestamp,
             &[D2],
             &mut Bin<G::Timestamp, S1, D1>,
             &mut Bin<G::Timestamp, S2, D2>,
@@ -85,20 +90,26 @@ pub trait StatefulOperator<G, D1>
         W1: ExchangeData,                            // State format on the wire
         W2: ExchangeData,                            // State format on the wire
         F1: FnMut(&Capability<G::Timestamp>,
+            G::Timestamp,
             &[N1],
             &mut Bin<G::Timestamp, S1, N1>,
             &mut Bin<G::Timestamp, S2, N2>,
             &mut OutputHandle<G::Timestamp, D3, Tee<G::Timestamp, D3>>) + 'static,    // state update logic
         F2: FnMut(&Capability<G::Timestamp>,
+            G::Timestamp,
             &[N2],
             &mut Bin<G::Timestamp, S1, N1>,
             &mut Bin<G::Timestamp, S2, N2>,
             &mut OutputHandle<G::Timestamp, D3, Tee<G::Timestamp, D3>>) + 'static,    // state update logic
         C1: FnMut(&mut State<G::Timestamp, S1, N1>,
-            Capability<G::Timestamp>, RefOrMut<Vec<(usize, Key, D1)>>,
+            &Capability<G::Timestamp>,
+            G::Timestamp,
+            RefOrMut<Vec<(usize, Key, D1)>>,
             &mut OutputHandle<G::Timestamp, D3, Tee<G::Timestamp, D3>>) + 'static,
         C2: FnMut(&mut State<G::Timestamp, S2, N2>,
-            Capability<G::Timestamp>, RefOrMut<Vec<(usize, Key, D2)>>,
+            &Capability<G::Timestamp>,
+            G::Timestamp,
+            RefOrMut<Vec<(usize, Key, D2)>>,
             &mut OutputHandle<G::Timestamp, D3, Tee<G::Timestamp, D3>>) + 'static,
     >(&self, control: &Stream<G, Control>, other: &Stream<G, D2>, key1: B1, key2: B2, name: &str, input1: C1, input2: C2, fold1: F1, fold2: F2) -> Stream<G, D3>
     ;
@@ -121,6 +132,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
         S: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,
         W: ExchangeData,                            // State format on the wire
         F: FnMut(&Capability<G::Timestamp>,
+            &G::Timestamp,
             &[D1],
             &mut Bin<G::Timestamp, S, D1>,
             &mut OutputHandle<G::Timestamp, D2, Tee<G::Timestamp, D2>>) + 'static,    // state update logic
@@ -152,7 +164,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
                 let mut states = states.borrow_mut();
                 while let Some((time, data)) = input_state.next() {
                     data.swap(&mut state_update_buffer);
-                    apply_state_updates(&mut states, &time, state_update_buffer.drain(..))
+                    apply_state_updates(&mut states, time.retain(), state_update_buffer.drain(..))
                 }
                 // stash each input and request a notification when ready
                 while let Some((time, data)) = input.next() {
@@ -184,42 +196,47 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
 //                        notif_key_buffer.clear();
 //                        notif_data_buffer.clear();
 //                    } else {
-                        notificator.notify_at_data(time.retain(), data_buffer.drain(..).map(|(_, key_id, d)| (key_id, d)));
+                        let cap = time.retain();
+                        notificator.notify_at_data(&cap, cap.time().clone(), data_buffer.drain(..).map(|(_, key_id, d)| (key_id, d)).collect::<Vec<_>>());
 //                    }
                 }
 
-                while let Some((time, mut keyed_data)) = notificator.next(&[&frontiers[0], &frontiers[1]]) {
-                    keyed_data.sort_by_key(|&(key_id, _)| states.key_to_bin(key_id));
-                    for (key_id, d) in keyed_data.drain(..) {
-                        notif_key_buffer.push(key_id);
-                        notif_data_buffer.push(d);
-                    }
-
-                    let mut bin = None;
-                    let mut begin_run = 0;
-                    for i in 0..notif_key_buffer.len() {
-                        let current_bin = states.key_to_bin(notif_key_buffer[i]);
-                        if Some(current_bin) != bin {
-                            if let Some(bin) = bin {
-                                fold(&time, &mut notif_data_buffer[begin_run..i], states.get_bin(bin), &mut output_handle);
-                            }
-                            bin = Some(current_bin);
-                            begin_run = i;
+                if let Some((cap, iter)) = notificator.drain(&[&frontiers[0], &frontiers[1]]) {
+                    for (time, mut keyed_data) in iter {
+                        keyed_data.sort_by_key(|&(key_id, _)| states.key_to_bin(key_id));
+                        for (key_id, d) in keyed_data.drain(..) {
+                            notif_key_buffer.push(key_id);
+                            notif_data_buffer.push(d);
                         }
+
+                        let mut bin = None;
+                        let mut begin_run = 0;
+                        for i in 0..notif_key_buffer.len() {
+                            let current_bin = states.key_to_bin(notif_key_buffer[i]);
+                            if Some(current_bin) != bin {
+                                if let Some(bin) = bin {
+                                    fold(&cap, &time, &mut notif_data_buffer[begin_run..i], states.get_bin(bin), &mut output_handle);
+                                }
+                                bin = Some(current_bin);
+                                begin_run = i;
+                            }
+                        }
+                        assert!(bin.is_some());
+                        if begin_run < notif_key_buffer.len() {
+                            fold(&cap, &time, &mut notif_data_buffer[begin_run..], states.get_bin(bin.unwrap()), &mut output_handle);
+                        }
+                        notif_key_buffer.clear();
+                        notif_data_buffer.clear();
                     }
-                    assert!(bin.is_some());
-                    if begin_run < notif_key_buffer.len() {
-                        fold(&time, &mut notif_data_buffer[begin_run..], states.get_bin(bin.unwrap()), &mut output_handle);
-                    }
-                    notif_key_buffer.clear();
-                    notif_data_buffer.clear();
                 }
 
                 // go through each time with data
                 for bin in states.bins.iter_mut().filter(|b| b.is_some()) {
                     let bin = bin.as_mut().unwrap();
-                    while let Some((time, data)) = bin.notificator().next(&[&frontiers[0], &frontiers[1]]) {
-                        fold(&time, data.as_slice(), bin, &mut output_handle);
+                    if let Some((cap, iter)) = bin.notificator().drain(&[&frontiers[0], &frontiers[1]]) {
+                        for (time, data) in iter {
+                            fold(&cap, &time, &data, bin, &mut output_handle);
+                        }
                     }
                 }
             }
@@ -233,12 +250,14 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
         B: Fn(&D1)->u64+'static,
         S: Clone+IntoIterator<Item=W>+Extend<W>+Default+'static,
         W: ExchangeData,                            // State format on the wire
-        F: FnMut(Capability<G::Timestamp>,
+        F: FnMut(&Capability<G::Timestamp>,
+            G::Timestamp,
             &[N],
             &mut Bin<G::Timestamp, S, N>,
             &mut OutputHandle<G::Timestamp, D2, Tee<G::Timestamp, D2>>) + 'static,    // state update logic
         C: FnMut(&mut State<G::Timestamp, S, N>,
-            Capability<G::Timestamp>,
+            &Capability<G::Timestamp>,
+            G::Timestamp,
             RefOrMut<Vec<(usize, Key, D1)>>,
             &mut OutputHandle<G::Timestamp, D2, Tee<G::Timestamp, D2>>) + 'static,
     >(&self, control: &Stream<G, Control>, key: B, name: &str, mut consume: C, mut fold: F) -> Stream<G, D2>
@@ -256,7 +275,6 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
         let mut state_update_buffer = vec![];
         let mut notificator = Notificator::new();
 
-        let mut data_buffer = vec![];
 
         builder.build(move |_capability| {
             move |frontiers| {
@@ -265,27 +283,33 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
                 let mut states = states.borrow_mut();
                 while let Some((time, data)) = input_state.next() {
                     data.swap(&mut state_update_buffer);
-                    apply_state_updates(&mut states, &time, state_update_buffer.drain(..))
+                    apply_state_updates(&mut states, time.retain(), state_update_buffer.drain(..))
                 }
                 // stash each input and request a notification when ready
-                while let Some((time, data)) = input.next() {
+                while let Some((cap, data)) = input.next() {
 //                    if !frontiers[0].less_than(time.time()) && !frontiers[1].less_equal(time.time()) {
 //                        consume(&mut states, time.retain(), data, &mut output_handle);
 //                    } else {
+                        let mut data_buffer = vec![];
                         data.swap(&mut data_buffer);
-                        notificator.notify_at_data(time.retain(), data_buffer.drain(..));
+                        let time = cap.time().clone();
+                        notificator.notify_at_data(&cap.retain(), time, data_buffer);
 //                    }
                 }
 
-                while let Some((time, mut data)) = notificator.next(&[&frontiers[0], &frontiers[1]]) {
-                    consume(&mut states, time, RefOrMut::Mut(&mut data), &mut output_handle);
+                if let Some((cap, iter)) = notificator.drain(&[&frontiers[0], &frontiers[1]]) {
+                    for (time, mut data) in iter {
+                        consume(&mut states, &cap, time, RefOrMut::Mut(&mut data), &mut output_handle);
+                    }
                 }
 
                 // go through each time with data
                 for bin in states.bins.iter_mut().filter(|b| b.is_some()) {
                     let bin = bin.as_mut().unwrap();
-                    while let Some((time, data)) = bin.notificator().next(&[&frontiers[0], &frontiers[1]]) {
-                        fold(time, data.as_slice(), bin, &mut output_handle);
+                    if let Some((cap, iter)) = bin.notificator().drain(&[&frontiers[0], &frontiers[1]]) {
+                        for (time, data) in iter {
+                            fold(&cap, time, data.as_slice(), bin, &mut output_handle);
+                        }
                     }
                 }
             }
@@ -303,11 +327,13 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
         W1: ExchangeData,                            // State format on the wire
         W2: ExchangeData,                            // State format on the wire
         F1: FnMut(&Capability<G::Timestamp>,
+            G::Timestamp,
             &[D1],
             &mut Bin<G::Timestamp, S1, D1>,
             &mut Bin<G::Timestamp, S2, D2>,
             &mut OutputHandle<G::Timestamp, D3, Tee<G::Timestamp, D3>>) + 'static,    // state update logic
         F2: FnMut(&Capability<G::Timestamp>,
+            G::Timestamp,
             &[D2],
             &mut Bin<G::Timestamp, S1, D1>,
             &mut Bin<G::Timestamp, S2, D2>,
@@ -319,16 +345,16 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
         let mut data2_buffer = vec![];
 
         self.stateful_binary_input(control, other, key1, key2, name,
-            move |state, cap, data, _output| {
+            move |state, cap, time, data, _output| {
                 data.swap(&mut data1_buffer);
                 for (_worker, key_id, d) in data1_buffer.drain(..) {
-                    state.get(key_id).notificator().notify_at_data(cap.clone(), Some(d));
+                    state.get(key_id).notificator().notify_at_data(&cap, time.clone(), vec![d]);
                 }
             },
-            move |state, cap, data, _output| {
+            move |state, cap, time, data, _output| {
                data.swap(&mut data2_buffer);
                for (_worker, key_id, d) in data2_buffer.drain(..) {
-                   state.get(key_id).notificator().notify_at_data(cap.clone(), Some(d));
+                   state.get(key_id).notificator().notify_at_data(&cap, time.clone(), vec![d]);
                }
            }, fold1, fold2)
     }
@@ -345,20 +371,26 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
         W1: ExchangeData,                            // State format on the wire
         W2: ExchangeData,                            // State format on the wire
         F1: FnMut(&Capability<G::Timestamp>,
+            G::Timestamp,
             &[N1],
             &mut Bin<G::Timestamp, S1, N1>,
             &mut Bin<G::Timestamp, S2, N2>,
             &mut OutputHandle<G::Timestamp, D3, Tee<G::Timestamp, D3>>) + 'static,    // state update logic
         F2: FnMut(&Capability<G::Timestamp>,
+            G::Timestamp,
             &[N2],
             &mut Bin<G::Timestamp, S1, N1>,
             &mut Bin<G::Timestamp, S2, N2>,
             &mut OutputHandle<G::Timestamp, D3, Tee<G::Timestamp, D3>>) + 'static,    // state update logic
         C1: FnMut(&mut State<G::Timestamp, S1, N1>,
-            Capability<G::Timestamp>, RefOrMut<Vec<(usize, Key, D1)>>,
+            &Capability<G::Timestamp>,
+            G::Timestamp,
+            RefOrMut<Vec<(usize, Key, D1)>>,
             &mut OutputHandle<G::Timestamp, D3, Tee<G::Timestamp, D3>>) + 'static,
         C2: FnMut(&mut State<G::Timestamp, S2, N2>,
-            Capability<G::Timestamp>, RefOrMut<Vec<(usize, Key, D2)>>,
+            &Capability<G::Timestamp>,
+            G::Timestamp,
+            RefOrMut<Vec<(usize, Key, D2)>>,
             &mut OutputHandle<G::Timestamp, D3, Tee<G::Timestamp, D3>>) + 'static,
     >(&self, control: &Stream<G, Control>, other: &Stream<G, D2>, key1: B1, key2: B2, name: &str, mut consume1: C1, mut consume2: C2, mut fold1: F1, mut fold2: F2) -> Stream<G, D3>
     {
@@ -379,9 +411,6 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
             let mut state1_update_buffer = vec![];
             let mut state2_update_buffer = vec![];
 
-            let mut data1_buffer = vec![];
-            let mut data2_buffer = vec![];
-
             let mut notificator1 = Notificator::new();
             let mut notificator2 = Notificator::new();
 
@@ -393,40 +422,52 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
 
                 while let Some((time, data)) = input1_state.next() {
                     data.swap(&mut state1_update_buffer);
-                    apply_state_updates(&mut states1, &time, state1_update_buffer.drain(..))
+                    apply_state_updates(&mut states1, time.retain(), state1_update_buffer.drain(..))
                 }
                 while let Some((time, data)) = input2_state.next() {
                     data.swap(&mut state2_update_buffer);
-                    apply_state_updates(&mut states2, &time, state2_update_buffer.drain(..))
+                    apply_state_updates(&mut states2, time.retain(), state2_update_buffer.drain(..))
                 }
 
                 // stash each input and request a notification when ready
-                while let Some((time, data)) = input1.next() {
+                while let Some((cap, data)) = input1.next() {
+                    let mut data1_buffer = vec![];
                     data.swap(&mut data1_buffer);
-                    notificator1.notify_at_data(time.retain(), data1_buffer.drain(..));
+                    let time = cap.time().clone();
+                    notificator1.notify_at_data(&cap.retain(), time, data1_buffer);
                 }
 
-                while let Some((time, data)) = input2.next() {
+                while let Some((cap, data)) = input2.next() {
+                    let mut data2_buffer = vec![];
                     data.swap(&mut data2_buffer);
-                    notificator2.notify_at_data(time.retain(), data2_buffer.drain(..));
+                    let time = cap.time().clone();
+                    notificator2.notify_at_data(&cap.retain(), time, data2_buffer);
                 }
 
-                while let Some((time, mut data)) = notificator1.next(&[&frontiers[0], &frontiers[1]]) {
-                    consume1(&mut states1, time, RefOrMut::Mut(&mut data), &mut output_handle);
+                if let Some((cap, iter)) = notificator1.drain(&[&frontiers[0], &frontiers[1]]) {
+                    for (time, mut data) in iter {
+                        consume1(&mut states1, &cap, time, RefOrMut::Mut(&mut data), &mut output_handle);
+                    }
                 }
 
-                while let Some((time, mut data)) = notificator2.next(&[&frontiers[2], &frontiers[3]]) {
-                    consume2(&mut states2, time, RefOrMut::Mut(&mut data), &mut output_handle);
+                if let Some((cap, iter)) = notificator2.drain(&[&frontiers[2], &frontiers[3]]) {
+                    for (time, mut data) in iter {
+                        consume2(&mut states2, &cap, time, RefOrMut::Mut(&mut data), &mut output_handle);
+                    }
                 }
 
                 // go through each time with data
                 for (bin1, bin2) in states1.bins.iter_mut().zip(states2.bins.iter_mut()).filter(|(b1, b2)| b1.is_some() && b2.is_some()) {
                     let (bin1, bin2) = (bin1.as_mut().unwrap(), bin2.as_mut().unwrap());
-                    while let Some((time, data)) = bin1.notificator().next(&[&frontiers[0], &frontiers[1], &frontiers[2], &frontiers[3]]) {
-                        fold1(&time, data.as_slice(), bin1, bin2, &mut output_handle);
+                    if let Some((cap, iter)) = bin1.notificator().drain(&[&frontiers[0], &frontiers[1], &frontiers[2], &frontiers[3]]) {
+                        for (time, data) in iter {
+                            fold1(&cap, time, data.as_slice(), bin1, bin2, &mut output_handle);
+                        }
                     }
-                    while let Some((time, data)) = bin2.notificator().next(&[&frontiers[0], &frontiers[1], &frontiers[2], &frontiers[3]]) {
-                        fold2(&time, data.as_slice(), bin1, bin2, &mut output_handle);
+                    if let Some((cap, iter)) = bin2.notificator().drain(&[&frontiers[0], &frontiers[1], &frontiers[2], &frontiers[3]]) {
+                        for (time, data) in iter {
+                            fold2(&cap, time, data.as_slice(), bin1, bin2, &mut output_handle);
+                        }
                     }
                 }
             }
@@ -439,10 +480,10 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
             B1: Fn(&D1)->u64+'static,
     {
         let mut data_vec = vec![];
-        self.stateful_unary_input::<_, (), _, Vec<()>, _, _, _>(control, key, name, move |_state, time, data, output| {
+        self.stateful_unary_input::<_, (), _, Vec<()>, _, _, _>(control, key, name, move |_state, cap, time, data, output| {
             data.swap(&mut data_vec);
-            output.session(&time).give_vec(&mut data_vec);
-        }, |_time, _data, _bin, _output| {})
+            output.session(&cap).give_vec(&mut data_vec);
+        }, |_cap, _time, _data, _bin, _output| {})
     }
 
 }

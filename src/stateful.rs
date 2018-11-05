@@ -99,7 +99,7 @@ pub fn apply_state_updates<
     D: IntoIterator<Item=W>+Extend<W>+Default,    // per-key state (data)
     W: ExchangeData,
     M: ExchangeData,
-    I: Iterator<Item=(usize, StateProtocol<T, W, M>)>>(states: &mut State<T, D, M>, cap: &CapabilityRef<T>, data: I) {
+    I: Iterator<Item=(usize, StateProtocol<T, W, M>)>>(states: &mut State<T, D, M>, cap: Capability<T>, data: I) {
 
     // Apply each state update
     for (_target, state) in data {
@@ -114,7 +114,7 @@ pub fn apply_state_updates<
             },
             // Request notification
             StateProtocol::Pending(bin, t, data) =>
-                states.bins[*bin].as_mut().unwrap().notificator().notify_at_data(cap.delayed(&t), data),
+                states.bins[*bin].as_mut().unwrap().notificator().notify_at_data(&cap, t, data),
         }
     }
 
@@ -238,13 +238,13 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                 });
 
                 // Analyze control frontier
-                control_notificator.for_each(&[&frontiers[1]], |time, _not| {
+                control_notificator.for_each(&[&frontiers[1]], |cap, time, _not| {
                     // Check if there are pending control instructions
-                    if let Some(builder) = pending_configuration_data.remove(time.time()) {
+                    if let Some(builder) = pending_configuration_data.remove(&time) {
                         // Build new configuration
                         let config = builder.build(pending_configurations.last().map_or(&active_configuration, |pending| &pending.1));
                         // Append to list of compiled configuration
-                        pending_configurations.push((time, config));
+                        pending_configurations.push((cap.delayed(&time), config));
                         // Sort by provided sequence number
                         pending_configurations.sort_by_key(|d| d.1.sequence);
 
@@ -308,20 +308,21 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                     }
                 }
 
-                data_notificator.for_each(&[&frontiers[0], &frontiers[1]], |time, _not| {
+                data_notificator.for_each(&[&frontiers[0], &frontiers[1]], |cap, time, _not| {
                     // Check for stashed data - now control input has to have advanced
-                    if let Some(vec) = data_stash.remove(time.time()) {
+                    if let Some(vec) = data_stash.remove(&time) {
 
                         let map =
                             pending_configurations
                                 .iter()
                                 .rev()
                                 .map(|c| &c.1)
-                                .find(|&c| c.frontier.less_equal(time.time()))
+                                .find(|&c| c.frontier.less_equal(&time))
                                 .unwrap_or(&active_configuration)
                                 .map();
 
-                        let mut session = data_out.session(&time);
+                        let session_cap = cap.delayed(&time);
+                        let mut session = data_out.session(&session_cap);
                         for mut data in vec {
                             {
                                 let data_iter = data.drain(..).map(|d| {

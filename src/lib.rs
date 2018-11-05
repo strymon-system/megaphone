@@ -190,7 +190,7 @@ impl<T, D, N> State<T, D, N>
     }
 
     /// Obtain a mutable reference to the notificator associated with a bin.
-    pub fn get_notificator(&mut self, key: Key) -> &mut ::stateful::Notificator<T, N> {
+    pub fn get_notificator(&mut self, key: Key) -> &mut ::stateful::Notificator<T, Vec<N>> {
         self.get(key).notificator()
     }
     /// Obtain a mutable reference to the state associated with a bin.
@@ -220,7 +220,7 @@ pub struct Bin<T, D, N>
         T: Timestamp + TotalOrder,
 {
     data: D,
-    notificator: ::stateful::Notificator<T, N>,
+    notificator: ::stateful::Notificator<T, Vec<N>>,
 }
 
 impl<T, D, N> Bin<T, D, N>
@@ -231,7 +231,7 @@ impl<T, D, N> Bin<T, D, N>
         &mut self.data
     }
 
-    pub fn notificator(&mut self) -> &mut ::stateful::Notificator<T, N> {
+    pub fn notificator(&mut self) -> &mut ::stateful::Notificator<T, Vec<N>> {
         &mut self.notificator
     }
 }

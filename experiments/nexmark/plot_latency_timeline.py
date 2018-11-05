@@ -120,9 +120,9 @@ set grid xtics ytics
 
 # set ylabel "Latency [ns]"
 set xlabel "Time"
-set xtics 10
+# set xtics 10
 
-set xrange [{duration}*.56:{duration}*.99]
+# set xrange [{duration}*.56:{duration}*.99]
 
 set key at screen .5, screen 0.01 center bottom maxrows 1 maxcols 10 
 # unset key
