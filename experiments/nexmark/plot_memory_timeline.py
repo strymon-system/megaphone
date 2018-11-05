@@ -102,10 +102,11 @@ if args.gnuplot:
             title = "{}\\n{}".format(title[:idx], title[idx:])
     with open(chart_filename, 'w') as c:
         print("""\
-set terminal {gnuplot_terminal} font \"LinuxLibertine, 10\" monochrome
+set terminal {gnuplot_terminal} font \"LinuxLibertine, 16\"
 # set logscale y
 
 # set format y "10^{{%T}}"
+set format y '%.1s%cB'
 set grid xtics ytics
 
 # set ylabel "RSS [kiB]"
@@ -113,8 +114,7 @@ set xlabel "Time"
 
 # set xrange [{duration}*.3:{duration}*.7]
 
-set key out vert
-set key bottom center
+set key at screen .5, screen 0.01 center bottom maxrows 1 maxcols 10
 # unset key
 
 set output '{gnuplot_out_filename}'
@@ -122,7 +122,8 @@ stats '{dataset_filename}' using {rss_index} nooutput
 if (STATS_blocks == 0) exit
 set for [i=1:STATS_blocks] linetype i dashtype i
 # set yrange [10**floor(log10(STATS_min)): 10**ceil(log10(STATS_max))]
-set title "{title}"
+# set title "{title}"
+set bmargin at screen 0.24
 plot for [i=0:*] '{dataset_filename}' using {time_index}:{rss_index} index i title columnheader(1) with lines
         """.format(dataset_filename=dataset_filename,
                    gnuplot_terminal=gnuplot_terminal,
