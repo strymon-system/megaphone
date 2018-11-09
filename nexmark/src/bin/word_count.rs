@@ -26,13 +26,13 @@ use timely::dataflow::{InputHandle, ProbeHandle};
 use timely::dataflow::operators::{Map, Probe};
 
 use timely::dataflow::operators::Operator;
-use timely::dataflow::operators::{Accumulate, Broadcast, Inspect};
+use timely::dataflow::operators::Broadcast;
 use timely::dataflow::channels::pact::Exchange;
 use timely::dataflow::Stream;
 use timely::dataflow::Scope;
 use timely::ExchangeData;
 
-use dynamic_scaling_mechanism::{ControlInst, Control};
+use dynamic_scaling_mechanism::Control;
 use dynamic_scaling_mechanism::state_machine::BinnedStateMachine;
 
 use nexmark::tools::ExperimentMapMode;
@@ -189,6 +189,7 @@ fn main() {
                                      notificator.notify_at_data(&cap, cap.time().clone(), vector);
                                  }
                                  notificator.for_each_data(&[input.frontier], |cap, time, mut vec, _| {
+                                     let cap = cap.delayed(&time);
                                      let mut session = output.session(&cap);
                                      for (key, val) in vec.drain(..) {
                                          let entry = states.entry(key).or_insert(0);
@@ -206,18 +207,21 @@ fn main() {
             let vec_output = match backend {
                 Backend::Vector => {
                     Some(input
-                        .stateful_unary(&control, move |(k, _v)| (*k as u64) << (64 - ::dynamic_scaling_mechanism::BIN_SHIFT), "StateMachine", move |cap, time, data, bin, output| {
-                            let cap = cap.delayed(&time);
-                            let mut session = output.session(&cap);
+                        .stateful_unary(&control, move |(k, _v)| (*k as u64) << (64 - ::dynamic_scaling_mechanism::BIN_SHIFT), "StateMachine", move |cap, data, bin, output| {
                             let states: &mut Vec<u64> = bin.state();
-                            for (key, val) in data {
+                            let mut session_cap = cap.clone();
+                            for (time, (key, val)) in data.drain(..) {
+                                if *session_cap.time() != time {
+                                    session_cap = cap.delayed(&time);
+                                }
+                                let mut session = output.session(&session_cap);
                                 let states_len = states.len();
                                 let position = key >> ::dynamic_scaling_mechanism::BIN_SHIFT;
                                 if states.len() <= position {
                                     states.extend(::std::iter::repeat(0).take(position - states_len + 1))
                                 }
                                 states[position] += val;
-                                session.give((*key, states[position]));
+                                session.give((key, states[position]));
                             }
                         })
                         .probe_with(&mut probe))
