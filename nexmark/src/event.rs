@@ -11,7 +11,7 @@ trait NEXMarkRng {
 
 impl NEXMarkRng for SmallRng {
     fn gen_string(&mut self, _max: usize) -> String {
-        "string".to_string()
+        String::new()
 //        use std::iter;
 //        use rand::distributions::Alphanumeric;
 //
