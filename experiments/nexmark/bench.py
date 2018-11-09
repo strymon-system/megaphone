@@ -760,7 +760,7 @@ def sigmod_micro_migr(group, groups=1):
 def sigmod_nx(group, groups=1):
     workers = 4
     processes = 4
-    duration = 600
+    duration = 1200
     bin_shift = 12
 
     queries_native = ["q3", "q4", "q5", "q6", "q7", "q8"]
@@ -806,7 +806,8 @@ def sigmod_nx(group, groups=1):
         experiment.base_machine_id = group*groups + 1
         experiment.run_commands(run, build)
 
-    time_dilation = int(12*60*60/(duration * 2)*1.1)
+    # secs_in_12h * 2 = x * duration, solve for x and add padding of 10%
+    time_dilation = int(12*60*60*2/duration*1.1)
     dilated_rate = int(rate / time_dilation)
     for query in queries_native:
         experiment = Experiment(
