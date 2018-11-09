@@ -38,7 +38,7 @@ pub fn q5_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer
     }, move |cap, data, bid_bin, output| {
         // Process additions (if any)
 //        println!("data.len(): {:?}", data.len());
-        for (_time, action) in data {
+        for (_time, action) in data.drain(..) {
             match action {
                 InsDel::Ins(auction) => {
                     // Stash pending deletions

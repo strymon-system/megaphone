@@ -53,7 +53,7 @@ where
         self.stateful_unary(control, move |(k, _v)| hash(&k), "StateMachine", move |cap, iter, bin, output| {
             let mut session = output.session(&cap);
             let states: &mut HashMap<_, _> = bin.state();
-            for (_time, (key, val)) in iter {
+            for (_time, (key, val)) in iter.drain(..) {
                 let (remove, output) = {
                     if !states.contains_key(&key) {
                         states.insert(key.clone(), Default::default());

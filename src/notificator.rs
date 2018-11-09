@@ -6,9 +6,7 @@ use timely::progress::Timestamp;
 use timely::dataflow::operators::Capability;
 
 pub trait Notify<T: Timestamp, D> {
-    type DrainData: IntoIterator<Item=(T, D)>;
-
-    fn drain(&mut self, frontiers: &[&MutableAntichain<T>]) -> Option<(Capability<T>, Self::DrainData)>;
+    fn drain(&mut self, frontiers: &[&MutableAntichain<T>], buffer: &mut Vec<(T, D)>) -> Option<Capability<T>>;
 }
 
 /// Tracks requests for notification and delivers available notifications.
@@ -122,8 +120,9 @@ impl<T: Timestamp + TotalOrder> TotalOrderFrontierNotificator<T, ()> {
     /// `logic` receives a capability for `t`, the timestamp being notified.
     #[inline]
     pub fn for_each<'a, F: FnMut(&Capability<T>, T, &mut Self)>(&mut self, frontiers: &'a [&'a MutableAntichain<T>], mut logic: F) {
-        if let Some((cap, iter)) = self.drain(frontiers) {
-            for (time, _data) in iter {
+        let mut vec = Vec::new();
+        if let Some(cap) = self.drain(frontiers, &mut vec) {
+            for (time, _data) in vec {
                 logic(&cap, time, self)
             }
         }
@@ -185,9 +184,9 @@ impl<T: Timestamp + TotalOrder, D> TotalOrderFrontierNotificator<T, D> {
     /// `logic` receives a capability for `t`, the timestamp being notified.
     #[inline]
     pub fn for_each_data<'a, F: FnMut(&Capability<T>, T, D, &mut Self)>(&mut self, frontiers: &'a [&'a MutableAntichain<T>], mut logic: F) {
-//        self.make_available(frontiers);
-        if let Some((cap, iter)) = self.drain(frontiers) {
-            for (time, data) in iter {
+        let mut vec = Vec::new();
+        if let Some(cap) = self.drain(frontiers, &mut vec) {
+            for (time, data) in vec {
                 logic(&cap, time, data, self);
             }
         }
@@ -230,33 +229,31 @@ impl<T: Timestamp + TotalOrder, D> TotalOrderFrontierNotificator<T, D> {
 }
 
 impl<T: Timestamp + TotalOrder, D> Notify<T, D> for TotalOrderFrontierNotificator<T, D> {
-    type DrainData = Vec<(T, D)>;
 
     #[inline]
-    fn drain(&mut self, frontiers: &[&MutableAntichain<T>]) -> Option<(Capability<T>, Self::DrainData)> {
-        let mut available = Vec::new();
+    fn drain(&mut self, frontiers: &[&MutableAntichain<T>], buffer: &mut Vec<(T, D)>) -> Option<Capability<T>> {
         // By invariant, nothing in self.available is greater_equal anything in self.pending.
         // It should be safe to append any ordered subset of self.pending to self.available,
         // in that the sequence of capabilities in self.available will remain non-decreasing.
 
         let mut result = None;
         if !self.pending.is_empty() {
-
+            buffer.clear();
             while self.pending.peek().map_or(false, |or| frontiers.iter().all(|f| !f.less_equal(&or.element))) {
                 let min = self.pending.pop().unwrap();
-                available.push((min.element, min.data));
+                buffer.push((min.element, min.data));
             }
-//            if !available.is_empty() {
-                result = Some((self.capability.as_ref().unwrap().clone(), available));
+            if !buffer.is_empty() {
+                result = Some(self.capability.as_ref().unwrap().clone());
+            }
 
-                if let Some(cap) = self.capability.as_mut() {
-                    if let Some(pending) = self.pending.peek() {
-                        if cap.time().less_than(&pending.element) {
-                            cap.downgrade(&pending.element);
-                        }
+            if let Some(cap) = self.capability.as_mut() {
+                if let Some(pending) = self.pending.peek() {
+                    if cap.time().less_than(&pending.element) {
+                        cap.downgrade(&pending.element);
                     }
                 }
-//            }
+            }
         } else {
             self.capability.take();
         }

@@ -22,11 +22,11 @@ pub fn q8_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, _nt: NexmarkTime
     let window_size_ns = 12 * 60 * 60 * 1_000_000_000;
     people.stateful_binary(&control, &auctions, |(p, _d)| calculate_hash(p), |(s, _d)| calculate_hash(s), "q8-flex", |_cap, data, people_bin: &mut Bin<_, HashMap<_, _>, _>, _auctions_state: &mut Bin<_, Vec<()>, _>, _output| {
         // Update people state
-        for (_time, (person, date)) in data {
+        for (_time, (person, date)) in data.drain(..) {
             people_bin.state().entry(person as u64).or_insert(*date);
         }
     }, move |cap, data, people_bin, _auctions_bin, output| {
-        for (_time, (seller, date)) in data {
+        for (_time, (seller, date)) in data.drain(..) {
             if let Some(p_time) = people_bin.state().get(&(seller as u64)) {
                 if *date < *p_time + window_size_ns {
                     output.session(cap).give(seller);
