@@ -169,11 +169,15 @@ impl Person {
     fn new(id: usize, time: Date, rng: &mut SmallRng, nex: &NEXMarkConfig) -> Self {
         Person {
             id: Self::last_id(id, nex) + nex.first_person_id,
-            name: format!("{} {}",
-                          *rng.choose(&nex.first_names).unwrap(),
-                          *rng.choose(&nex.last_names).unwrap()),
-            email_address: format!("{}@{}.com", rng.gen_string(7), rng.gen_string(5)),
-            credit_card: (0..4).map(|_| format!("{:04}", rng.gen_range(0, 10000))).collect::<Vec<String>>().join(" "),
+            name: String::new(),
+            email_address: String::new(),
+            credit_card: String::new(),
+// FIXME: Figure out a faster way to allocate the strings MH
+//            name: format!("{} {}",
+//                          *rng.choose(&nex.first_names).unwrap(),
+//                          *rng.choose(&nex.last_names).unwrap()),
+//            email_address: format!("{}@{}.com", rng.gen_string(7), rng.gen_string(5)),
+//            credit_card: (0..4).map(|_| format!("{:04}", rng.gen_range(0, 10000))).collect::<Vec<String>>().join(" "),
             city: rng.choose(&nex.us_cities).unwrap().clone(),
             state: rng.choose(&nex.us_states).unwrap().clone(),
             date_time: time,
