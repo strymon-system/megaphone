@@ -415,26 +415,26 @@ fn main() {
             last_ns = target_ns;
 
             if index == 0 {
-
+//                ::std::thread::sleep(::std::time::Duration::from_millis(10));
                 if let Some(control_input) = control_input.as_mut() {
-                    if last_migrated.map_or(true, |time| control_input.time().inner != time)
-                        && instructions.get(0).map(|&(ts, _)| ts <= control_input.time().inner as u64).unwrap_or(false)
+                    if last_migrated.map_or(true, |time| *control_input.time() != time)
+                        && instructions.get(0).map(|&(ts, _)| ts <= *control_input.time() as u64).unwrap_or(false)
                         {
                             let (ts, ctrl_instructions) = instructions.remove(0);
                             let count = ctrl_instructions.len();
 
-                            if control_input.time().inner < ts as usize {
+                            if *control_input.time() < ts as usize {
                                 control_input.advance_to(ts as usize);
                             }
 
-                            println!("control_time\t{}", control_input.time().inner);
+                            println!("control_time\t{}", control_input.time());
 
                             for instruction in ctrl_instructions {
                                 control_input.send(Control::new(control_sequence, count, instruction));
                             }
 
                             control_sequence += 1;
-                            last_migrated = Some(control_input.time().inner);
+                            last_migrated = Some(*control_input.time());
                         }
                 }
 
@@ -446,7 +446,7 @@ fn main() {
             output_metric_collector.acknowledge_while(
                 elapsed_ns,
                 |t| {
-                    !probe.less_than(&RootTimestamp::new(t as usize))
+                    !probe.less_than(&(t as usize))
                 });
 
             if input.is_none() {
@@ -465,7 +465,7 @@ fn main() {
                 }
                 input.advance_to(target_ns as usize);
                 if let Some(control_input) = control_input.as_mut() {
-                    if control_input.time().inner < target_ns as usize {
+                    if *control_input.time() < target_ns as usize {
                         control_input.advance_to(target_ns as usize);
                     }
                 }
@@ -475,7 +475,7 @@ fn main() {
             }
 
             if input.is_some() {
-                while probe.less_than(&RootTimestamp::new(wait_ns as usize)) { worker.step(); }
+                while probe.less_than(&(wait_ns as usize)) { worker.step(); }
             } else {
                 while worker.step() { }
             }
