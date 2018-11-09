@@ -50,18 +50,18 @@ where
         H: Fn(&K)->u64+'static,                     // "hash" function for keys
     >(&self, fold: F, hash: H, control: &Stream<S, Control>) -> Stream<S, R> where S::Timestamp : Hash+Eq {
 
-        self.stateful_unary(control, move |(k, _v)| hash(&k), "StateMachine", move |cap, time, data, bin, output| {
+        self.stateful_unary(control, move |(k, _v)| hash(&k), "StateMachine", move |cap, iter, bin, output| {
             let mut session = output.session(&cap);
             let states: &mut HashMap<_, _> = bin.state();
-            for (key, val) in data {
+            for (time, (key, val)) in iter {
                 let (remove, output) = {
-                    if !states.contains_key(key) {
+                    if !states.contains_key(&key) {
                         states.insert(key.clone(), Default::default());
                     }
-                    let state = states.get_mut(key).unwrap();
-                    fold(key, val.clone(), state)
+                    let state = states.get_mut(&key).unwrap();
+                    fold(&key, val.clone(), state)
                 };
-                if remove { states.remove(key); }
+                if remove { states.remove(&key); }
                 session.give_iterator(output.into_iter());
             }
         })

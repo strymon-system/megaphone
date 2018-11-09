@@ -43,7 +43,7 @@ pub enum StateProtocol<T, S, D> {
     /// Provide a piece of state for a bin
     State(BinId, Vec<S>),
     /// Announce an outstanding time stamp
-    Pending(BinId, T, Vec<D>),
+    Pending(BinId, T, D),
     /// Prepare for receiving state
     Prepare(BinId),
 }
