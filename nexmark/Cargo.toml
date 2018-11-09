@@ -9,8 +9,9 @@ fake_stateful = ["dynamic_scaling_mechanism/fake_stateful"]
 
 [dependencies]
 #differential-dataflow = { git = "https://github.com/frankmcsherry/differential-dataflow.git" }
-#timely = { git = "https://github.com/frankmcsherry/timely-dataflow.git"}
-timely = "0.7"
+timely = { git = "https://github.com/frankmcsherry/timely-dataflow.git"}
+#timely = { git = "https://github.com/antiguru/timely-dataflow.git", branch = "session_cease"}
+#timely = "0.7"
 #abomonation = { git = "https://github.com/frankmcsherry/abomonation.git" }
 abomonation = "^0.7"
 abomonation_derive = "0.3"
