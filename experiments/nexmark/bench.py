@@ -46,7 +46,7 @@ class Experiment(object):
         self._bin_shift = config.pop("bin_shift")
         self._workers = config.pop("workers")
         self._processes = config.pop("processes")
-        self._rate = config.pop("rate")
+        self._rate = int(config.pop("rate"))
         self._duration = config.get("duration")
         self._initial_config = config.pop("initial_config")
         self._final_config = config.pop("final_config")
@@ -545,7 +545,7 @@ def sigmod_micro_no_migr(group, groups=1):
     migration = "sudden"
 
     # VEC
-    rate = 4 * 1000000
+    rate = workers * processes * 1000000 / 2
     for domain in [1000000 * x for x in [256, 8192]]:
         for bin_shift in range(int(math.log2(workers * processes)), 17, 2):
             experiment = Experiment(
@@ -603,7 +603,7 @@ def sigmod_micro_no_migr(group, groups=1):
         experiment.run_commands(run, build)
 
     # HASHMAP
-    rate = 2 * 1000000
+    rate = workers * processes * 1000000 / 4
     for domain in [1000000 * x for x in [256]]:
         for bin_shift in range(int(math.log2(workers * processes)), 21, 2):
             experiment = Experiment(
@@ -664,12 +664,12 @@ def sigmod_micro_no_migr(group, groups=1):
 def sigmod_micro_migr(group, groups=1):
     workers = 4
     processes = 4
-    duration = 240
+    duration = 1600
     bin_shift = 12
 
     # VEC
-    rate = 4 * 1000000
-    for domain in [1000000 * x for x in [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]]:
+    rate = workers * processes * 1000000 / 2
+    for domain in [1000000 * x for x in [256, 512, 1024, 2048, 4096, 8192, 16384, 32768]]:
         for migration in ["sudden", "fluid", "batched"]:
             experiment = Experiment(
                 "sigmod_migro_migr_vec",
@@ -690,7 +690,7 @@ def sigmod_micro_migr(group, groups=1):
             experiment.run_commands(run, build)
 
     # HASHMAP
-    rate = 2 * 1000000
+    rate = workers * processes * 1 * 1000000 / 4
     for domain in [1000000 * x for x in [32, 64, 128, 256, 512]]:
         for migration in ["sudden", "fluid", "batched"]:
             experiment = Experiment(
@@ -712,7 +712,7 @@ def sigmod_micro_migr(group, groups=1):
             experiment.run_commands(run, build)
 
     # VEC
-    rate = 4 * 1000000
+    rate = workers * processes * 1000000 / 2
     domain = 1000000 * 4096
     for bin_shift in range(int(math.log2(workers * processes)), 15, 2):
         for migration in ["sudden", "fluid", "batched"]:
@@ -735,7 +735,7 @@ def sigmod_micro_migr(group, groups=1):
             experiment.run_commands(run, build)
 
     # HASHMAP
-    rate = 2 * 1000000
+    rate = workers * processes * 1 * 1000000 / 4
     domain = 128 * 1000000
     for bin_shift in range(int(math.log2(workers * processes)), 15, 2):
         for migration in ["sudden", "fluid", "batched"]:
@@ -766,7 +766,7 @@ def sigmod_nx(group, groups=1):
     queries_native = ["q3", "q4", "q5", "q6", "q7", "q8"]
     queries_flex = ["q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
 
-    rate = 2000000
+    rate = workers * processes * 1000000 / 4
 
     for migration in ["batched", "sudden"]:
         for query in queries_flex:
