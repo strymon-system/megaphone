@@ -689,6 +689,25 @@ def sigmod_micro_migr(group, groups=1):
             experiment.base_machine_id = group*groups + 1
             experiment.run_commands(run, build)
 
+            # Keep data per bin constant at 4000000
+            experiment = Experiment(
+                "sigmod_migro_migr_vec",
+                binary="word_count",
+                duration=duration,
+                rate=rate,
+                migration=migration,
+                bin_shift=int(math.log2(domain/4000000)),
+                workers=workers,
+                processes=processes,
+                initial_config="uniform",
+                final_config="uniform_skew",
+                fake_stateful=False,
+                machine_local=False,
+                domain=domain,
+                backend="vec")
+            experiment.base_machine_id = group*groups + 1
+            experiment.run_commands(run, build)
+
     # HASHMAP
     rate = workers * processes * 1 * 1000000 / 4
     for domain in [1000000 * x for x in [32, 64, 128, 256, 512]]:
