@@ -96,11 +96,17 @@ if args.gnuplot:
 
     all_configs = []
 
+    def format_key(group, key):
+        if group == "domain":
+            return "{}M".format(int(key/1000000))
+        return key
+
     with open(dataset_filename, 'w') as c:
         index = 0
         # print(" ".join(all_headers), file=c)
         for key, item in sorted(all_primary.items()):
-            print("\"{}\"".format(plot.kv_to_name([(args.primary_group, key)]).replace("_", "\\\\_")), file=c)
+            key = format_key(args.primary_group, key)
+            print("\"{}\"".format(str(key).replace("_", "\\\\_")), file=c)
             for config, ds in item:
                 all_configs.append(config)
                 # print("\"{}\"".format(plot.kv_to_name(config).replace("_", "\\\\_")), file=c)
@@ -111,7 +117,8 @@ if args.gnuplot:
             print("\n", file=c)
 
         for key, item in sorted(all_secondary.items()):
-            print("\"{}\"".format(plot.kv_to_name([(args.secondary_group, key)]).replace("_", "\\\\_")), file=c)
+            key = format_key(args.secondary_group, key)
+            print("\"{}\"".format(str(key).replace("_", "\\\\_")), file=c)
             for config, ds in item:
                 all_configs.append(config)
                 # print("\"{}\"".format(plot.kv_to_name(config).replace("_", "\\\\_")), file=c)
@@ -136,7 +143,7 @@ if args.gnuplot:
             title = "{}\\n{}".format(title[:idx], title[idx:])
     with open(chart_filename, 'w') as c:
         print("""\
-set terminal {gnuplot_terminal} font \"LinuxLibertine, 16\" dashed #size 3, 3
+set terminal {gnuplot_terminal} font \"LinuxLibertine, 16\" enhanced dashed size 4.5, 3 crop
 set logscale y
 set logscale x
 
@@ -146,8 +153,8 @@ set grid xtics ytics
 set xlabel "Max latency [ns]"
 set ylabel "Duration"
 
-set key out vert
-set key right center
+set key title "{key1}" right outside top width 3 #Left at screen 1, .95
+# set key right center
 set size square
 # unset key
 
@@ -160,18 +167,26 @@ set for [i=1:STATS_blocks] linetype i dashtype i
 # set for [i=1:STATS_blocks] linetype i dashtype i
 # set title "{title}"
 # set yrange [10**floor(log10(STATS_min)): 10**ceil(log10(STATS_max))]
-# set yrange [10**9:10**11]
-# set xrange [10**7: 10**11]
-plot for [i={index}:*] '{dataset_filename}' using {p_index}:{duration_index} index (i+0) with points title columnheader(1), \\
- for [i=0:{index}-1] '' using {p_index}:{duration_index} index (i+0) with lines title columnheader(1)
+set yrange [10**9:10**12]
+set xrange [5*10**6: 2*10**11]
+set multiplot
+set origin 0, 0
+set rmargin at screen .75
+plot for [i={index}:*] '{dataset_filename}' using {p_index}:{duration_index} index (i+0) with points title columnheader(1)
+set key title "{key2}" right outside bottom width 3 #Right at screen 1, .5
+unset grid
+set xlabel " "
+set ylabel " "
+plot for [i=0:{index}-1] '{dataset_filename}' using {p_index}:{duration_index} index (i+0) with lines title columnheader(1)
+unset multiplot
 
 # set xlabel "50% latency [ns]"
 # plot for [i={index}:*] '{dataset_filename}' using {p50_index}:{duration_index} index (i+0) with points title columnheader(1), \\
 #  for [i=0:{index}-1] '' using {p50_index}:{duration_index} index (i+0) with lines title columnheader(1)
 
-set xlabel "Filtered max latency [ns]"
-plot for [i={index}:*] '{dataset_filename}' using {filtered_p_index}:{duration_index} index (i+0) with points title columnheader(1), \\
- for [i=0:{index}-1] '' using {filtered_p_index}:{duration_index} index (i+0) with lines title columnheader(1)
+# set xlabel "Filtered max latency [ns]"
+# plot for [i={index}:*] '{dataset_filename}' using {filtered_p_index}:{duration_index} index (i+0) with points title columnheader(1), \\
+#  for [i=0:{index}-1] '' using {filtered_p_index}:{duration_index} index (i+0) with lines title columnheader(1)
         """.format(dataset_filename=dataset_filename,
                    gnuplot_terminal=gnuplot_terminal,
                    gnuplot_out_filename=gnuplot_out_filename,
@@ -183,6 +198,8 @@ plot for [i={index}:*] '{dataset_filename}' using {filtered_p_index}:{duration_i
                    duration=duration,
                    num_plots=len(migration_to_index),
                    index=index,
+                   key2=args.primary_group.replace("_", "\\\\_"),
+                   key1=args.secondary_group.replace("_", "\\\\_"),
                    ), file=c)
 
 else: # json or html
