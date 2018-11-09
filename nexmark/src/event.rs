@@ -10,7 +10,7 @@ trait NEXMarkRng {
 }
 
 impl NEXMarkRng for SmallRng {
-    fn gen_string(&mut self, max: usize) -> String {
+    fn gen_string(&mut self, _max: usize) -> String {
         "string".to_string()
 //        use std::iter;
 //        use rand::distributions::Alphanumeric;
@@ -58,7 +58,7 @@ impl ::std::ops::Sub for Date {
     }
 }
 
-const MIN_STRING_LENGTH: usize = 3;
+//const MIN_STRING_LENGTH: usize = 3;
 // const BASE_TIME: usize = 1436918400_000;
 
 // fn split_string_arg(string: String) -> Vec<String> {
