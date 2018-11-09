@@ -409,7 +409,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
             B1: Fn(&D1)->u64+'static,
     {
         let mut data_vec = vec![];
-        self.stateful_unary_input::<_, (), _, Vec<()>, _, _, _>(control, key, name, move |_state, cap, time, data, output| {
+        self.stateful_unary_input::<_, (), _, Vec<()>, _, _, _>(control, key, name, move |_state, cap, _time, data, output| {
             data.swap(&mut data_vec);
             output.session(&cap).give_vec(&mut data_vec);
         }, |_cap, _data, _bin, _output| {})

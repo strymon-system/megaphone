@@ -16,7 +16,7 @@ use fnv::FnvHashMap as HashMap;
 use timely::ExchangeData;
 use timely::dataflow::{Stream, Scope, ProbeHandle};
 use timely::dataflow::channels::pact::Pipeline;
-use timely::dataflow::operators::{Capability, CapabilityRef};
+use timely::dataflow::operators::Capability;
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::order::TotalOrder;
 use timely::progress::Timestamp;

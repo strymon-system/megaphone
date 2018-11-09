@@ -43,7 +43,7 @@ where
         self.stateful_binary(&control, other, |t| calculate_hash(&t.0), |t| calculate_hash(&t.0), name, |cap, data, bin1: &mut Bin<_, HashMap<K, V>, _>, bin2: &mut Bin<_, HashMap<K, Vec<V2>>, _>, output| {
             let mut session = output.session(&cap);
             let bin: &mut HashMap<_, _> = bin2.state();
-            for (time, (key, value)) in data {
+            for (_time, (key, value)) in data {
                 if let Some(mut d2) = bin.remove(&key) {
                     session.give_iterator(d2.drain(..).map(|d| (key.clone(), value.clone(), d)));
                 }
@@ -53,7 +53,7 @@ where
             let mut session = output.session(&cap);
             let state1 = bin1.state();
             let state2 = bin2.state();
-            for (time, (key, value)) in data {
+            for (_time, (key, value)) in data {
                 if let Some(d1) = state1.get(&key) {
                     session.give((key.clone(), d1.clone(), value.clone()));
                 } else {
