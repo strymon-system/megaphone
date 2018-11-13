@@ -372,6 +372,9 @@ fn main() {
 
         let mut migration_separation = 0;
 
+        let mut did_migrate = 0;
+        let mut migration_time = 0;
+
         loop {
             let elapsed_ns = timer.elapsed().to_nanos();
             let wait_ns = last_ns;
@@ -379,36 +382,42 @@ fn main() {
             last_ns = target_ns;
 
             if index == 0 {
+                // was a migration supplied and the time captured? Is the migration definitely over?
+                if did_migrate == 1 && migration_time < wait_ns {
+                    if did_migrate == 1 {
+                        println!("migration_done\t{}\t{}", target_ns, target_ns - migration_time);
+                    }
+                    did_migrate -= 1;
+                }
                 if let Some(control_input) = control_input.as_mut() {
-                    if last_migrated.map_or(true, |time| *control_input.time() != time)
-                        && instructions.get(0).map(|&(ts, _)| ts as usize + count <= *control_input.time()).unwrap_or(false)
-                    {
-                        if migration_separation == 0 {
-                            let (ts, ctrl_instructions) = instructions.remove(0);
-                            let count = ctrl_instructions.len();
+                    if last_migrated.map_or(true, |time| *control_input.time() != time) {
+                        if instructions.get(0).map(|&(ts, _)| ts as usize + count <= *control_input.time()).unwrap_or(false) {
+                            if migration_separation == 0 {
+                                let (_ts, ctrl_instructions) = instructions.remove(0);
 
-                            if *control_input.time() < ts as usize + count {
-                                control_input.advance_to(ts as usize + count);
+                                println!("control_time\t{}", control_input.time() - count);
+
+                                let count = ctrl_instructions.len();
+                                for instruction in ctrl_instructions {
+                                    control_input.send(Control::new(control_sequence, count, instruction));
+                                }
+
+                                control_sequence += 1;
+                                last_migrated = Some(*control_input.time());
+                                migration_separation = 2;
+                                // Mark that we supplied migration instructions, will be picked up further down
+                                did_migrate = 2;
+                            } else {
+                                migration_separation -= 1;
                             }
-
-                            println!("control_time\t{}", control_input.time());
-
-                            for instruction in ctrl_instructions {
-                                control_input.send(Control::new(control_sequence, count, instruction));
-                            }
-
-                            control_sequence += 1;
-                            last_migrated = Some(*control_input.time());
-                            migration_separation = 2;
-                        } else {
-                            migration_separation -= 1;
                         }
                     }
                 }
 
-                if instructions.is_empty() {
-                    control_input.take();
-                }
+                // FIXME: We have to remember control_input's time, and could use a different variable?!
+//                if instructions.is_empty() {
+//                    control_input.take();
+//                }
             }
 
             output_metric_collector.acknowledge_while(
@@ -430,6 +439,11 @@ fn main() {
                 if let Some(control_input) = control_input.as_mut() {
                     if *control_input.time() < target_ns as usize + count {
                         control_input.advance_to(target_ns as usize + count);
+                        // A migration was recorded, note down the time and step state
+                        if did_migrate == 2 {
+                            migration_time = target_ns;
+                            did_migrate -= 1;
+                        }
                     }
                 }
             } else {
