@@ -301,7 +301,6 @@ fn main() {
         let mut input_times_gen =
             ::streaming_harness::input::SyntheticInputTimeGenerator::new(input_times());
 
-        let mut input = Some(input);
 
         let mut control_sequence = 0;
         let mut control_input = Some(control_input);
@@ -322,46 +321,48 @@ fn main() {
 
         let mut count: usize = 0;
 
-        if let Some(input) = input.as_mut() {
-            match backend {
-                Backend::Vector => {
-                    let max_number = (key_space >> ::dynamic_scaling_mechanism::BIN_SHIFT).next_power_of_two();
-                    println!("max_number: {}", max_number);
-                    let bin_count = 1 << ::dynamic_scaling_mechanism::BIN_SHIFT;
-                    for bin in index * bin_count / peers..(index + 1) * bin_count / peers {
-                        let number = word_generator.word_at((max_number << ::dynamic_scaling_mechanism::BIN_SHIFT) + bin);
-                        assert!(number < 2 * key_space);
-                        input.send(number);
-                    }
-                    input.advance_to(count);
-                    if let Some(control_input) = control_input.as_mut() {
-                        control_input.advance_to(count);
-                    }
-                    while probe.less_than(&count) { worker.step(); }
-                    count += 1;
-                },
-                _ => {
-                    for i in index * key_space / peers..(index + 1) * key_space / peers {
-                        input.send(word_generator.word_at(key_space - i - 1));
-                        if (i & 0xFFF) == 0 {
-                            input.advance_to(count);
-                            if let Some(control_input) = control_input.as_mut() {
-                                control_input.advance_to(count);
-                            }
-                            while probe.less_than(&count) { worker.step(); }
-                            count += 1;
+        match backend {
+            Backend::Vector => {
+                let max_number = (key_space >> ::dynamic_scaling_mechanism::BIN_SHIFT).next_power_of_two();
+                println!("max_number: {}", max_number);
+                let bin_count = 1 << ::dynamic_scaling_mechanism::BIN_SHIFT;
+                for bin in index * bin_count / peers..(index + 1) * bin_count / peers {
+                    let number = word_generator.word_at((max_number << ::dynamic_scaling_mechanism::BIN_SHIFT) + bin);
+                    assert!(number < 2 * key_space);
+                    input.send(number);
+                }
+                input.advance_to(count);
+                if let Some(control_input) = control_input.as_mut() {
+                    control_input.advance_to(count);
+                }
+                while probe.less_than(&count) { worker.step(); }
+            },
+            _ => {
+                let mut word = 0;
+                for i in index * key_space / peers..(index + 1) * key_space / peers {
+                    input.send(word_generator.word_at(key_space - i - 1));
+                    if (word & 0xFFF) == 0 {
+                        input.advance_to(count);
+                        if let Some(control_input) = control_input.as_mut() {
+                            control_input.advance_to(count);
                         }
+                        while probe.less_than(&count) { worker.step(); }
+                        count += 1;
                     }
+                    word += 1;
                 }
             }
         }
-        count += 1;
-        input.as_mut().unwrap().advance_to(count);
+
+        let count = key_space / 0xFFF;
+        input.advance_to(count);
         if let Some(control_input) = control_input.as_mut() {
             control_input.advance_to(count);
         }
         while probe.less_than(&count) { worker.step(); }
-        println!("loading_done");
+        println!("loading_done\t{}\t{}", index, count);
+
+        let mut input = Some(input);
 
         let timer = ::std::time::Instant::now();
 
