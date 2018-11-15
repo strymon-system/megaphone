@@ -128,7 +128,7 @@ elif args.table:
             return config.get("bin_shift", "UNKNOWN FIXME")
 
         def format_lat(d, c):
-            print("& {:.2f} ".format(d['latency']/1000000), file=c)
+            print("& {:.2f} ".format(d['latency']), file=c)
 
 
         # print(" ".join(all_headers), file=c)
