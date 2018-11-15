@@ -121,6 +121,7 @@ binary="('binary', 'timely'), "
 duration="('duration', 1200), "
 rate="('rate', 4000000), "
 time_dilation="('time_dilation', 1), "
+bin_shift="('bin_shift', 12), "
 
 for query in "q3" "q4" "q5" "q6" "q7" "q8" "q3-flex" "q4-flex" "q5-flex" "q6-flex" "q7-flex" "q8-flex"
 do

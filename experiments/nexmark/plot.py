@@ -83,7 +83,7 @@ def latency_plots(results_dir, files, filtering):
         try:
             with open("{}/{}/stdout.0".format(results_dir, filename), 'r') as f:
                 experiment_data = [dict(list({
-                         "latency": int(x),
+                         "latency": int(x) / 1000000,
                          "ccdf": float(y),
                          "experiment": experiment_name(experiment_dict),
                      }.items()) + list(experiment_dict.items())) for x, y in
@@ -137,7 +137,7 @@ def latency_timeline_plots(results_dir, files, filtering):
                     for p, l in [(.25, 1), (.5, 2), (.99, 4), (1, 6)]:
                         experiment_data.append(dict(list({
                                                              "time": float(vals[0]) / 1000000000,
-                                                             "latency": int(vals[l]),
+                                                             "latency": int(vals[l]) / 1000000,
                                                              "p": p,
                                                              "experiment": "m: {}, r: {}, f: {}".format(experiment_dict.get('migration', "?"), experiment_dict.get('rate', 0), experiment_dict.get('fake_stateful', False)),
                                                          }.items()) + list(experiment_dict.items())))
@@ -241,22 +241,23 @@ def latency_breakdown_plots(results_dir, files, filtering):
 
                 print(duration, max_latency, file=sys.stderr)
                 if duration > 0 or migration_duration > 0:
+                    norm = 1000000000
                     experiment_data.append(dict(list({
-                             "migration_duration": duration,
-                             "precise_duration": migration_duration,
-                             "precise_max": migration_max,
-                             "max_p_.25": max_latency[0],
-                             "max_p_.5": max_latency[1],
-                             "max_p_.75": max_latency[2],
-                             "max_p_.99": max_latency[3],
-                             "max_p_.999": max_latency[4],
-                             "max_p_1": max_latency[5],
-                             "filtered_max_p_.25": filtered_max_latency[0],
-                             "filtered_max_p_.5": filtered_max_latency[1],
-                             "filtered_max_p_.75": filtered_max_latency[2],
-                             "filtered_max_p_.99": filtered_max_latency[3],
-                             "filtered_max_p_.999": filtered_max_latency[4],
-                             "filtered_max_p_1": filtered_max_latency[5],
+                             "migration_duration": duration/norm,
+                             "precise_duration": migration_duration/norm,
+                             "precise_max": migration_max/norm,
+                             "max_p_.25": max_latency[0]/norm,
+                             "max_p_.5": max_latency[1]/norm,
+                             "max_p_.75": max_latency[2]/norm,
+                             "max_p_.99": max_latency[3]/norm,
+                             "max_p_.999": max_latency[4]/norm,
+                             "max_p_1": max_latency[5]/norm,
+                             "filtered_max_p_.25": filtered_max_latency[0]/norm,
+                             "filtered_max_p_.5": filtered_max_latency[1]/norm,
+                             "filtered_max_p_.75": filtered_max_latency[2]/norm,
+                             "filtered_max_p_.99": filtered_max_latency[3]/norm,
+                             "filtered_max_p_.999": filtered_max_latency[4]/norm,
+                             "filtered_max_p_1": filtered_max_latency[5]/norm,
                             "experiment": "m: {}, r: {}, f: {}".format(experiment_dict.get('migration', "?"), experiment_dict.get('rate', 0), experiment_dict.get('fake_stateful', False)),
                          }.items()) + list(experiment_dict.items())))
                     data.append(experiment_data)

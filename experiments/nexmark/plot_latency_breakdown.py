@@ -181,11 +181,11 @@ set for [i=1:STATS_blocks] linetype i dashtype i
 # set for [i=1:STATS_blocks] linetype i dashtype i
 # set title "{title}"
 # set yrange [10**floor(log10(STATS_min)): 10**ceil(log10(STATS_max))]
-set xrange [10**8:10**12]
-set yrange [5*10**6: 2*10**11]
+set xrange [10**-1:10**3]
+set yrange [5*10**-3: 2*10**2]
 
-set ylabel "Max latency [ns]"
-set xlabel "Duration"
+set ylabel "Max latency [s]"
+set xlabel "Duration [s]"
 set multiplot
 set origin 0, 0
 set lmargin 0
@@ -199,8 +199,8 @@ set ylabel " "
 plot for [i=0:{index}-1] '{dataset_filename}' using {duration_index}:{p_index} index (i+0) with lines title columnheader(1)
 unset multiplot
 
-set ylabel "Max latency [ns]"
-set xlabel "Duration"
+set ylabel "Max latency [s]"
+set xlabel "Duration [s]"
 set multiplot
 set origin 0, 0
 set rmargin at screen .70

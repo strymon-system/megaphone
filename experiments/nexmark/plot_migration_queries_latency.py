@@ -96,10 +96,10 @@ set format x "10^{{%T}}"
 set format y "10^{{%T}}"
 set grid xtics ytics
 
-set yrange [.0001:1]
-set xrange [500000:2000000000]
+set yrange [.00001:1]
+set xrange [0.5:2000]
 
-set xlabel "Latency [ns]"
+set xlabel "Latency [ms]"
 set ylabel "CCDF"
 #set title "{title}"
 

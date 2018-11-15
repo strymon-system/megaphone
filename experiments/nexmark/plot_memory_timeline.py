@@ -54,6 +54,9 @@ chart_filename = get_chart_filename(extension)
 title = plot.kv_to_name(graph_filtering)
 
 if args.gnuplot:
+    def name(config):
+        config = dict(config)
+        return config.get("migration", "UNKNOWN FIXME")
 
     # Generate dataset
     all_headers = set()
@@ -82,7 +85,7 @@ if args.gnuplot:
         # print(" ".join(all_headers), file=c)
         for ds, config in zip(iter(data), iter(experiments)):
             all_configs.append(config)
-            print("\"{}\"".format(plot.kv_to_name(config).replace("_", "\\\\_")), file=c)
+            print("\"{}\"".format(name(config).replace("_", "\\\\_")), file=c)
             for d in ds:
                 print(" ".join(map(plot.quote_str, [d[k] for k in all_headers])), file=c)
             print("\n", file=c)
@@ -102,19 +105,22 @@ if args.gnuplot:
             title = "{}\\n{}".format(title[:idx], title[idx:])
     with open(chart_filename, 'w') as c:
         print("""\
-set terminal {gnuplot_terminal} font \"LinuxLibertine, 16\"
+set terminal {gnuplot_terminal} font \"LinuxLibertine, 20\" size 4, 3 monochrome
 # set logscale y
 
 # set format y "10^{{%T}}"
 set format y '%.1s%cB'
 set grid xtics ytics
+set mytics 4
+set mxtics 4
 
-# set ylabel "RSS [kiB]"
-set xlabel "Time"
+set ylabel "RSS"
+set xlabel "Time [s]"
 
-# set xrange [{duration}*.3:{duration}*.7]
+set xrange [0:{duration}+20]
 
-set key at screen .5, screen 0.01 center bottom maxrows 1 maxcols 10
+# set key at screen .5, screen 0.01 center bottom maxrows 1 maxcols 10
+set key top left
 # unset key
 
 set output '{gnuplot_out_filename}'
