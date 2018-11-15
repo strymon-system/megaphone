@@ -15,6 +15,7 @@ parser.add_argument('secondary_group')
 parser.add_argument('--json', action='store_true')
 parser.add_argument('--gnuplot', action='store_true')
 parser.add_argument('--terminal', default="pdf")
+parser.add_argument('--filter', nargs='+', default=[])
 args = parser.parse_args()
 
 results_dir = args.results_dir
@@ -23,7 +24,24 @@ files = plot.get_files(results_dir)
 #      print(f[1])
 filtering = eval(args.filtering)
 
-graph_filtering, data, experiments = plot.latency_breakdown_plots(results_dir, files, filtering)
+if len(args.filter) > 0:
+    graph_filtering = []
+    data = []
+    experiments = []
+    for filter in args.filter:
+        filter = eval(filter)
+        # print(filtering+filter, file=sys.stderr)
+        gf, da, ex = plot.latency_breakdown_plots(results_dir, files, filtering + filter)
+        for f in ex:
+            # print(f, file=sys.stderr)
+            f.extend(filter)
+        graph_filtering.extend(gf)
+        data.extend(da)
+        experiments.extend(ex)
+    # print("experiments", experiments, file=sys.stderr)
+else:
+    graph_filtering, data, experiments = plot.latency_breakdown_plots(results_dir, files, filtering)
+# print(type(graph_filtering), type(data), type(experiments), file=sys.stderr)
 
 commit = results_dir.rstrip('/').split('/')[-1]
 # print("commit:", commit, file=sys.stderr)
@@ -136,6 +154,8 @@ if args.gnuplot:
     p_index = all_headers.index("max_p_1") + 1
     p50_index = all_headers.index("max_p_.5") + 1
     filtered_p_index = all_headers.index("filtered_max_p_1") + 1
+    precise_duration_index = all_headers.index("precise_duration") + 1
+    precise_max_index = all_headers.index("precise_max") + 1
     # fix long titles
     if len(title) > 79:
         idx = title.find(" ", int(len(title) / 2))
@@ -143,20 +163,14 @@ if args.gnuplot:
             title = "{}\\n{}".format(title[:idx], title[idx:])
     with open(chart_filename, 'w') as c:
         print("""\
-set terminal {gnuplot_terminal} font \"LinuxLibertine, 16\" enhanced dashed size 4.5, 3 crop
+set terminal {gnuplot_terminal} font \"LinuxLibertine, 20\" enhanced dashed size 5.3, 3.7 crop
 set logscale y
 set logscale x
 
 # set format y "10^{{%T}}"
 set grid xtics ytics
 
-set xlabel "Max latency [ns]"
-set ylabel "Duration"
-
-set key title "{key1}" right outside top width 3 #Left at screen 1, .95
-# set key right center
 set size square
-# unset key
 
 # set xrange [10**7:10**11]
 
@@ -167,26 +181,37 @@ set for [i=1:STATS_blocks] linetype i dashtype i
 # set for [i=1:STATS_blocks] linetype i dashtype i
 # set title "{title}"
 # set yrange [10**floor(log10(STATS_min)): 10**ceil(log10(STATS_max))]
-set yrange [10**9:10**12]
-set xrange [5*10**6: 2*10**11]
+set xrange [10**8:10**12]
+set yrange [5*10**6: 2*10**11]
+
+set ylabel "Max latency [ns]"
+set xlabel "Duration"
 set multiplot
 set origin 0, 0
-set rmargin at screen .75
-plot for [i={index}:*] '{dataset_filename}' using {p_index}:{duration_index} index (i+0) with points title columnheader(1)
+set lmargin 0
+set rmargin at screen .70
+set key title "{key1}" right outside top width 3 #Left at screen 1, .95
+plot for [i={index}:*] '{dataset_filename}' using {duration_index}:{p_index} index (i+0) with points title columnheader(1)
 set key title "{key2}" right outside bottom width 3 #Right at screen 1, .5
-unset grid
+# unset grid
 set xlabel " "
 set ylabel " "
-plot for [i=0:{index}-1] '{dataset_filename}' using {p_index}:{duration_index} index (i+0) with lines title columnheader(1)
+plot for [i=0:{index}-1] '{dataset_filename}' using {duration_index}:{p_index} index (i+0) with lines title columnheader(1)
 unset multiplot
 
-# set xlabel "50% latency [ns]"
-# plot for [i={index}:*] '{dataset_filename}' using {p50_index}:{duration_index} index (i+0) with points title columnheader(1), \\
-#  for [i=0:{index}-1] '' using {p50_index}:{duration_index} index (i+0) with lines title columnheader(1)
-
-# set xlabel "Filtered max latency [ns]"
-# plot for [i={index}:*] '{dataset_filename}' using {filtered_p_index}:{duration_index} index (i+0) with points title columnheader(1), \\
-#  for [i=0:{index}-1] '' using {filtered_p_index}:{duration_index} index (i+0) with lines title columnheader(1)
+set ylabel "Max latency [ns]"
+set xlabel "Duration"
+set multiplot
+set origin 0, 0
+set rmargin at screen .70
+set key title "{key1}" right outside top width 3 #Left at screen 1, .95
+plot for [i={index}:*] '{dataset_filename}' using {precise_duration_index}:{precise_max_index} index (i+0) with points title columnheader(1)
+set key title "{key2}" right outside bottom width 3 #Right at screen 1, .5
+# unset grid
+set xlabel " "
+set ylabel " "
+plot for [i=0:{index}-1] '{dataset_filename}' using {precise_duration_index}:{precise_max_index} index (i+0) with lines title columnheader(1)
+unset multiplot
         """.format(dataset_filename=dataset_filename,
                    gnuplot_terminal=gnuplot_terminal,
                    gnuplot_out_filename=gnuplot_out_filename,
@@ -194,12 +219,14 @@ unset multiplot
                    p_index=p_index,
                    p50_index=p50_index,
                    filtered_p_index=filtered_p_index,
+                   precise_duration_index=precise_duration_index,
+                   precise_max_index=precise_max_index,
                    title=title.replace("_", "\\\\_"),
                    duration=duration,
                    num_plots=len(migration_to_index),
                    index=index,
-                   key2=args.primary_group.replace("_", "\\\\_"),
-                   key1=args.secondary_group.replace("_", "\\\\_"),
+                   key2=args.primary_group.replace("_", " "),
+                   key1=args.secondary_group.replace("_", " "),
                    ), file=c)
 
 else: # json or html

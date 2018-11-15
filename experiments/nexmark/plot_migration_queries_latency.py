@@ -88,7 +88,7 @@ if args.gnuplot:
             title = "{}\\n{}".format(title[:idx], title[idx:])
     with open(chart_filename, 'w') as c:
         print("""\
-set terminal {gnuplot_terminal} font \"LinuxLibertine, 14\"
+set terminal {gnuplot_terminal} font \"LinuxLibertine, 20\"
 set logscale x
 set logscale y
 
@@ -128,7 +128,7 @@ elif args.table:
             return config.get("bin_shift", "UNKNOWN FIXME")
 
         def format_lat(d, c):
-            print("& {} ".format(round(d['latency']/1000000, 2)), file=c)
+            print("& {:.2f} ".format(d['latency']/1000000), file=c)
 
 
         # print(" ".join(all_headers), file=c)

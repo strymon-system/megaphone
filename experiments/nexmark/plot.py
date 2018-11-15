@@ -165,45 +165,86 @@ def latency_breakdown_plots(results_dir, files, filtering):
                 max_latency = [0 for _ in range(6)]
                 lines = [x.strip().split('\t') for x in f.readlines()]
                 median = "undef"
+                control_times = []
                 for vals in lines:
                     if vals[0].startswith('latency_ccdf'):
                         if float(vals[2]) <= 0.7:
                             median = int(vals[1])
                             break
+                    elif vals[0].startswith('control_time'):
+                        control_times.append(int(vals[1]))
+                control_times.reverse()
                 print(median, file=sys.stderr)
                 duration = 0
+                migration_duration = 0
+                migration_max = 0
                 last_vals = None
+                sample_interval = None
                 ignore_count = 2
                 last_was_migrating = False
                 cached_vals = []
+                consider_measurement = False
+                # print(control_times, file=sys.stderr)
                 for vals in lines:
+                    if vals[0].startswith("migration_done"):
+                        # migration_done timestamp duration
+                        migration_duration += int(vals[2])
+                        migration_max = max(migration_max, int(vals[2]))
                     if vals[0].startswith('summary_timeline'):
-                        # print(vals, file=sys.stderr)
-                        if last_vals is not None: # and int(vals[1]) * 2 > int(lines[-1][1]):
-                            # print(vals, migration_start, migration_end, max_latency)
-                            # print(vals, median, file=sys.stderr)
+                        time = int(vals[1])
+                        if sample_interval is None and last_vals is not None:
+                            sample_interval = time - int(last_vals[1])
+                        if sample_interval is not None and len(control_times) > 0:
+                            if control_times[-1] + sample_interval <= time:
+                                # print(control_times[-1], sample_interval, time, file=sys.stderr)
+                                control_time = control_times.pop()
+                                # print(vals, file=sys.stderr)
+                                # for i in range(0, len(max_latency)):
+                                #     v = int(vals[i + 2])
+                                #     max_latency[i] = max(max_latency[i], v)
+                                # if consider_measurement:
+                                #     duration += int(vals[1]) - int(last_vals[1])
+                                # else:
+                                #     duration += int(vals[1]) - control_time
+                                consider_measurement = True
+                        if consider_measurement:
                             if int(vals[3]) > 2 * median:
-                                last_was_migrating = True
-                                if ignore_count == 0:
-                                    # print(vals, file=sys.stderr)
-                                    for i in range(0, len(max_latency)):
-                                        v = int(vals[i + 2])
-                                        filtered_max_latency[i] = max(filtered_max_latency[i], v)
-                                else:
-                                    ignore_count -= 1
-                                    cached_vals.append(vals)
+                                print(vals, file=sys.stderr)
                                 for i in range(0, len(max_latency)):
                                     v = int(vals[i + 2])
                                     max_latency[i] = max(max_latency[i], v)
                                 duration += int(vals[1]) - int(last_vals[1])
-                            elif last_was_migrating:
-                                ignore_count = 2
-                                last_was_migrating = False
+                            else:
+                                consider_measurement = False
+                        # print(vals, file=sys.stderr)
+                        # if last_vals is not None: # and int(vals[1]) * 2 > int(lines[-1][1]):
+                        #     # print(vals, migration_start, migration_end, max_latency)
+                        #     # print(vals, median, file=sys.stderr)
+                        #     if int(vals[3]) > 2 * median:
+                        #         last_was_migrating = True
+                        #         if ignore_count == 0:
+                        #             # print(vals, file=sys.stderr)
+                        #             for i in range(0, len(max_latency)):
+                        #                 v = int(vals[i + 2])
+                        #                 filtered_max_latency[i] = max(filtered_max_latency[i], v)
+                        #         else:
+                        #             ignore_count -= 1
+                        #             cached_vals.append(vals)
+                        #         for i in range(0, len(max_latency)):
+                        #             v = int(vals[i + 2])
+                        #             max_latency[i] = max(max_latency[i], v)
+                        #         duration += int(vals[1]) - int(last_vals[1])
+                        #     elif last_was_migrating:
+                        #         ignore_count = 2
+                        #         last_was_migrating = False
                         last_vals = vals
 
-                if duration > 0:
+                print(duration, max_latency, file=sys.stderr)
+                if duration > 0 or migration_duration > 0:
                     experiment_data.append(dict(list({
-                            "migration_duration": duration,
+                             "migration_duration": duration,
+                             "precise_duration": migration_duration,
+                             "precise_max": migration_max,
                              "max_p_.25": max_latency[0],
                              "max_p_.5": max_latency[1],
                              "max_p_.75": max_latency[2],

@@ -37,7 +37,7 @@ migration="('migration', 'sudden'), "
 initial_config="('initial_config', 'uniform'), "
 final_config="('final_config', 'uniform'), "
 fake_stateful="('fake_stateful', False), "
-rate="('rate', 4000000), "
+rate="('rate', 8000000), "
 backend="" #"('backend', 'vec'), "
 
 for domain in "('domain', 256000000), " "('domain', 8192000000), "
@@ -46,7 +46,7 @@ do
          ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]" --table
 done
 
-rate="('rate', 2000000), "
+rate="('rate', 4000000), "
 domain="('domain', 256000000), "
 plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]"
      ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]" --table
@@ -58,13 +58,22 @@ plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $dura
 rate="('rate', 4000000), "
 final_config="('final_config', 'uniform_skew'), "
 bin_shift="('bin_shift', 12), "
-duration="('duration', 240), "
+duration="('duration', 1200), "
 backend="('backend', 'vec'), "
 
 
 plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $rate $backend $bin_shift ]" migration domain
+plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $backend ]" migration bin_shift --filter \
+    "[ ('bin_shift',  6), ('domain',   256000000) ]" \
+    "[ ('bin_shift',  7), ('domain',   512000000) ]" \
+    "[ ('bin_shift',  8), ('domain',  1024000000) ]" \
+    "[ ('bin_shift',  9), ('domain',  2048000000) ]" \
+    "[ ('bin_shift', 10), ('domain',  4096000000) ]" \
+    "[ ('bin_shift', 11), ('domain',  8192000000) ]" \
+    "[ ('bin_shift', 12), ('domain', 16384000000) ]" \
+    "[ ('bin_shift', 13), ('domain', 32768000000) ]"
 
-duration="('duration', 1600), "
+duration="('duration', 1200), "
 plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $rate $backend $bin_shift ]" migration domain
 
 rate="('rate', 2000000), "
@@ -74,7 +83,7 @@ plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $dur
 rate="('rate', 4000000), "
 final_config="('final_config', 'uniform_skew'), "
 bin_shift="('bin_shift', 12), "
-duration="('duration', 240), "
+duration="('duration', 1200), "
 
 plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $rate $backend $bin_shift ]" migration domain
 
@@ -83,7 +92,7 @@ backend="('backend', 'vec'), "
 plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $domain $backend ]" migration bin_shift
 
 backend="('backend', 'vec'), "
-duration="('duration', 1600), "
+duration="('duration', 1200), "
 for domain in "('domain', 256000000), " "('domain', 512000000), " "('domain', 1024000000), " "('domain', 2048000000), " "('domain', 4096000000), " "('domain', 8192000000), "  "('domain', 16384000000), "  "('domain', 32768000000), " "('domain', 65536000000), "
 do
     true
@@ -91,9 +100,14 @@ do
     plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]"
 done
 
+bin_shift="('bin_shift', 14), "
+domain="('domain', 4096000000), "
+plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]"
+plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]"
+
 rate="('rate', 2000000), "
 backend="('backend', 'hashmap'), "
-duration="('duration', 240), "
+duration="('duration', 1200), "
 for domain in "('domain', 32000000), " "('domain', 64000000), " "('domain', 128000000), " "('domain', 256000000), " "('domain', 512000000), "
 do
     true
@@ -104,8 +118,8 @@ done
 ## NEXMark
 
 binary="('binary', 'timely'), "
-duration="('duration', 600), "
-rate="('rate', 2000000), "
+duration="('duration', 1200), "
+rate="('rate', 4000000), "
 time_dilation="('time_dilation', 1), "
 
 for query in "q3" "q4" "q5" "q6" "q7" "q8" "q3-flex" "q4-flex" "q5-flex" "q6-flex" "q7-flex" "q8-flex"
@@ -116,8 +130,8 @@ do
     true
 done
 
-rate="('rate', 51282), "
-time_dilation="('time_dilation', 39), "
+rate="('rate', 50632), "
+time_dilation="('time_dilation', 79), "
 
 for query in "q3" "q4" "q5" "q6" "q7" "q8" "q3-flex" "q4-flex" "q5-flex" "q6-flex" "q7-flex" "q8-flex"
 do
