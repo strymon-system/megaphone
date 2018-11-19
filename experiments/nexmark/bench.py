@@ -547,7 +547,7 @@ def sigmod_micro_no_migr(group, groups=1):
     # VEC
     rate = workers * processes * 1000000 // 2
     for domain in [1000000 * x for x in [256, 8192]]:
-        for bin_shift in range(int(math.log2(workers * processes)), 17, 2):
+        for bin_shift in range(int(math.log2(workers * processes)), 21, 2):
             experiment = Experiment(
                 "sigmod_migro_no_migr_vec",
                 binary="word_count",
@@ -664,11 +664,11 @@ def sigmod_micro_no_migr(group, groups=1):
 def sigmod_micro_migr(group, groups=1):
     workers = 4
     processes = 4
-    duration = 1600
+    duration = 1200
     bin_shift = 12
 
     # VEC
-    rate = workers * processes * 1000000 // 2
+    rate = workers * processes * 1000000 // 4
     for domain in [1000000 * x for x in [256, 512, 1024, 2048, 4096, 8192, 16384, 32768]]:
         for migration in ["sudden", "fluid", "batched"]:
             experiment = Experiment(
@@ -709,8 +709,8 @@ def sigmod_micro_migr(group, groups=1):
             experiment.run_commands(run, build)
 
     # HASHMAP
-    rate = workers * processes * 1 * 1000000 // 4
-    for domain in [1000000 * x for x in [32, 64, 128, 256, 512]]:
+    rate = workers * processes * 1 * 1000000 // 8
+    for domain in [1000000 * x for x in [32, 64, 128, 256, 512, 1024, 2048, 4096]]:
         for migration in ["sudden", "fluid", "batched"]:
             experiment = Experiment(
                 "sigmod_migro_migr_hashmap",
@@ -731,7 +731,7 @@ def sigmod_micro_migr(group, groups=1):
             experiment.run_commands(run, build)
 
     # VEC
-    rate = workers * processes * 1000000 // 2
+    rate = workers * processes * 1000000 // 4
     domain = 1000000 * 4096
     for bin_shift in range(int(math.log2(workers * processes)), 15, 2):
         for migration in ["sudden", "fluid", "batched"]:
@@ -754,7 +754,7 @@ def sigmod_micro_migr(group, groups=1):
             experiment.run_commands(run, build)
 
     # HASHMAP
-    rate = workers * processes * 1 * 1000000 // 4
+    rate = workers * processes * 1 * 1000000 // 8
     domain = 128 * 1000000
     for bin_shift in range(int(math.log2(workers * processes)), 15, 2):
         for migration in ["sudden", "fluid", "batched"]:
