@@ -779,11 +779,13 @@ def sigmod_micro_migr(group, groups=1):
 def sigmod_nx(group, groups=1):
     workers = 4
     processes = 4
-    duration = 1200
     bin_shift = 12
+
+    duration = 1200
 
     queries_native = ["q3", "q4", "q5", "q6", "q7", "q8"]
     queries_flex = ["q3-flex", "q4-flex", "q5-flex", "q6-flex", "q7-flex", "q8-flex"]
+    queries_nostate = ["q1", "q1-flex", "q2", "q2-flex"]
 
     rate = workers * processes * 1000000 // 4
 
@@ -865,3 +867,41 @@ def sigmod_nx(group, groups=1):
                 time_dilation=time_dilation)
             experiment.base_machine_id = group*groups + 1
             experiment.run_commands(run, build)
+
+    duration = 30
+    for query in queries_nostate:
+        experiment = Experiment(
+            "sigmod_nx",
+            binary="timely",
+            duration=duration,
+            rate=rate,
+            migration="sudden",
+            queries=query,
+            bin_shift=bin_shift,
+            workers=workers,
+            processes=processes,
+            initial_config="uniform",
+            final_config="uniform_skew",
+            fake_stateful=False,
+            machine_local=False,
+            time_dilation=1)
+        experiment.base_machine_id = group*groups + 1
+        experiment.run_commands(run, build)
+    for query in queries_nostate:
+        experiment = Experiment(
+            "sigmod_nx_td",
+            binary="timely",
+            duration=duration,
+            rate=dilated_rate,
+            migration="sudden",
+            queries=query,
+            bin_shift=bin_shift,
+            workers=workers,
+            processes=processes,
+            initial_config="uniform",
+            final_config="uniform_skew",
+            fake_stateful=False,
+            machine_local=False,
+            time_dilation=time_dilation)
+        experiment.base_machine_id = group*groups + 1
+        experiment.run_commands(run, build)
