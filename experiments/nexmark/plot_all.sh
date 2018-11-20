@@ -131,6 +131,16 @@ do
     true
 done
 
+duration="('duration', 30), "
+for query in "q1" "q2" "q1-flex" "q2-flex"
+do
+    queries="('queries', '$query'), "
+    plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]"
+    plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]"
+    true
+done
+
+duration="('duration', 1200), "
 rate="('rate', 50632), "
 time_dilation="('time_dilation', 79), "
 
@@ -142,6 +152,14 @@ do
     true
 done
 
+duration="('duration', 30), "
+for query in "q1" "q2" "q1-flex" "q2-flex"
+do
+    queries="('queries', '$query'), "
+    plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]"
+    plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]"
+    true
+done
 
 exit
 

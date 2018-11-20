@@ -113,6 +113,12 @@ if args.gnuplot:
     with open(chart_filename, 'w') as c:
         print("""\
 set terminal {gnuplot_terminal} font \"LinuxLibertine, 16\"
+if (!exists("MP_LEFT"))   MP_LEFT = .1
+if (!exists("MP_RIGHT"))  MP_RIGHT = .95
+if (!exists("MP_BOTTOM")) MP_BOTTOM = .25
+if (!exists("MP_TOP"))    MP_TOP = .9
+if (!exists("MP_GAP"))    MP_GAP = 0.03
+
 set logscale y
 
 set format y "10^{{%T}}"
@@ -136,7 +142,8 @@ set for [i=1:STATS_blocks] linetype i dashtype i
 # set yrange [10**floor(log10(STATS_min)): 10**ceil(log10(STATS_max))]
 set yrange [9*10**-1: 10**ceil(log10(STATS_max))]
 set bmargin at screen 0.24
-set multiplot layout 1, {num_plots} #title "{title}"
+set multiplot layout 1, {num_plots} columnsfirst \\
+              margins screen MP_LEFT, MP_RIGHT, MP_BOTTOM, MP_TOP spacing screen MP_GAP
         """.format(dataset_filename=dataset_filename,
                    gnuplot_terminal=gnuplot_terminal,
                    gnuplot_out_filename=gnuplot_out_filename,
@@ -154,7 +161,7 @@ set multiplot layout 1, {num_plots} #title "{title}"
     plot for [i in "{indexes}"] '{dataset_filename}' using {time_index}:{latency_index} index (i+0) title columnheader(1) with lines linewidth 1
     unset key
     set format y ''; unset ylabel
-                """.format(key=key,
+                """.format(key=(key if len(migration_to_index) != 1 else ""),
                            indexes=" ".join(map(str, sorted(migration_to_index[key], reverse=True))),
                            dataset_filename=dataset_filename,
                            time_index=time_index,
@@ -164,18 +171,22 @@ set multiplot layout 1, {num_plots} #title "{title}"
         print_plots()
         print("""\
 set key at screen .5, screen 0.01 center bottom maxrows 1 maxcols 10 
-set multiplot layout 1, {num_plots}
+set multiplot layout 1, {num_plots} columnsfirst \\
+              margins screen MP_LEFT, MP_RIGHT, MP_BOTTOM, MP_TOP spacing screen MP_GAP
+
 set xtics 100
 set xrange [{duration}*.63:{duration}*.85]
 set ylabel "Latency [ms]"
 set format y "10^{{%T}}"
         """.format(duration=duration, num_plots=len(migration_to_index)), file=c)
+
         print_plots()
         print("""\
 set key at screen .5, screen 0.01 center bottom maxrows 1 maxcols 10 
-set multiplot layout 1, {num_plots}
+set multiplot layout 1, {num_plots} columnsfirst \\
+              margins screen MP_LEFT, MP_RIGHT, MP_BOTTOM, MP_TOP spacing screen MP_GAP
 set xtics 20
-set xrange [{duration}*.65:{duration}*.7]
+set xrange [{duration}*.65:{duration}*.71]
 set ylabel "Latency [ms]"
 set format y "10^{{%T}}"
         """.format(duration=duration, num_plots=len(migration_to_index)), file=c)
