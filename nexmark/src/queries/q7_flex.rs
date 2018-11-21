@@ -29,11 +29,11 @@ pub fn q7_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer
     }, |cap, maxima, bid_bin, output| {
         let mut windows = HashMap::new();
         let bid_state: &mut HashMap<_, _> = bid_bin.state();
-        for (_time, (window, price)) in maxima.iter() {
-            let open_windows = bid_state.entry(*window).or_insert(0);
-            if *open_windows < *price {
-                *open_windows = *price;
-                windows.insert(window.clone(), *price);
+        for (_time, (window, price)) in maxima.drain(..) {
+            let open_windows = bid_state.entry(window).or_insert(0);
+            if *open_windows < price {
+                *open_windows = price;
+                windows.insert(window, price);
             }
         }
         let mut session = output.session(&cap);

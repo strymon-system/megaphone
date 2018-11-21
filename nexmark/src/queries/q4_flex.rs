@@ -18,11 +18,11 @@ pub fn q4_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, _nt: NexmarkTime
                         |cap, data, bin, output| {
                             let mut session = output.session(&cap);
                             let state: &mut HashMap<_, _> = bin.state();
-                            for (_time, (category, price)) in data.iter() {
-                                let entry = state.entry(*category).or_insert((0usize, 0usize));
-                                entry.0 += *price;
+                            for (_time, (category, price)) in data.drain(..) {
+                                let entry = state.entry(category).or_insert((0usize, 0usize));
+                                entry.0 += price;
                                 entry.1 += 1;
-                                session.give((*category, entry.0 / entry.1));
+                                session.give((category, entry.0 / entry.1));
                             }
                         })
 }

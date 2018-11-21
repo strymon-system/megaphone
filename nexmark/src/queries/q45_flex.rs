@@ -34,15 +34,15 @@ pub fn q45_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTime
                                },
                                |_cap, data, bid_bin, _auction_bin, _output| {
                                    let state: &mut HashMap<_, _> = bid_bin.state();
-                                   for (_time, bid) in data {
+                                   for (_time, bid) in data.drain(..) {
                                        // Update bin state
-                                       state.entry(bid.auction).or_insert_with(Vec::new).push(bid.clone());
+                                       state.entry(bid.auction).or_insert_with(Vec::new).push(bid);
                                    };
                                },
                                |cap, auction_data, bid_bin, _auction_bin: &mut Bin<_, Vec<()>, _>, output| {
                                    let mut session = output.session(&cap);
                                    let bid_state = bid_bin.state();
-                                   for (_time, auction) in auction_data {
+                                   for (_time, auction) in auction_data.drain(..) {
                                        if let Some(mut bids) = bid_state.remove(&auction.id) {
                                            bids.retain(|b|
                                                auction.date_time <= b.date_time &&
@@ -50,7 +50,7 @@ pub fn q45_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTime
                                                    b.price >= auction.reserve);
                                            bids.sort_by(|b1, b2| b1.price.cmp(&b2.price));
                                            if let Some(winner) = bids.pop() {
-                                               session.give((auction.clone(), winner));
+                                               session.give((auction, winner));
                                            }
                                        }
                                    }

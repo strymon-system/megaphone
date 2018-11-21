@@ -22,7 +22,7 @@ pub fn q3_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, _nt: NexmarkTime
     auctions.stateful_binary(&control, &people, |a| calculate_hash(&a.seller), |p| calculate_hash(&p.id), "q3-flex join", |cap, data, auction_bin, people_bin, output| {
         let mut session = output.session(&cap);
         let people_state: &mut HashMap<_, Person> = people_bin.state();
-        for (_time, auction) in data {
+        for (_time, auction) in data.drain(..) {
             if let Some(mut person) = people_state.get(&auction.seller) {
                 session.give((person.name.clone(),
                               person.city.clone(),
@@ -31,12 +31,12 @@ pub fn q3_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, _nt: NexmarkTime
             }
             // Update auction state
             let bin: &mut HashMap<_, Auction> = auction_bin.state();
-            bin.insert(auction.seller, auction.clone());
+            bin.insert(auction.seller, auction);
         };
     }, |cap, data, auction_bin, people_bin, output| {
         let mut session = output.session(&cap);
         let auction_state = auction_bin.state();
-        for (_time, person) in data {
+        for (_time, person) in data.drain(..) {
             if let Some(mut auction) = auction_state.get(&person.id) {
                 session.give((person.name.clone(),
                               person.city.clone(),
@@ -44,7 +44,7 @@ pub fn q3_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, _nt: NexmarkTime
                               auction.id));
             }
             // Update people state
-            people_bin.state().insert(person.id, person.clone());
+            people_bin.state().insert(person.id, person);
         };
     })
 }
