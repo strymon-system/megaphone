@@ -119,6 +119,9 @@ if (!exists("MP_BOTTOM")) MP_BOTTOM = .25
 if (!exists("MP_TOP"))    MP_TOP = .9
 if (!exists("MP_GAP"))    MP_GAP = 0.03
 
+max(x,y) = (x < y) ? y : x
+min(x,y) = (x < y) ? x : y
+
 set logscale y
 
 set format y "10^{{%T}}"
@@ -126,7 +129,7 @@ set grid xtics ytics
 
 set ylabel "Latency [ms]"
 set xlabel "Time [s]"
-set xtics 200
+set xtics min(200, {duration}/20*10)
 set mxtics 4
 
 set xrange [0:{duration}*.99]
@@ -140,7 +143,7 @@ stats '{dataset_filename}' using {latency_index} nooutput
 if (STATS_blocks == 0) exit
 set for [i=1:STATS_blocks] linetype i dashtype i
 # set yrange [10**floor(log10(STATS_min)): 10**ceil(log10(STATS_max))]
-set yrange [9*10**-1: 10**ceil(log10(STATS_max))]
+set yrange [9*10**-1:10**max(4, ceil(log10(STATS_max)))]
 set bmargin at screen 0.24
 set multiplot layout 1, {num_plots} columnsfirst \\
               margins screen MP_LEFT, MP_RIGHT, MP_BOTTOM, MP_TOP spacing screen MP_GAP
