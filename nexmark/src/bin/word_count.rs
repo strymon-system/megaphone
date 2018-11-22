@@ -180,24 +180,28 @@ fn main() {
                     Some(input
                          .unary_frontier(Exchange::new(move |(x, _)| *x as u64),
                                          "WordCount", |_cap, _| {
+                             let mut drain_buffer = Vec::new();
                              let mut states = ::std::collections::HashMap::<usize, u64>::new();
                              let mut notificator = TotalOrderFrontierNotificator::new();
                              move |input, output| {
                                  while let Some((time, data)) = input.next() {
-                                     let mut vector = Vec::new();
-                                     data.swap(&mut vector);
                                      let cap = time.retain();
-                                     notificator.notify_at_data(&cap, cap.time().clone(), vector);
+                                     for d in data.iter() {
+                                         notificator.notify_at_data(&cap, cap.time().clone(), *d);
+                                     }
                                  }
-                                 notificator.for_each_data(&[input.frontier], |cap, time, mut vec, _| {
-                                     let cap = cap.delayed(&time);
-                                     let mut session = output.session(&cap);
-                                     for (key, val) in vec.drain(..) {
+                                 if let Some(cap) = notificator.drain(&[input.frontier], &mut drain_buffer) {
+                                     let mut session_cap = cap.clone();
+                                     for (time, (key, val)) in drain_buffer.drain(..) {
+                                         if *session_cap.time() != time {
+                                             session_cap = cap.delayed(&time);
+                                         }
+                                         let mut session = output.session(&session_cap);
                                          let entry = states.entry(key).or_insert(0);
                                          *entry += val;
                                          session.give((key, *entry));
                                      }
-                                 });
+                                 }
                              }
                          })
                          .probe_with(&mut probe))
