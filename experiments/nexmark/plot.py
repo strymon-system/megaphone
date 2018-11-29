@@ -174,7 +174,7 @@ def latency_breakdown_plots(results_dir, files, filtering):
                     elif vals[0].startswith('control_time'):
                         control_times.append(int(vals[1]))
                 control_times.reverse()
-                print(median, file=sys.stderr)
+                # print(median, file=sys.stderr)
                 duration = 0
                 migration_duration = 0
                 migration_max = 0
@@ -209,7 +209,7 @@ def latency_breakdown_plots(results_dir, files, filtering):
                                 consider_measurement = True
                         if consider_measurement:
                             if int(vals[3]) > 2 * median:
-                                print(vals, file=sys.stderr)
+                                # print(vals, file=sys.stderr)
                                 for i in range(0, len(max_latency)):
                                     v = int(vals[i + 2])
                                     max_latency[i] = max(max_latency[i], v)
@@ -239,7 +239,7 @@ def latency_breakdown_plots(results_dir, files, filtering):
                         #         last_was_migrating = False
                         last_vals = vals
 
-                print(duration, max_latency, file=sys.stderr)
+                # print(duration, max_latency, file=sys.stderr)
                 if duration > 0 or migration_duration > 0:
                     norm = 1000000000
                     experiment_data.append(dict(list({

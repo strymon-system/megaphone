@@ -545,7 +545,7 @@ def sigmod_micro_no_migr(group, groups=1):
     migration = "sudden"
 
     # VEC
-    rate = workers * processes * 1000000 // 2
+    rate = workers * processes * 1000000 // 4
     for domain in [1000000 * x for x in [256, 8192]]:
         for bin_shift in range(int(math.log2(workers * processes)), 21, 2):
             experiment = Experiment(

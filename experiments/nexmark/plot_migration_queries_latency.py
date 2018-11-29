@@ -13,13 +13,33 @@ parser.add_argument('--json', action='store_true')
 parser.add_argument('--gnuplot', action='store_true')
 parser.add_argument('--table', action='store_true')
 parser.add_argument('--terminal', default="pdf")
+parser.add_argument('--filter', nargs='+', default=[])
+parser.add_argument('--rename', default="{}")
+parser.add_argument('--name')
 args = parser.parse_args()
 
 results_dir = args.results_dir
 files = plot.get_files(results_dir)
 filtering = eval(args.filtering)
+rename = eval(args.rename)
 
-graph_filtering, data, experiments = plot.latency_plots(results_dir, files, filtering)
+if len(args.filter) > 0:
+    graph_filtering = []
+    data = []
+    experiments = []
+    for filter in args.filter:
+        filter = eval(filter)
+        # print(filtering+filter, file=sys.stderr)
+        gf, da, ex = plot.latency_plots(results_dir, files, filtering + filter)
+        for f in ex:
+            # print(f, file=sys.stderr)
+            f.extend(filter)
+        graph_filtering.extend(gf)
+        data.extend(da)
+        experiments.extend(ex)
+    # print("experiments", experiments, file=sys.stderr)
+else:
+    graph_filtering, data, experiments = plot.latency_plots(results_dir, files, filtering)
 
 commit = results_dir.rstrip('/').split('/')[-1]
 # print("commit:", commit, file=sys.stderr)
@@ -42,7 +62,10 @@ else:
 plot_name = plot.kv_to_string(dict(graph_filtering))
 
 def get_chart_filename(extension):
-    graph_filename = "{}+{}.{}".format(plot.plot_name(__file__), plot_name, extension)
+    name = ""
+    if args.name:
+        name = "_{}".format(args.name)
+    graph_filename = "{}{}+{}.{}".format(plot.plot_name(__file__), name, plot_name, extension)
     return "charts/{}/{}".format(commit, graph_filename)
 
 chart_filename = get_chart_filename(extension)
@@ -88,7 +111,7 @@ if args.gnuplot:
             title = "{}\\n{}".format(title[:idx], title[idx:])
     with open(chart_filename, 'w') as c:
         print("""\
-set terminal {gnuplot_terminal} font \"LinuxLibertine, 20\"
+set terminal {gnuplot_terminal} font \"TimesNewRoman, 20\"
 set logscale x
 set logscale y
 
@@ -134,6 +157,7 @@ elif args.table:
         # print(" ".join(all_headers), file=c)
 
         print("Experiment & 90\\% & 99\\% & 99.99\\% & max \\tabularnewline", file=c)
+        print("\\midrule", file=c)
 
         for ds, config in zip(iter(data), iter(experiments)):
             # print(config, file=sys.stderr)

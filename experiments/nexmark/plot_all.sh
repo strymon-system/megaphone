@@ -37,23 +37,32 @@ migration="('migration', 'sudden'), "
 initial_config="('initial_config', 'uniform'), "
 final_config="('final_config', 'uniform'), "
 fake_stateful="('fake_stateful', False), "
-rate="('rate', 8000000), "
+rate="('rate', 4000000), "
 backend="" #"('backend', 'vec'), "
+breakdown_rename="{'sudden': 'all-at-once', 'bin_shift': 'bins', 4: 2**4, 5: 2**5, 6: 2**6, 7: 2**7, 8: 2**8, 9: 2**9, 10: 2**10, 11: 2**11, 12: 2**12, 13: 2**13, 14: 2**14}"
+timeline_rename="{'sudden' : ('all-at-once', 1),}"
 
 for domain in "('domain', 256000000), " "('domain', 8192000000), "
 do
-    plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]"
-         ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]" --table
+    plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]" --name vec --filter \
+    "[ ('backend',  'vec'), ]" \
+    "[ ('backend',  'vecnative'), ]"
+
+         ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]" --table --name vec --filter \
+    "[ ('backend',  'vec'), ]" \
+    "[ ('backend',  'vecnative'), ]"
+
 done
 
 rate="('rate', 4000000), "
 domain="('domain', 256000000), "
-plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]"
-     ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]" --table
+plot ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]" --name hashmap --filter \
+"[ ('backend',  'hashmap'), ]" \
+"[ ('backend',  'hashmapnative'), ]"
 
-bin_shift="('bin_shift', 12), "
-plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend $bin_shift ]"
-plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend $bin_shift ]"
+     ./plot_migration_queries_latency.py "results/$REVISION/" "[ $binary $processes $duration $migration $initial_config $final_config $fake_stateful $domain $rate $backend ]" --table --name hashmap --filter \
+"[ ('backend',  'hashmap'), ]" \
+"[ ('backend',  'hashmapnative'), ]"
 
 rate="('rate', 4000000), "
 final_config="('final_config', 'uniform_skew'), "
@@ -62,8 +71,8 @@ duration="('duration', 1200), "
 backend="('backend', 'vec'), "
 
 
-plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $rate $backend $bin_shift ]" migration domain
-plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $backend ]" migration bin_shift --filter \
+plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $rate $backend $bin_shift ]" migration domain --rename "$breakdown_rename"
+plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $backend ]" migration bin_shift --rename "$breakdown_rename" --filter \
     "[ ('bin_shift',  6), ('domain',   256000000) ]" \
     "[ ('bin_shift',  7), ('domain',   512000000) ]" \
     "[ ('bin_shift',  8), ('domain',  1024000000) ]" \
@@ -74,36 +83,36 @@ plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $dur
     "[ ('bin_shift', 13), ('domain', 32768000000) ]"
 
 duration="('duration', 1200), "
-plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $rate $backend $bin_shift ]" migration domain
+plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $rate $backend $bin_shift ]" migration domain --rename "$breakdown_rename"
 
 rate="('rate', 2000000), "
 backend="('backend', 'hashmap'), "
-plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $rate $backend $bin_shift ]" migration domain
+plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $rate $backend $bin_shift ]" migration domain --rename "$breakdown_rename"
 
 rate="('rate', 4000000), "
 final_config="('final_config', 'uniform_skew'), "
 bin_shift="('bin_shift', 12), "
 duration="('duration', 1200), "
 
-plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $rate $backend $bin_shift ]" migration domain
+plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $rate $backend $bin_shift ]" migration domain --rename "$breakdown_rename"
 
 domain="('domain', 4096000000), "
 backend="('backend', 'vec'), "
-plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $domain $backend ]" migration bin_shift
+plot ./plot_latency_breakdown.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $domain $backend ]" migration bin_shift --rename "$breakdown_rename"
 
 backend="('backend', 'vec'), "
 duration="('duration', 1200), "
 for domain in "('domain', 256000000), " "('domain', 512000000), " "('domain', 1024000000), " "('domain', 2048000000), " "('domain', 4096000000), " "('domain', 8192000000), "  "('domain', 16384000000), "  "('domain', 32768000000), " "('domain', 65536000000), "
 do
     true
-    plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]"
-    plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]"
+    plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]" --rename "$timeline_rename"
+    plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]" --rename "$breakdown_rename"
 done
 
-bin_shift="('bin_shift', 14), "
+bin_shift="('bin_shift', 12), "
 domain="('domain', 4096000000), "
-plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]"
-plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]"
+plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]" --name intro --rename "{'sudden' : ('All-at-once (prior work)', 1), 'fluid': ('Megaphone', 2), 'batched': ('Megaphone (optimized)', 3)}"
+plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]" --rename "$breakdown_rename"
 
 rate="('rate', 2000000), "
 backend="('backend', 'hashmap'), "
@@ -111,8 +120,8 @@ duration="('duration', 1200), "
 for domain in "('domain', 32000000), " "('domain', 64000000), " "('domain', 128000000), " "('domain', 256000000), " "('domain', 512000000), "
 do
     true
-    plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]"
-    plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]"
+    plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]" --rename "$timeline_rename"
+    plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]" --rename "$breakdown_rename"
 done
 
 ## NEXMark
@@ -126,8 +135,8 @@ bin_shift="('bin_shift', 12), "
 for query in "q3" "q4" "q5" "q6" "q7" "q8" "q3-flex" "q4-flex" "q5-flex" "q6-flex" "q7-flex" "q8-flex"
 do
     queries="('queries', '$query'), "
-    plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]"
-    plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]"
+    plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]" --rename "$timeline_rename"
+    plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]" --rename "$breakdown_rename"
     true
 done
 
@@ -135,8 +144,8 @@ duration="('duration', 30), "
 for query in "q1" "q2" "q1-flex" "q2-flex"
 do
     queries="('queries', '$query'), "
-    plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]"
-    plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]"
+    plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]" --rename "$timeline_rename"
+    plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]" --rename "$breakdown_rename"
     true
 done
 
@@ -147,8 +156,8 @@ time_dilation="('time_dilation', 79), "
 for query in "q3" "q4" "q5" "q6" "q7" "q8" "q3-flex" "q4-flex" "q5-flex" "q6-flex" "q7-flex" "q8-flex"
 do
     queries="('queries', '$query'), "
-    plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]"
-    plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]"
+    plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]" --rename "$timeline_rename"
+    plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]" --rename "$breakdown_rename"
     true
 done
 
@@ -156,8 +165,8 @@ duration="('duration', 30), "
 for query in "q1" "q2" "q1-flex" "q2-flex"
 do
     queries="('queries', '$query'), "
-    plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]"
-    plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]"
+    plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]" --rename "$timeline_rename"
+    plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $time_dilation $queries ]" --rename "$breakdown_rename"
     true
 done
 

@@ -13,6 +13,9 @@ parser.add_argument('filtering')
 parser.add_argument('--json', action='store_true')
 parser.add_argument('--gnuplot', action='store_true')
 parser.add_argument('--terminal', default="pdf")
+parser.add_argument('--filter', nargs='+', default=[])
+parser.add_argument('--rename', default="{}")
+parser.add_argument('--name')
 args = parser.parse_args()
 
 results_dir = args.results_dir
@@ -20,8 +23,25 @@ files = plot.get_files(results_dir)
 # for f in files:
 #      print(f[1])
 filtering = eval(args.filtering)
+rename = eval(args.rename)
 
-graph_filtering, data, experiments = plot.memory_timeline_plots(results_dir, files, filtering)
+if len(args.filter) > 0:
+    graph_filtering = []
+    data = []
+    experiments = []
+    for filter in args.filter:
+        filter = eval(filter)
+        # print(filtering+filter, file=sys.stderr)
+        gf, da, ex = plot.memory_timeline_plots(results_dir, files, filtering + filter)
+        for f in ex:
+            # print(f, file=sys.stderr)
+            f.extend(filter)
+        graph_filtering.extend(gf)
+        data.extend(da)
+        experiments.extend(ex)
+    # print("experiments", experiments, file=sys.stderr)
+else:
+    graph_filtering, data, experiments = plot.memory_timeline_plots(results_dir, files, filtering)
 
 commit = results_dir.rstrip('/').split('/')[-1]
 # print("commit:", commit, file=sys.stderr)
@@ -46,7 +66,10 @@ else:
 plot_name = plot.kv_to_string(dict(graph_filtering))
 
 def get_chart_filename(extension):
-    graph_filename = "{}+{}.{}".format(plot.plot_name(__file__), plot_name, extension)
+    name = ""
+    if args.name:
+        name = "_{}".format(args.name)
+    graph_filename = "{}{}+{}.{}".format(plot.plot_name(__file__), name, plot_name, extension)
     return "charts/{}/{}".format(commit, graph_filename)
 
 chart_filename = get_chart_filename(extension)
@@ -56,9 +79,13 @@ title = plot.kv_to_name(graph_filtering)
 if args.gnuplot:
     def name(config):
         config = dict(config)
-        return config.get("migration", "UNKNOWN FIXME")
+        migration = config.get("migration", "UNKNOWN FIXME")
+        if migration in rename:
+            migration = rename[migration]
+        return migration
 
-    # Generate dataset
+
+# Generate dataset
     all_headers = set()
 
     for ds in data:
@@ -105,7 +132,7 @@ if args.gnuplot:
             title = "{}\\n{}".format(title[:idx], title[idx:])
     with open(chart_filename, 'w') as c:
         print("""\
-set terminal {gnuplot_terminal} font \"LinuxLibertine, 20\" size 4, 3 monochrome
+set terminal {gnuplot_terminal} font \"TimesNewRoman, 20\" monochrome
 # set logscale y
 
 # set format y "10^{{%T}}"

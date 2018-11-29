@@ -16,13 +16,17 @@ parser.add_argument('--json', action='store_true')
 parser.add_argument('--gnuplot', action='store_true')
 parser.add_argument('--terminal', default="pdf")
 parser.add_argument('--filter', nargs='+', default=[])
+parser.add_argument('--rename', default="{}")
+parser.add_argument('--name')
 args = parser.parse_args()
+print(args, file=sys.stderr)
 
 results_dir = args.results_dir
 files = plot.get_files(results_dir)
 # for f in files:
 #      print(f[1])
 filtering = eval(args.filtering)
+rename = eval(args.rename)
 
 if len(args.filter) > 0:
     graph_filtering = []
@@ -66,7 +70,10 @@ else:
 plot_name = plot.kv_to_string(dict(graph_filtering))
 
 def get_chart_filename(extension):
-    graph_filename = "{}+{}.{}".format(plot.plot_name(__file__), plot_name, extension)
+    name = ""
+    if args.name:
+        name = "_{}".format(args.name)
+    graph_filename = "{}{}+{}.{}".format(plot.plot_name(__file__), name, plot_name, extension)
     return "charts/{}/{}".format(commit, graph_filename)
 
 chart_filename = get_chart_filename(extension)
@@ -117,7 +124,9 @@ if args.gnuplot:
     def format_key(group, key):
         if group == "domain":
             return "{}M".format(int(key/1000000))
-        return key
+        if key in rename:
+            key = rename[key]
+        return str(key)
 
     with open(dataset_filename, 'w') as c:
         index = 0
@@ -163,7 +172,7 @@ if args.gnuplot:
             title = "{}\\n{}".format(title[:idx], title[idx:])
     with open(chart_filename, 'w') as c:
         print("""\
-set terminal {gnuplot_terminal} font \"LinuxLibertine, 20\" enhanced dashed size 5.3, 3.7 crop
+set terminal {gnuplot_terminal} font \"TimesNewRoman, 20\" enhanced dashed size 5.3, 3.7 crop
 set logscale y
 set logscale x
 
@@ -226,7 +235,7 @@ unset multiplot
                    num_plots=len(migration_to_index),
                    index=index,
                    key2=args.primary_group.replace("_", " "),
-                   key1=args.secondary_group.replace("_", " "),
+                   key1=format_key("", args.secondary_group).replace("_", " "),
                    ), file=c)
 
 else: # json or html

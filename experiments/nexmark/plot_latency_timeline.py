@@ -13,6 +13,9 @@ parser.add_argument('filtering')
 parser.add_argument('--json', action='store_true')
 parser.add_argument('--gnuplot', action='store_true')
 parser.add_argument('--terminal', default="pdf")
+parser.add_argument('--filter', nargs='+', default=[])
+parser.add_argument('--rename', default="{}")
+parser.add_argument('--name')
 args = parser.parse_args()
 
 results_dir = args.results_dir
@@ -20,8 +23,25 @@ files = plot.get_files(results_dir)
 # for f in files:
 #      print(f[1])
 filtering = eval(args.filtering)
+rename = eval(args.rename)
 
-graph_filtering, data, experiments = plot.latency_timeline_plots(results_dir, files, filtering)
+if len(args.filter) > 0:
+    graph_filtering = []
+    data = []
+    experiments = []
+    for filter in args.filter:
+        filter = eval(filter)
+        # print(filtering+filter, file=sys.stderr)
+        gf, da, ex = plot.latency_timeline_plots(results_dir, files, filtering + filter)
+        for f in ex:
+            # print(f, file=sys.stderr)
+            f.extend(filter)
+        graph_filtering.extend(gf)
+        data.extend(da)
+        experiments.extend(ex)
+    # print("experiments", experiments, file=sys.stderr)
+else:
+    graph_filtering, data, experiments = plot.latency_timeline_plots(results_dir, files, filtering)
 
 commit = results_dir.rstrip('/').split('/')[-1]
 # print("commit:", commit, file=sys.stderr)
@@ -46,7 +66,10 @@ else:
 plot_name = plot.kv_to_string(dict(graph_filtering))
 
 def get_chart_filename(extension):
-    graph_filename = "{}+{}.{}".format(plot.plot_name(__file__), plot_name, extension)
+    name = ""
+    if args.name:
+        name = "_{}".format(args.name)
+    graph_filename = "{}{}+{}.{}".format(plot.plot_name(__file__), name, plot_name, extension)
     return "charts/{}/{}".format(commit, graph_filename)
 
 chart_filename = get_chart_filename(extension)
@@ -83,12 +106,19 @@ if args.gnuplot:
                 return v
         return None
 
+    order = { None: 0, 'sudden': 1, 'fluid': 2, 'batched': 3}
+
     with open(dataset_filename, 'w') as c:
         index = 0
         # print(" ".join(all_headers), file=c)
         for p in sorted(all_percentiles):
             for ds, config in zip(iter(data), iter(experiments)):
-                migration_to_index[get_key(config, "migration")].append(index)
+                key = get_key(config, "migration")
+                if key in rename:
+                    key = rename[key]
+                else:
+                    key = (key, order[key])
+                migration_to_index[key].append(index)
                 config_with_p = config + [('p', p)]
                 all_configs.append(config_with_p)
                 print("\"{}\"".format(plot.kv_to_name([('p', p)]).replace("_", "\\\\_")), file=c)
@@ -112,11 +142,11 @@ if args.gnuplot:
             title = "{}\\n{}".format(title[:idx], title[idx:])
     with open(chart_filename, 'w') as c:
         print("""\
-set terminal {gnuplot_terminal} font \"LinuxLibertine, 16\"
-if (!exists("MP_LEFT"))   MP_LEFT = .1
-if (!exists("MP_RIGHT"))  MP_RIGHT = .95
-if (!exists("MP_BOTTOM")) MP_BOTTOM = .25
-if (!exists("MP_TOP"))    MP_TOP = .9
+set terminal {gnuplot_terminal} font \"TimesNewRoman, 16\"
+if (!exists("MP_LEFT"))   MP_LEFT = .11
+if (!exists("MP_RIGHT"))  MP_RIGHT = .98
+if (!exists("MP_BOTTOM")) MP_BOTTOM = .27
+if (!exists("MP_TOP"))    MP_TOP = .86
 if (!exists("MP_GAP"))    MP_GAP = 0.03
 
 max(x,y) = (x < y) ? y : x
@@ -158,13 +188,13 @@ set multiplot layout 1, {num_plots} columnsfirst \\
                    ), file=c)
 
         def print_plots():
-            for key in sorted(migration_to_index, reverse=True):
+            for key in sorted(migration_to_index, key=lambda x: x[1]):
                 print("""\
     set title "{key}"
     plot for [i in "{indexes}"] '{dataset_filename}' using {time_index}:{latency_index} index (i+0) title columnheader(1) with lines linewidth 1
     unset key
     set format y ''; unset ylabel
-                """.format(key=(key if len(migration_to_index) != 1 else ""),
+                """.format(key=(key[0] if len(migration_to_index) != 1 else ""),
                            indexes=" ".join(map(str, sorted(migration_to_index[key], reverse=True))),
                            dataset_filename=dataset_filename,
                            time_index=time_index,
