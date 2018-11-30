@@ -40,7 +40,7 @@ fake_stateful="('fake_stateful', False), "
 rate="('rate', 4000000), "
 backend="" #"('backend', 'vec'), "
 breakdown_rename="{'sudden': 'all-at-once', 'bin_shift': 'bins', 4: 2**4, 5: 2**5, 6: 2**6, 7: 2**7, 8: 2**8, 9: 2**9, 10: 2**10, 11: 2**11, 12: 2**12, 13: 2**13, 14: 2**14}"
-timeline_rename="{'sudden' : ('all-at-once', 1),}"
+timeline_rename="{'sudden' : ('all-at-once', 1), 'batched' : ('Megaphone (batched)', 3),}"
 
 for domain in "('domain', 256000000), " "('domain', 8192000000), "
 do
@@ -111,7 +111,7 @@ done
 
 bin_shift="('bin_shift', 12), "
 domain="('domain', 4096000000), "
-plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]" --name intro --rename "{'sudden' : ('All-at-once (prior work)', 1), 'fluid': ('Megaphone', 2), 'batched': ('Megaphone (optimized)', 3)}"
+plot ./plot_latency_timeline.py "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]" --name intro --rename "{'sudden' : ('All-at-once (prior work)', 1), 'fluid': ('Megaphone (fluid)', 2), 'batched': ('Megaphone (optimized)', 3)}"
 plot ./plot_memory_timeline.py  "results/$REVISION/" "[ $binary $processes $duration $initial_config $final_config $fake_stateful $bin_shift $rate $domain $backend ]" --rename "$breakdown_rename"
 
 rate="('rate', 2000000), "

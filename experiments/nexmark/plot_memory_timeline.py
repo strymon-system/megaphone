@@ -132,7 +132,7 @@ if args.gnuplot:
             title = "{}\\n{}".format(title[:idx], title[idx:])
     with open(chart_filename, 'w') as c:
         print("""\
-set terminal {gnuplot_terminal} font \"TimesNewRoman, 20\" monochrome
+set terminal {gnuplot_terminal} font \"TimesNewRoman, 10\" size 3.3, 2.0 monochrome
 # set logscale y
 
 # set format y "10^{{%T}}"

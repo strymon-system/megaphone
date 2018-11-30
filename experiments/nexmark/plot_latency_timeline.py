@@ -121,7 +121,12 @@ if args.gnuplot:
                 migration_to_index[key].append(index)
                 config_with_p = config + [('p', p)]
                 all_configs.append(config_with_p)
-                print("\"{}\"".format(plot.kv_to_name([('p', p)]).replace("_", "\\\\_")), file=c)
+                if p == 1:
+                    name = "max"
+                else:
+                    name = plot.kv_to_name([('p', p)])
+                # print(p, name, file=sys.stderr)
+                print("\"{}\"".format(name.replace("_", "\\\\_")), file=c)
                 for d in ds:
                     if d["p"] == p:
                         print(" ".join(map(plot.quote_str, [d[k] for k in all_headers])), file=c)
