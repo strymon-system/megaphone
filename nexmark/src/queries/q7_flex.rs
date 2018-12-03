@@ -10,11 +10,9 @@ use ::calculate_hash;
 
 use {queries::NexmarkInput, queries::NexmarkTimer};
 
-pub fn q7_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, scope: &mut S) -> Stream<S, usize>
+pub fn q7_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, scope: &mut S, window_size_ns: usize) -> Stream<S, usize>
 {
     let control = input.control(scope);
-    // Window ticks every 10 seconds.
-    let window_size_ns = 10_000_000_000;
 
     let bids = input.bids(scope)
         .map(move |b| (b.auction, Date::new(((*b.date_time / window_size_ns) + 1) * window_size_ns), b.price));

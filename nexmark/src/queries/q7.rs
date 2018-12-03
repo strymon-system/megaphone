@@ -7,11 +7,8 @@ use ::event::Date;
 
 use {queries::NexmarkInput, queries::NexmarkTimer};
 
-pub fn q7<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, scope: &mut S) -> Stream<S, usize>
+pub fn q7<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, scope: &mut S, window_size_ns: usize) -> Stream<S, usize>
 {
-
-    // Window ticks every 10 seconds.
-    let window_size_ns = 10_000_000_000;
 
     input.bids(scope)
         .map(move |b| (Date::new(((*b.date_time / window_size_ns) + 1) * window_size_ns), b.price))

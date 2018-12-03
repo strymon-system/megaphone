@@ -8,11 +8,8 @@ use ::event::Date;
 
 use {queries::NexmarkInput, queries::NexmarkTimer};
 
-pub fn q5<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, scope: &mut S) -> Stream<S, usize>
+pub fn q5<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, scope: &mut S, window_slice_count: usize, window_slide_ns: usize) -> Stream<S, usize>
 {
-    let window_slice_count = 60;
-    let window_slide_ns = 1_000_000_000;
-
     input.bids(scope)
         .map(move |b| (b.auction, Date::new(((*b.date_time / window_slide_ns) + 1) * window_slide_ns)))
         // TODO: Could pre-aggregate pre-exchange, if there was reason to do so.

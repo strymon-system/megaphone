@@ -270,14 +270,18 @@ fn main() {
             }
 
             if queries.iter().any(|x| *x == "q5") {
+                let window_slice_count = 60;
+                let window_slide_ns = 1_000_000_000;
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q5(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
+                    ::nexmark::queries::q5(&nexmark_input, nexmark_timer, scope, window_slice_count, window_slide_ns).probe_with(&mut probe);
                 });
             }
 
             if queries.iter().any(|x| *x == "q5-flex") {
+                let window_slice_count = 60;
+                let window_slide_ns = 1_000_000_000;
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q5_flex(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
+                    ::nexmark::queries::q5_flex(&nexmark_input, nexmark_timer, scope, window_slice_count, window_slide_ns).probe_with(&mut probe);
                 });
             }
 
@@ -296,13 +300,17 @@ fn main() {
 
             if queries.iter().any(|x| *x == "q7") {
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q7(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
+                    // Window ticks every 10 seconds.
+                    let window_size_ns = 10_000_000_000;
+                    ::nexmark::queries::q7(&nexmark_input, nexmark_timer, scope, window_size_ns).probe_with(&mut probe);
                 });
             }
 
             if queries.iter().any(|x| *x == "q7-flex") {
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q7_flex(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
+                    // Window ticks every 10 seconds.
+                    let window_size_ns = 10_000_000_000;
+                    ::nexmark::queries::q7_flex(&nexmark_input, nexmark_timer, scope, window_size_ns).probe_with(&mut probe);
                 });
             }
 

@@ -9,12 +9,9 @@ use ::calculate_hash;
 
 use {queries::NexmarkInput, queries::NexmarkTimer};
 
-pub fn q5_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, scope: &mut S) -> Stream<S, usize>
+pub fn q5_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, scope: &mut S, window_slice_count: usize, window_slide_ns: usize) -> Stream<S, usize>
 {
     let control = input.control(scope);
-
-    let window_slice_count = 60;
-    let window_slide_ns = 1_000_000_000;
 
     let bids = input.bids(scope)
         // Discretize bid's datetime based on slides
