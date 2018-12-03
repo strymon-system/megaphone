@@ -8,7 +8,7 @@ use timely::dataflow::operators::{Input, Probe, Map, Inspect};
 use timely::Configuration;
 
 use dynamic_scaling_mechanism::{BIN_SHIFT, ControlInst, Control};
-use dynamic_scaling_mechanism::distribution::ControlStateMachine;
+use dynamic_scaling_mechanism::state_machine::BinnedStateMachine;
 
 #[test]
 fn default_configuration() {
@@ -29,7 +29,7 @@ fn default_configuration() {
             let input = scope.input_from(&mut input);
             input
                 .map(|x| (x % 2, x))
-                .control_state_machine(
+                .stateful_state_machine(
                     |_key, val, agg| {
                         *agg += val;
                         (false, Some((*_key, *agg)))
@@ -79,7 +79,7 @@ fn custom_configuration() {
             let input = scope.input_from(&mut input);
             input
                 .map(|x| (x % 2, x))
-                .control_state_machine(
+                .stateful_state_machine(
                     |_key, val, agg| {
                         *agg += val;
                         (false, Some((*_key, *agg)))
@@ -132,7 +132,7 @@ fn adjacent_configuration() {
             let input = scope.input_from(&mut input);
             input
                 .map(|x| (x % 2, x))
-                .control_state_machine(
+                .stateful_state_machine(
                     |_key, val, agg| {
                         *agg += val;
                         (false, Some((*_key, *agg)))
@@ -187,7 +187,7 @@ fn error_seq_configuration() {
             let input = scope.input_from(&mut input);
             input
                 .map(|x| (x % 2, x))
-                .control_state_machine(
+                .stateful_state_machine(
                     |_key, val, agg| {
                         *agg += val;
                         (false, Some((*_key, *agg)))

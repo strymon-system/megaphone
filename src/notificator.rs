@@ -33,27 +33,43 @@ pub trait Notify<T: Timestamp, D> {
 ///
 /// # Examples
 /// ```
+/// extern crate timely;
+/// extern crate dynamic_scaling_mechanism;
 /// use std::collections::HashMap;
-/// use timely::dataflow::operators::{Input, Inspect, TotalOrderFrontierNotificator};
+/// use timely::dataflow::operators::{Input, Inspect};
 /// use timely::dataflow::operators::generic::operator::Operator;
 /// use timely::dataflow::channels::pact::Pipeline;
+/// use ::dynamic_scaling_mechanism::notificator::{Notify, TotalOrderFrontierNotificator};
 ///
 /// timely::execute(timely::Configuration::Thread, |worker| {
-///     let (mut in1, mut in2) = worker.dataflow(|scope| {
+///     let (mut in1, mut in2) = worker.dataflow::<usize, _, _>(|scope| {
 ///         let (in1_handle, in1) = scope.new_input();
 ///         let (in2_handle, in2) = scope.new_input();
 ///         in1.binary_frontier(&in2, Pipeline, Pipeline, "example", |mut _default_cap, _info| {
 ///             let mut notificator = TotalOrderFrontierNotificator::new();
+///             let mut notificator_buffer = Vec::new();
+///             let mut input_buffer: Vec<usize> = Vec::new();
+///             let mut input2_buffer: Vec<usize> = Vec::new();
 ///             move |input1, input2, output| {
 ///                 while let Some((time, data)) = input1.next() {
-///                     notificator.notify_at_data(time.retain(), data.drain(..));
+///                     let cap = time.retain();
+///                     data.swap(&mut input_buffer);
+///                     for d in input_buffer.drain(..) {
+///                         notificator.notify_at_data(&cap, *cap.time(), d);
+///                     }
 ///                 }
 ///                 while let Some((time, data)) = input2.next() {
-///                     notificator.notify_at_data(time.retain(), data.drain(..));
+///                     let cap = time.retain();
+///                     data.swap(&mut input2_buffer);
+///                     for d in input2_buffer.drain(..) {
+///                         notificator.notify_at_data(&cap, *cap.time(), d);
+///                     }
 ///                 }
-///                 notificator.for_each_data(&[input1.frontier(), input2.frontier()], |time, mut vec, _| {
-///                     output.session(&time).give_iterator(vec.drain(..));
-///                 });
+///                 if let Some(cap) = notificator.drain(&[input1.frontier(), input2.frontier()], &mut notificator_buffer) {
+///                     for (time, data) in notificator_buffer.drain(..) {
+///                         output.session(&cap).give(data);
+///                     }
+///                 }
 ///             }
 ///         }).inspect_batch(|t, x| println!("{:?} -> {:?}", t, x));
 ///
@@ -96,23 +112,28 @@ impl<T: Timestamp + TotalOrder> TotalOrderFrontierNotificator<T, ()> {
     ///
     /// #Examples
     /// ```
-    /// use timely::dataflow::operators::{ToStream, TotalOrderFrontierNotificator};
+    /// extern crate timely;
+    /// extern crate dynamic_scaling_mechanism;
+    /// use timely::dataflow::operators::ToStream;
     /// use timely::dataflow::operators::generic::operator::Operator;
     /// use timely::dataflow::channels::pact::Pipeline;
+    /// use dynamic_scaling_mechanism::notificator::TotalOrderFrontierNotificator;
     ///
     /// timely::example(|scope| {
     ///     (0..10).to_stream(scope)
     ///            .unary_frontier(Pipeline, "example", |_, _| {
     ///                let mut notificator = TotalOrderFrontierNotificator::new();
+    ///                let mut buffer = Vec::new();
     ///                move |input, output| {
     ///                    input.for_each(|cap, data| {
-    ///                        output.session(&cap).give_content(data);
+    ///                        data.swap(&mut buffer);
+    ///                        output.session(&cap).give_iterator(buffer.drain(..));
     ///                        let mut time = cap.time().clone();
-    ///                        time.inner += 1;
-    ///                        notificator.notify_at(cap.delayed(&time));
+    ///                        time += 1;
+    ///                        notificator.notify_at(&cap.delayed(&time));
     ///                    });
-    ///                    notificator.for_each(&[input.frontier()], |cap, _| {
-    ///                        println!("done with time: {:?}", cap.time());
+    ///                    notificator.for_each(&[input.frontier()], |cap, time, _| {
+    ///                        println!("done with time: {:?}", time);
     ///                    });
     ///                }
     ///            });
@@ -156,22 +177,27 @@ impl<T: Timestamp + TotalOrder, D> TotalOrderFrontierNotificator<T, D> {
     ///
     /// #Examples
     /// ```
-    /// use timely::dataflow::operators::{ToStream, TotalOrderFrontierNotificator};
+    /// extern crate timely;
+    /// extern crate dynamic_scaling_mechanism;
+    /// use timely::dataflow::operators::ToStream;
     /// use timely::dataflow::operators::generic::operator::Operator;
     /// use timely::dataflow::channels::pact::Pipeline;
+    /// use dynamic_scaling_mechanism::notificator::TotalOrderFrontierNotificator;
     ///
     /// timely::example(|scope| {
     ///     (0..10).to_stream(scope)
     ///            .unary_frontier(Pipeline, "example", |_, _| {
     ///                let mut notificator = TotalOrderFrontierNotificator::new();
+    ///                let mut buffer = Vec::new();
     ///                move |input, output| {
     ///                    input.for_each(|cap, data| {
-    ///                        output.session(&cap).give_content(data);
+    ///                        data.swap(&mut buffer);
+    ///                        output.session(&cap).give_iterator(buffer.drain(..));
     ///                        let mut time = cap.time().clone();
-    ///                        time.inner += 1;
-    ///                        notificator.notify_at_data(cap.delayed(&time), Some(time.inner));
+    ///                        time += 1;
+    ///                        notificator.notify_at_data(&cap.retain(), time, ());
     ///                    });
-    ///                    notificator.for_each_data(&[input.frontier()], |cap, data, _| {
+    ///                    notificator.for_each_data(&[input.frontier()], |cap, time, data, _| {
     ///                        println!("done with time: {:?} at: {:?}", cap.time(), data);
     ///                    });
     ///                }
@@ -201,37 +227,7 @@ impl<T: Timestamp + TotalOrder, D> TotalOrderFrontierNotificator<T, D> {
         }
     }
 
-    /// Iterates over pending capabilities and their count. The count represents how often a
-    /// capability has been requested.
-    ///
-    /// To make sure all pending capabilities are above the frontier, use `for_each` or exhaust
-    /// `next` to consume all available capabilities.
-    ///
-    /// # Examples
-    /// ```
-    /// use timely::dataflow::operators::{ToStream, FrontierNotificator};
-    /// use timely::dataflow::operators::generic::operator::Operator;
-    /// use timely::dataflow::channels::pact::Pipeline;
-    ///
-    /// timely::example(|scope| {
-    ///     (0..10).to_stream(scope)
-    ///            .unary_frontier(Pipeline, "example", |_, _| {
-    ///                let mut notificator = FrontierNotificator::new();
-    ///                move |input, output| {
-    ///                    input.for_each(|cap, data| {
-    ///                        output.session(&cap).give_content(data);
-    ///                        let mut time = cap.time().clone();
-    ///                        time.inner += 1;
-    ///                        notificator.notify_at_data(cap.delayed(&time), Some(time.inner));
-    ///                        assert_eq!(notificator.pending().filter(|t| t.0.time() == &time).count(), 1);
-    ///                    });
-    ///                    notificator.for_each_data(&[input.frontier()], |cap, data, _| {
-    ///                        println!("done with time: {:?} at: {:?}", cap.time(), data);
-    ///                    });
-    ///                }
-    ///            });
-    /// });
-    /// ```
+    /// Descructures the notificator to obtain pending `(time, data)` pairs.
     pub fn pending(self) -> impl Iterator<Item=(T, D)> {
         self.pending.into_iter().map(|e| (e.element, e.data))
     }
