@@ -30,8 +30,7 @@ pub fn q5_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer
         data.swap(&mut in_buffer);
 
         for (_, key_id, (auction, a_time)) in in_buffer.drain(..) {
-            let bin_id = state.key_to_bin(key_id);
-            let not = state.get_bin(bin_id).notificator();
+            let not = state.get(key_id).notificator();
             not.notify_at_data(cap, nt.from_nexmark_time(a_time), InsDel::Ins(auction));
             not.notify_at_data(cap, nt.from_nexmark_time(Date::new(*a_time + window_slice_count * window_slide_ns)), InsDel::Del(auction));
         }

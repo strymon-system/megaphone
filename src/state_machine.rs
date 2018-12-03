@@ -1,4 +1,4 @@
-//! General purpose state transition operator.
+//! General purpose state transition operator, implemented with Megaphone.
 use std::hash::Hash;
 
 use fnv::FnvHashMap as HashMap;
@@ -10,6 +10,8 @@ use timely::Data;
 use operator::StatefulOperator;
 use ::Control;
 
+/// Provide a general-purpose state machine operator that can be migrated without changes to the
+/// `fold` implementation.
 pub trait BinnedStateMachine<S, K, V, D>
 where
     S: Scope,

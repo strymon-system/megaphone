@@ -1,10 +1,11 @@
+#![deny(missing_docs)]
+//! Megaphone is a library to provide migratable operators for timely dataflow.
+
 extern crate fnv;
 extern crate timely;
 extern crate abomonation;
 #[macro_use] extern crate abomonation_derive;
 
-//pub mod bin_prober;
-//pub mod distribution;
 mod stateful;
 pub mod state_machine;
 pub mod join;
@@ -30,21 +31,30 @@ pub struct Control {
 pub struct BinId(usize);
 
 impl BinId {
+    /// Construct a new `BinId` from a `usize`.
     pub fn new(bin: usize) -> Self {
         BinId(bin)
     }
 }
 
 type KeyType = u64;
+
+/// Opaque key identifier.
 #[derive(Abomonation, Clone, Copy, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Key(KeyType);
 
 impl Key {
+    /// Calculate the bin id for this key.
+    ///
+    /// Warning: will go away once `BIN_SHIFT` ceases to exist.
     pub fn bin(self) -> usize {
         key_to_bin(self)
     }
 }
 
+/// Compute the bin for a key.
+///
+/// Warning: will go away once `BIN_SHIFT` ceases to exist.
 #[inline(always)]
 pub fn key_to_bin(key: Key) -> usize {
     (key.0 >> ::std::mem::size_of::<KeyType>() * 8 - BIN_SHIFT) as usize
@@ -102,6 +112,7 @@ impl<T> ControlSet<T> {
 
 }
 
+/// A builder to compile `ControlSet`s.
 #[derive(Default)]
 pub struct ControlSetBuilder<T> {
     sequence: Option<u64>,
@@ -113,6 +124,10 @@ pub struct ControlSetBuilder<T> {
 
 impl<T: PartialOrder> ControlSetBuilder<T> {
 
+    /// Add a new `Control` to this builder.
+    ///
+    /// TODO: Currently, it will assert if count and sequence numbers do not match. Should fail
+    /// gracefully instead.
     pub fn apply(&mut self, control: Control) {
         if self.count.is_none() {
             self.count = Some(control.count);
@@ -133,10 +148,12 @@ impl<T: PartialOrder> ControlSetBuilder<T> {
 
     }
 
+    /// Provide a frontier to be used to construct the configuration's `Antichain` from.
     pub fn frontier<I: IntoIterator<Item=T>>(&mut self, caps: I) {
         self.frontier.extend(caps);
     }
 
+    /// Build a `ControlSet` by consuming this builder.
     pub fn build(self, previous: &ControlSet<T>) -> ControlSet<T> {
         assert_eq!(0, self.count.unwrap_or(0));
         let mut frontier = Antichain::new();
@@ -184,22 +201,10 @@ impl<T, D, N> State<T, D, N>
         Self { bins }
     }
 
+    /// Get the state associated with a key from this bin. Asserts if the state is not available.
     pub fn get(&mut self, key: Key) -> &mut Bin<T, D, N> {
         assert!(self.bins[key_to_bin(key)].is_some(), "Accessing bin {} for key {:?}", key_to_bin(key), key);
         self.bins[key_to_bin(key)].as_mut().expect("Trying to access non-available bin")
-    }
-
-    /// Obtain a mutable reference to the notificator associated with a bin.
-    pub fn get_notificator(&mut self, key: Key) -> &mut ::stateful::Notificator<T, N> {
-        self.get(key).notificator()
-    }
-    /// Obtain a mutable reference to the state associated with a bin.
-    pub fn get_state(&mut self, key: Key) -> &mut D {
-        self.get(key).state()
-    }
-
-    pub fn get_bin(&mut self, bin: BinId) -> &mut Bin<T, D, N> {
-        self.bins[*bin].as_mut().expect("Trying to access non-available bin")
     }
 
     /// Iterate all bins. This might go away.
@@ -209,12 +214,9 @@ impl<T, D, N> State<T, D, N>
         }
     }
 
-    #[inline(always)]
-    pub fn key_to_bin(&self, key: Key) -> BinId {
-        BinId(key_to_bin(key))
-    }
 }
 
+/// A bin with data and a notificator.
 pub struct Bin<T, D, N>
     where
         T: Timestamp + TotalOrder,
@@ -227,10 +229,12 @@ impl<T, D, N> Bin<T, D, N>
     where
         T: Timestamp + TotalOrder,
 {
+    /// Obtain a mutable reference to the associated state object.
     pub fn state(&mut self) -> &mut D {
         &mut self.data
     }
 
+    /// Obtain a mutable reference to the notificator.
     pub fn notificator(&mut self) -> &mut ::stateful::Notificator<T, N> {
         &mut self.notificator
     }
@@ -249,43 +253,82 @@ impl<T, D, N> Default for Bin<T, D, N>
         }
     }
 }
+/// Static bin-shift parameter. Enable feature "bin-1" with no default features to set this value.
 #[cfg(feature = "bin-1")]
 pub const BIN_SHIFT: usize = 1;
+
+/// Static bin-shift parameter. Enable feature "bin-2" with no default features to set this value.
 #[cfg(feature = "bin-2")]
 pub const BIN_SHIFT: usize = 2;
+
+/// Static bin-shift parameter. Enable feature "bin-3" with no default features to set this value.
 #[cfg(feature = "bin-3")]
 pub const BIN_SHIFT: usize = 3;
+
+/// Static bin-shift parameter. Enable feature "bin-4" with no default features to set this value.
 #[cfg(feature = "bin-4")]
 pub const BIN_SHIFT: usize = 4;
+
+/// Static bin-shift parameter. Enable feature "bin-5" with no default features to set this value.
 #[cfg(feature = "bin-5")]
 pub const BIN_SHIFT: usize = 5;
+
+/// Static bin-shift parameter. Enable feature "bin-6" with no default features to set this value.
 #[cfg(feature = "bin-6")]
 pub const BIN_SHIFT: usize = 6;
+
+/// Static bin-shift parameter. Enable feature "bin-7" with no default features to set this value.
 #[cfg(feature = "bin-7")]
 pub const BIN_SHIFT: usize = 7;
+
+/// Static bin-shift parameter. Enable feature "bin-8" with no default features to set this value.
 #[cfg(feature = "bin-8")]
 pub const BIN_SHIFT: usize = 8;
+
+/// Static bin-shift parameter. Enable feature "bin-9" with no default features to set this value.
 #[cfg(feature = "bin-9")]
 pub const BIN_SHIFT: usize = 9;
+
+/// Static bin-shift parameter. Enable feature "bin-10" with no default features to set this value.
 #[cfg(feature = "bin-10")]
 pub const BIN_SHIFT: usize = 10;
+
+/// Static bin-shift parameter. Enable feature "bin-11" with no default features to set this value.
 #[cfg(feature = "bin-11")]
 pub const BIN_SHIFT: usize = 11;
+
+/// Static bin-shift parameter. Enable feature "bin-12" with no default features to set this value.
 #[cfg(feature = "bin-12")]
 pub const BIN_SHIFT: usize = 12;
+
+/// Static bin-shift parameter. Enable feature "bin-13" with no default features to set this value.
 #[cfg(feature = "bin-13")]
 pub const BIN_SHIFT: usize = 13;
+
+/// Static bin-shift parameter. Enable feature "bin-14" with no default features to set this value.
 #[cfg(feature = "bin-14")]
 pub const BIN_SHIFT: usize = 14;
+
+/// Static bin-shift parameter. Enable feature "bin-15" with no default features to set this value.
 #[cfg(feature = "bin-15")]
 pub const BIN_SHIFT: usize = 15;
+
+/// Static bin-shift parameter. Enable feature "bin-16" with no default features to set this value.
 #[cfg(feature = "bin-16")]
 pub const BIN_SHIFT: usize = 16;
+
+/// Static bin-shift parameter. Enable feature "bin-17" with no default features to set this value.
 #[cfg(feature = "bin-17")]
 pub const BIN_SHIFT: usize = 17;
+
+/// Static bin-shift parameter. Enable feature "bin-18" with no default features to set this value.
 #[cfg(feature = "bin-18")]
 pub const BIN_SHIFT: usize = 18;
+
+/// Static bin-shift parameter. Enable feature "bin-19" with no default features to set this value.
 #[cfg(feature = "bin-19")]
 pub const BIN_SHIFT: usize = 19;
+
 #[cfg(feature = "bin-20")]
+/// Static bin-shift parameter. Enable feature "bin-20" with no default features to set this value.
 pub const BIN_SHIFT: usize = 20;

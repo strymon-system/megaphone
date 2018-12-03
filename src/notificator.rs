@@ -1,3 +1,5 @@
+//! Specialized notificators for Megaphone.
+
 use std::collections::BinaryHeap;
 
 use timely::order::TotalOrder;
@@ -5,7 +7,14 @@ use timely::progress::frontier::MutableAntichain;
 use timely::progress::Timestamp;
 use timely::dataflow::operators::Capability;
 
+/// Common trait to all notificator implementations.
+///
+/// Currently only prvides `drain`. TODO: Allow to schedule notifications.
 pub trait Notify<T: Timestamp, D> {
+    /// Drain all pending notifications that are not in advance of `frontiers`.
+    ///
+    /// If drain returns `Some(cap)` this indicates that notifications were enqueud to `buffer`.
+    /// The buffer may be cleared by `drain`.
     fn drain(&mut self, frontiers: &[&MutableAntichain<T>], buffer: &mut Vec<(T, D)>) -> Option<Capability<T>>;
 }
 

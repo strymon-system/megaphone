@@ -1,4 +1,4 @@
-//! General purpose state transition operator.
+//! General purpose migratable operators.
 
 use timely::ExchangeData;
 use timely::dataflow::{Stream, Scope};
@@ -16,12 +16,14 @@ use ::{Bin, Control, Key, State};
 use stateful::{Stateful, apply_state_updates, Notificator};
 use notificator::{Notify};
 
+/// Building blocks for single- and dual-input stateful operators.
 pub trait StatefulOperator<G, D1>
     where
         G: Scope,
         G::Timestamp: TotalOrder,
         D1: ExchangeData + Eq,
 {
+    /// Stateful operator with a single input.
     fn stateful_unary<
         D2: Data,                                    // output type
         B: Fn(&D1)->u64+'static,
@@ -34,6 +36,7 @@ pub trait StatefulOperator<G, D1>
     >(&self, control: &Stream<G, Control>, key: B, name: &str, fold: F) -> Stream<G, D2>
     ;
 
+    /// Stateful operator with a single input and input transformation.
     fn stateful_unary_input<
         D2: Data,                                    // output type
         N: ExchangeData+Eq,
@@ -52,6 +55,7 @@ pub trait StatefulOperator<G, D1>
     >(&self, control: &Stream<G, Control>, key: B, name: &str, consume: C, fold: F) -> Stream<G, D2>
     ;
 
+    /// Stateful operator with two inputs.
     fn stateful_binary<
         D2: ExchangeData+Eq,                         // input type
         D3: Data,                                    // output type
@@ -74,6 +78,7 @@ pub trait StatefulOperator<G, D1>
     >(&self, control: &Stream<G, Control>, other: &Stream<G, D2>, key1: B1, key2: B2, name: &str, fold1: F1, fold2: F2) -> Stream<G, D3>
     ;
 
+    /// Stateful operator with two inputs and input transformation.
     fn stateful_binary_input<
         D2: ExchangeData+Eq,                         // input type
         D3: Data,                                    // output type
@@ -108,6 +113,7 @@ pub trait StatefulOperator<G, D1>
     >(&self, control: &Stream<G, Control>, other: &Stream<G, D2>, key1: B1, key2: B2, name: &str, input1: C1, input2: C2, fold1: F1, fold2: F2) -> Stream<G, D3>
     ;
 
+    /// Move state to a worker as specified in the control input. Do not maintain state.
     fn distribute<B1>(&self, control: &Stream<G, Control>, key: B1, name: &str) -> Stream<G, (usize, Key, D1)>
     where
         B1: Fn(&D1)->u64+'static,
@@ -169,8 +175,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
                 if let Some(cap) = notificator.drain(&[&frontiers[0], &frontiers[1]], &mut not_drain) {
                     for (time, mut keyed_data) in not_drain.drain(..) {
                         for (_, key_id, d) in keyed_data.drain(..) {
-                            let bin_id = states.key_to_bin(key_id);
-                            states.get_bin(bin_id).notificator.notify_at_data(&cap, time.clone(), d);
+                            states.get(key_id).notificator.notify_at_data(&cap, time.clone(), d);
                         }
                     }
                 }
