@@ -8,7 +8,7 @@ default = ["dynamic_scaling_mechanism/bin-8"]
 fake_stateful = ["dynamic_scaling_mechanism/fake_stateful"]
 
 [dependencies]
-#differential-dataflow = { git = "https://github.com/frankmcsherry/differential-dataflow.git" }
+differential-dataflow = { git = "https://github.com/frankmcsherry/differential-dataflow.git" }
 timely = { git = "https://github.com/frankmcsherry/timely-dataflow.git"}
 #timely = { git = "https://github.com/antiguru/timely-dataflow.git", branch = "session_cease"}
 #timely = "0.7"

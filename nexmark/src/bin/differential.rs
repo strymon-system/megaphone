@@ -8,7 +8,6 @@ use timely::dataflow::{InputHandle, ProbeHandle};
 use timely::dataflow::operators::{Map, Probe};
 
 use timely::dataflow::channels::pact::Pipeline;
-use timely::progress::timestamp::RootTimestamp;
 
 use differential_dataflow::collection::AsCollection;
 use differential_dataflow::operators::arrange::{ArrangeByKey, ArrangeBySelf};
@@ -55,9 +54,9 @@ fn main() {
 
                         for datum in demux_buffer.drain(..) {
                             match datum {
-                                nexmark::event::Event::Bid(b) => { let temp = b.date_time; b_session.give((b, RootTimestamp::new(*temp), 1 as isize)) },
-                                nexmark::event::Event::Auction(a) => { let temp = a.date_time; a_session.give(((a.id,a), RootTimestamp::new(*temp), 1 as isize)) },
-                                nexmark::event::Event::Person(p) =>  { let temp = p.date_time; p_session.give(((p.id,p), RootTimestamp::new(*temp), 1 as isize)) },
+                                nexmark::event::Event::Bid(b) => { let temp = b.date_time; b_session.give((b, *temp, 1 as isize)) },
+                                nexmark::event::Event::Auction(a) => { let temp = a.date_time; a_session.give(((a.id,a), *temp, 1 as isize)) },
+                                nexmark::event::Event::Person(p) =>  { let temp = p.date_time; p_session.give(((p.id,p), *temp, 1 as isize)) },
                             }
                         }
                     });
@@ -171,7 +170,7 @@ fn main() {
                     auctions
                         .as_collection(|&id,a| (id,a.clone()))
                         .inner
-                        .map_in_place(|x| x.1.inner = *(x.0).1.expires)
+                        .map_in_place(|x| x.1 = *(x.0).1.expires)
                         .as_collection();
 
                     // Join leaders with time-shifted auctions to lock in winners.
@@ -214,14 +213,14 @@ fn main() {
 
                 let additions =
                 bids.inner
-                    .map_in_place(move |x| x.1.inner = ((x.1.inner / window_slide_ns) + 1) * window_slide_ns)
+                    .map_in_place(move |x| x.1 = ((x.1 / window_slide_ns) + 1) * window_slide_ns)
                     .as_collection()
                     .consolidate();
 
                 let deletions =
                 additions
                     .inner
-                    .map_in_place(move |x| x.1.inner += window_slide_ns * window_slide_count)
+                    .map_in_place(move |x| x.1 += window_slide_ns * window_slide_count)
                     .as_collection();
 
                 let totals =
@@ -277,13 +276,13 @@ fn main() {
                 bids.import(scope)
                     .as_collection(|b,_| (b.auction, b.price, b.bidder))
                     .inner
-                    .map_in_place(move |x| x.1.inner = ((x.1.inner / window_size_ns) + 1) * window_size_ns)
+                    .map_in_place(move |x| x.1 = ((x.1 / window_size_ns) + 1) * window_size_ns)
                     .as_collection();
 
                 let deletions =
                 additions
                     .inner
-                    .map_in_place(move |x| x.1.inner += window_size_ns)
+                    .map_in_place(move |x| x.1 += window_size_ns)
                     .as_collection()
                     .negate();
 
@@ -316,7 +315,7 @@ fn main() {
 
                 people
                     .inner
-                    .map_in_place(move |x| x.1.inner += window_size_ns)
+                    .map_in_place(move |x| x.1 += window_size_ns)
                     .as_collection()
                     .negate()
                     .concat(&people)
@@ -357,7 +356,7 @@ fn main() {
             let elapsed_ns = (elapsed.as_secs() * 1_000_000_000 + (elapsed.subsec_nanos() as u64)) as usize;
 
             // Determine completed ns.
-            let acknowledged_ns: usize = probe.with_frontier(|frontier| frontier.get(0).map(|x| x.inner).unwrap_or(elapsed_ns));
+            let acknowledged_ns: usize = probe.with_frontier(|frontier| frontier.get(0).cloned().unwrap_or(elapsed_ns));
 
             // Record completed measurements.
             while requested_ns < acknowledged_ns && requested_ns < duration_ns {
