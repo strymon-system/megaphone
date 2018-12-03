@@ -1,3 +1,7 @@
+//! NEXMark benchmark implementation.
+//!
+//! Query parameters based on http://datalab.cs.pdx.edu/niagara/NEXMark/ unless noted otherwise.
+
 extern crate clap;
 extern crate fnv;
 extern crate rand;
@@ -101,10 +105,10 @@ fn main() {
 
     let queries: Vec<_> = matches.values_of("queries").unwrap().map(String::from).collect();
 
-    // Read and report RSS every 100ms
+    // Read and report RSS
     let statm_reporter_running = nexmark::tools::statm_reporter();
 
-    // define a new computational scope, in which to run BFS
+    // define a new computational scope, in which to run NEXMark queries
     let timelines: Vec<_> = timely::execute_from_args(timely_args.into_iter(), move |worker| {
 
         let peers = worker.peers();
@@ -270,6 +274,8 @@ fn main() {
             }
 
             if queries.iter().any(|x| *x == "q5") {
+                // 60s windows, ticking in 1s intervals
+                // NEXMark default is 60 minutes, ticking in one minute intervals
                 let window_slice_count = 60;
                 let window_slide_ns = 1_000_000_000;
                 worker.dataflow(|scope| {
@@ -278,6 +284,8 @@ fn main() {
             }
 
             if queries.iter().any(|x| *x == "q5-flex") {
+                // 60s windows, ticking in 1s intervals
+                // NEXMark default is 60 minutes, ticking in one minute intervals
                 let window_slice_count = 60;
                 let window_slide_ns = 1_000_000_000;
                 worker.dataflow(|scope| {
@@ -301,6 +309,7 @@ fn main() {
             if queries.iter().any(|x| *x == "q7") {
                 worker.dataflow(|scope| {
                     // Window ticks every 10 seconds.
+                    // NEXMark default is different: ticks every 60s
                     let window_size_ns = 10_000_000_000;
                     ::nexmark::queries::q7(&nexmark_input, nexmark_timer, scope, window_size_ns).probe_with(&mut probe);
                 });
@@ -309,6 +318,7 @@ fn main() {
             if queries.iter().any(|x| *x == "q7-flex") {
                 worker.dataflow(|scope| {
                     // Window ticks every 10 seconds.
+                    // NEXMark default is different: ticks every 60s
                     let window_size_ns = 10_000_000_000;
                     ::nexmark::queries::q7_flex(&nexmark_input, nexmark_timer, scope, window_size_ns).probe_with(&mut probe);
                 });
