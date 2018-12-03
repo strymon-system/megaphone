@@ -41,8 +41,8 @@ pub fn q8<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, sco
                     });
 
                     // Determine least timestamp we might still see.
-                    let complete1 = input1.frontier.frontier().get(0).map(|t| *t).unwrap_or(usize::max_value());
-                    let complete2 = input2.frontier.frontier().get(0).map(|t| *t).unwrap_or(usize::max_value());
+                    let complete1 = input1.frontier.frontier().get(0).cloned().unwrap_or(usize::max_value());
+                    let complete2 = input2.frontier.frontier().get(0).cloned().unwrap_or(usize::max_value());
                     let complete = std::cmp::min(complete1, complete2);
 
                     for (capability, auctions) in auctions.iter_mut() {

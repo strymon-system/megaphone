@@ -172,7 +172,7 @@ fn main() {
                     Some(input
                         .stateful_state_machine(|key: &_, val, agg: &mut u64| {
                             *agg += val;
-                            (false, Some((key.clone(), *agg)))
+                            (false, Some((*key, *agg)))
                         }, |key| calculate_hash(key), &control)
                         .probe_with(&mut probe))
                 },

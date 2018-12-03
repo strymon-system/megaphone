@@ -35,7 +35,7 @@ pub fn q5<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, sco
                                         if a_time != slide {
                                             additions
                                                 .entry(time.delayed(&nt.from_nexmark_time(a_time)))
-                                                .or_insert(Vec::new())
+                                                .or_insert_with(Vec::new)
                                                 .push(auction);
                                         }
                                     }
@@ -44,7 +44,7 @@ pub fn q5<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, sco
                                     // Collect all bids in the same slide.
                                     additions
                                         .entry(downgrade)
-                                        .or_insert(Vec::new())
+                                        .or_insert_with(Vec::new)
                                         .extend(bids_buffer.drain(..).map(|(b, _)| b));
                                 });
 

@@ -119,8 +119,8 @@ impl<T: Timestamp + TotalOrder> TotalOrderFrontierNotificator<T, ()> {
     /// });
     /// ```
     #[inline]
-    pub fn notify_at(&mut self, cap: Capability<T>) {
-        self.notify_at_data(&cap, cap.time().clone(), ());
+    pub fn notify_at(&mut self, cap: &Capability<T>) {
+        self.notify_at_data(cap, cap.time().clone(), ());
     }
 
     /// Repeatedly calls `logic` till exhaustion of the notifications made available by inspecting

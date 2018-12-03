@@ -8,7 +8,7 @@ use ::event::{Auction, Bid};
 
 use {queries::NexmarkInput, queries::NexmarkTimer};
 
-pub fn q45<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, scope: &mut S) -> Stream<S, (Auction, Bid)>
+pub fn q4_q6_common<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, scope: &mut S) -> Stream<S, (Auction, Bid)>
 {
     let bids = input.bids(scope);
     let auctions = input.auctions(scope);
@@ -81,8 +81,8 @@ pub fn q45<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, sc
 
                 // Use frontiers to determine which auctions to close.
                 if let Some(ref capability) = capability {
-                    let complete1 = input1.frontier.frontier().get(0).map(|t| *t).unwrap_or(usize::max_value());
-                    let complete2 = input2.frontier.frontier().get(0).map(|t| *t).unwrap_or(usize::max_value());
+                    let complete1 = input1.frontier.frontier().get(0).cloned().unwrap_or(usize::max_value());
+                    let complete2 = input2.frontier.frontier().get(0).cloned().unwrap_or(usize::max_value());
                     let complete = std::cmp::min(complete1, complete2);
 
                     let mut session = output.session(capability);

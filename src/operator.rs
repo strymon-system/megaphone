@@ -162,7 +162,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
                 let mut states = states.borrow_mut();
                 while let Some((time, data)) = input_state.next() {
                     data.swap(&mut state_update_buffer);
-                    apply_state_updates(&mut states, time.retain(), state_update_buffer.drain(..))
+                    apply_state_updates(&mut states, &time.retain(), state_update_buffer.drain(..))
                 }
                 // stash each input and request a notification when ready
                 while let Some((time, data)) = input.next() {
@@ -232,7 +232,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
                 let mut states = states.borrow_mut();
                 while let Some((time, data)) = input_state.next() {
                     data.swap(&mut state_update_buffer);
-                    apply_state_updates(&mut states, time.retain(), state_update_buffer.drain(..))
+                    apply_state_updates(&mut states, &time.retain(), state_update_buffer.drain(..))
                 }
                 // stash each input and request a notification when ready
                 while let Some((cap, data)) = input.next() {
@@ -370,11 +370,11 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
 
                 while let Some((time, data)) = input1_state.next() {
                     data.swap(&mut state1_update_buffer);
-                    apply_state_updates(&mut states1, time.retain(), state1_update_buffer.drain(..))
+                    apply_state_updates(&mut states1, &time.retain(), state1_update_buffer.drain(..))
                 }
                 while let Some((time, data)) = input2_state.next() {
                     data.swap(&mut state2_update_buffer);
-                    apply_state_updates(&mut states2, time.retain(), state2_update_buffer.drain(..))
+                    apply_state_updates(&mut states2, &time.retain(), state2_update_buffer.drain(..))
                 }
 
                 // stash each input and request a notification when ready

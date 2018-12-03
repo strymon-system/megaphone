@@ -3,13 +3,12 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 /// This is a simple command line options parser.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Config {
     args: HashMap<String, String>
 }
 
 impl Config {
-    #[allow(dead_code)]
     pub fn new() -> Self {
         Config{ args: HashMap::new() }
     }

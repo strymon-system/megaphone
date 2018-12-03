@@ -21,7 +21,7 @@ pub fn q6<S: Scope<Timestamp=usize>>(input: &NexmarkInput, _nt: NexmarkTimer, sc
                        input.for_each(|time, data| {
                            let mut session = output.session(&time);
                            for (bidder, price) in data.iter().cloned() {
-                               let entry = state.entry(bidder).or_insert(VecDeque::new());
+                               let entry = state.entry(bidder).or_insert_with(VecDeque::new);
                                if entry.len() >= 10 { entry.pop_back(); }
                                entry.push_front(price);
                                let sum: usize = entry.iter().sum();

@@ -292,7 +292,7 @@ fn main() {
                     .group(|_key,src,tgt| {
                         let mut max_idx = 0;
                         for idx in 1 .. src.len() { if (src[idx].0).1 > (src[max_idx].0).1 { max_idx = idx; } }
-                        tgt.push((src[max_idx].0.clone(), 1))
+                        tgt.push((*src[max_idx].0, 1))
                     })
                     .probe_with(&mut probe);
             });

@@ -57,7 +57,7 @@ impl Key {
 /// Warning: will go away once `BIN_SHIFT` ceases to exist.
 #[inline(always)]
 pub fn key_to_bin(key: Key) -> usize {
-    (key.0 >> ::std::mem::size_of::<KeyType>() * 8 - BIN_SHIFT) as usize
+    (key.0 >> (::std::mem::size_of::<KeyType>() * 8 - BIN_SHIFT)) as usize
 }
 
 impl ::std::ops::Deref for BinId {
@@ -210,7 +210,9 @@ impl<T, D, N> State<T, D, N>
     /// Iterate all bins. This might go away.
     pub fn scan<F: FnMut(&mut D)>(&mut self, mut f: F) {
         for state in &mut self.bins {
-            state.as_mut().map(|bin| f(&mut bin.data));
+            if let Some(bin) = state.as_mut() {
+                f(&mut bin.data);
+            }
         }
     }
 

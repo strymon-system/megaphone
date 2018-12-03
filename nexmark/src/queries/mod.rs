@@ -6,10 +6,14 @@ use timely::dataflow::operators::capture::Replay;
 use dynamic_scaling_mechanism::Control;
 use event::{Bid, Auction, Person, Date};
 
+mod q1;
+mod q1_flex;
+mod q2;
+mod q2_flex;
 mod q3;
 mod q3_flex;
-mod q45;
-mod q45_flex;
+mod q4_q6_common;
+mod q4_q6_common_flex;
 mod q4;
 mod q4_flex;
 mod q5;
@@ -21,10 +25,14 @@ mod q7_flex;
 mod q8;
 mod q8_flex;
 
+pub use self::q1::q1;
+pub use self::q1_flex::q1_flex;
+pub use self::q2::q2;
+pub use self::q2_flex::q2_flex;
 pub use self::q3::q3;
 pub use self::q3_flex::q3_flex;
-pub use self::q45::q45;
-pub use self::q45_flex::q45_flex;
+pub use self::q4_q6_common::q4_q6_common;
+pub use self::q4_q6_common_flex::q4_q6_common_flex;
 pub use self::q4::q4;
 pub use self::q4_flex::q4_flex;
 pub use self::q5::q5;
@@ -80,13 +88,13 @@ pub struct NexmarkTimer {
 impl NexmarkTimer {
 
     #[inline(always)]
-    fn to_nexmark_time (&self, x: usize) -> Date{
+    fn to_nexmark_time (self, x: usize) -> Date {
         debug_assert!(x.checked_mul(self.time_dilation).is_some(), "multiplication failed: {} * {}", x, self.time_dilation);
         Date::new(x * self.time_dilation)
     }
 
     #[inline(always)]
-    fn from_nexmark_time(&self, x: Date) -> usize{
+    fn from_nexmark_time(self, x: Date) -> usize{
         *x / self.time_dilation
     }
 

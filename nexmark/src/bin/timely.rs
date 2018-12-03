@@ -20,7 +20,7 @@ use clap::{Arg, App};
 use streaming_harness::util::ToNanos;
 
 use timely::dataflow::{InputHandle, ProbeHandle};
-use timely::dataflow::operators::{Map, Filter, Probe, Capture, capture::Replay};
+use timely::dataflow::operators::{Probe, Capture, capture::Replay};
 
 use timely::dataflow::channels::pact::Pipeline;
 use timely::dataflow::operators::Operator;
@@ -202,67 +202,49 @@ fn main() {
             // Q1: Convert bids to euros.
             if queries.iter().any(|x| *x == "q1") {
                 worker.dataflow(|scope| {
-                    Some(bids.clone()).replay_into(scope)
-                        .map_in_place(|b| b.price = (b.price * 89) / 100)
-                        .probe_with(&mut probe);
+                    ::nexmark::queries::q1(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
                 });
             }
 
             // Q1-flex: Convert bids to euros.
             if queries.iter().any(|x| *x == "q1-flex") {
                 worker.dataflow(|scope| {
-                    let control = Some(control.clone()).replay_into(scope);
-                    let state_stream = Some(bids.clone())
-                        .replay_into(scope)
-                        .distribute(&control, |bid| calculate_hash(&bid.auction), "q0-flex")
-                        .map_in_place(|(_, _, b)| b.price = (b.price * 89) / 100);
-                    state_stream.probe_with(&mut probe);
+                    ::nexmark::queries::q1_flex(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
                 });
             }
 
             // Q2: Filter some auctions.
             if queries.iter().any(|x| *x == "q2") {
                 worker.dataflow(|scope| {
-                    let auction_skip = 123;
-                    Some(bids.clone()).replay_into(scope)
-                        .filter(move |b| b.auction % auction_skip == 0)
-                        .map(|b| (b.auction, b.price))
-                        .probe_with(&mut probe);
+                    ::nexmark::queries::q2(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
                 });
             }
 
             // Q2-flex: Filter some auctions.
             if queries.iter().any(|x| *x == "q2-flex") {
                 worker.dataflow(|scope| {
-                    let auction_skip = 123;
-                    let control = Some(control.clone()).replay_into(scope);
-                    let state_stream = Some(bids.clone()).replay_into(scope)
-                        .distribute(&control, |bid| calculate_hash(&bid.auction), "q2-flex");
-                    state_stream
-                        .filter(move |(_, _, b)| b.auction % auction_skip == 0)
-                        .map(|(_, _, b)| (b.auction, b.price))
-                        .probe_with(&mut probe);
+                    ::nexmark::queries::q2_flex(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
                 });
             }
 
             // Q3: Join some auctions.
             if queries.iter().any(|x| *x == "q3") {
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q3(&nexmark_input, nexmark_timer.clone(), scope).probe_with(&mut probe);
+                    ::nexmark::queries::q3(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
                 });
             }
 
             // Q3-flex: Join some auctions.
             if queries.iter().any(|x| *x == "q3-flex") {
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q3_flex(&nexmark_input, nexmark_timer.clone(), scope).probe_with(&mut probe);
+                    ::nexmark::queries::q3_flex(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
                 });
             }
 
             // Intermission: Close some auctions.
             if queries.iter().any(|x| *x == "q4" || *x == "q6") {
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q45(&nexmark_input, nexmark_timer.clone(), scope)
+                    ::nexmark::queries::q4_q6_common(&nexmark_input, nexmark_timer, scope)
                         .capture_into(nexmark_input.closed_auctions.clone());
                 });
             }
@@ -270,69 +252,69 @@ fn main() {
             // Intermission: Close some auctions (using stateful).
             if queries.iter().any(|x| *x == "q4-flex" || *x == "q6-flex") {
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q45_flex(&nexmark_input, nexmark_timer.clone(), scope)
+                    ::nexmark::queries::q4_q6_common_flex(&nexmark_input, nexmark_timer, scope)
                         .capture_into(nexmark_input.closed_auctions_flex.clone());
                 });
             }
 
             if queries.iter().any(|x| *x == "q4") {
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q4(&nexmark_input, nexmark_timer.clone(), scope).probe_with(&mut probe);
+                    ::nexmark::queries::q4(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
                 });
             }
 
             if queries.iter().any(|x| *x == "q4-flex") {
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q4_flex(&nexmark_input, nexmark_timer.clone(), scope).probe_with(&mut probe);
+                    ::nexmark::queries::q4_flex(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
                 });
             }
 
             if queries.iter().any(|x| *x == "q5") {
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q5(&nexmark_input, nexmark_timer.clone(), scope).probe_with(&mut probe);
+                    ::nexmark::queries::q5(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
                 });
             }
 
             if queries.iter().any(|x| *x == "q5-flex") {
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q5_flex(&nexmark_input, nexmark_timer.clone(), scope).probe_with(&mut probe);
+                    ::nexmark::queries::q5_flex(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
                 });
             }
 
             if queries.iter().any(|x| *x == "q6") {
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q6(&nexmark_input, nexmark_timer.clone(), scope).probe_with(&mut probe);
+                    ::nexmark::queries::q6(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
                 });
             }
 
             if queries.iter().any(|x| *x == "q6-flex") {
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q6_flex(&nexmark_input, nexmark_timer.clone(), scope).probe_with(&mut probe);
+                    ::nexmark::queries::q6_flex(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
                 });
             }
 
 
             if queries.iter().any(|x| *x == "q7") {
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q7(&nexmark_input, nexmark_timer.clone(), scope).probe_with(&mut probe);
+                    ::nexmark::queries::q7(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
                 });
             }
 
             if queries.iter().any(|x| *x == "q7-flex") {
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q7_flex(&nexmark_input, nexmark_timer.clone(), scope).probe_with(&mut probe);
+                    ::nexmark::queries::q7_flex(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
                 });
             }
 
             if queries.iter().any(|x| *x == "q8") {
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q8(&nexmark_input, nexmark_timer.clone(), scope).probe_with(&mut probe);
+                    ::nexmark::queries::q8(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
                 });
             }
 
             if queries.iter().any(|x| *x == "q8-flex") {
                 worker.dataflow(|scope| {
-                    ::nexmark::queries::q8_flex(&nexmark_input, nexmark_timer.clone(), scope).probe_with(&mut probe);
+                    ::nexmark::queries::q8_flex(&nexmark_input, nexmark_timer, scope).probe_with(&mut probe);
                 });
             }
         }

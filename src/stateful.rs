@@ -99,7 +99,7 @@ pub fn apply_state_updates<
     D: IntoIterator<Item=W>+Extend<W>+Default,    // per-key state (data)
     W: ExchangeData,
     M: ExchangeData,
-    I: Iterator<Item=(usize, StateProtocol<T, W, M>)>>(states: &mut State<T, D, M>, cap: Capability<T>, data: I) {
+    I: Iterator<Item=(usize, StateProtocol<T, W, M>)>>(states: &mut State<T, D, M>, cap: &Capability<T>, data: I) {
 
     // Apply each state update
     for (_target, state) in data {
@@ -110,11 +110,13 @@ pub fn apply_state_updates<
             }
             // Extend state
             StateProtocol::State(bin, s) => {
-                states.bins[*bin].as_mut().map(|bin| bin.data.extend(s.into_iter()));
+                if let Some(bin) = states.bins[*bin].as_mut() {
+                    bin.data.extend(s.into_iter());
+                }
             },
             // Request notification
             StateProtocol::Pending(bin, t, data) =>
-                states.bins[*bin].as_mut().unwrap().notificator().notify_at_data(&cap, t, data),
+                states.bins[*bin].as_mut().unwrap().notificator().notify_at_data(cap, t, data),
         }
     }
 
@@ -208,7 +210,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
             let mut active_configuration: ControlSet<S::Timestamp> = ControlSet { 
                 sequence: 0,
                 frontier: Antichain::from_elem(Default::default()),
-                map: map,
+                map,
             };
 
             // Stash for consumed input buffers
@@ -234,7 +236,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                     for update in control_data_buffer.drain(..) {
                         builder.apply(update);
                     }
-                    control_notificator.notify_at(time.retain_for_output(1));
+                    control_notificator.notify_at(&time.retain_for_output(1));
                 });
 
                 // Analyze control frontier
@@ -298,7 +300,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                     let chunk: Vec<_> = data.into_iter().collect();
                                     println!("migration\t{}\t{}\t{}\t{}", bin, old, new, chunk.len());
                                     session.give((*new, StateProtocol::State(BinId(bin), chunk)));
-                                    session.give_iterator(notificator.pending().into_iter().map(|(t, d)| (*new, StateProtocol::Pending(BinId(bin), t, d))));
+                                    session.give_iterator(notificator.pending().map(|(t, d)| (*new, StateProtocol::Pending(BinId(bin), t, d))));
                                 }
                             }
                         }
@@ -349,7 +351,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                         let mut data_vec = data_return_buffer.pop().unwrap_or_else(Vec::new);
                         data.swap(&mut data_vec);
                         data_stash.get_mut(time.time()).unwrap().push(data_vec);
-                        data_notificator.notify_at(time.retain_for_output(0));
+                        data_notificator.notify_at(&time.retain_for_output(0));
                     } else {
                         // Yes, control frontier not <= `time`, process right-away
 

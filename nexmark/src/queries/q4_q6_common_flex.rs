@@ -9,7 +9,7 @@ use ::calculate_hash;
 
 use queries::{NexmarkInput, NexmarkTimer};
 
-pub fn q45_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, scope: &mut S) -> Stream<S, (Auction, Bid)>
+pub fn q4_q6_common_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, scope: &mut S) -> Stream<S, (Auction, Bid)>
 {
     let control = input.control(scope);
 

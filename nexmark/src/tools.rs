@@ -33,8 +33,8 @@ impl ExperimentMapMode {
         match self {
             ExperimentMapMode::None => {
                 let mut map = vec![0; 1 << ::dynamic_scaling_mechanism::BIN_SHIFT];
-                for i in 0..map.len() {
-                    map[i] = i % peers;
+                for (i, element) in map.iter_mut().enumerate() {
+                    *element = i % peers;
                 };
                 Ok(vec![(0, vec![ControlInst::Map(map)])])
             }

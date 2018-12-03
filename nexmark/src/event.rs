@@ -82,10 +82,10 @@ pub enum Event {
 impl Event {
 
     pub fn time(&self) -> Date {
-        match self {
-            &Event::Person(ref p) => p.date_time,
-            &Event::Auction(ref a) => a.date_time,
-            &Event::Bid(ref b) => b.date_time,
+        match *self {
+            Event::Person(ref p) => p.date_time,
+            Event::Auction(ref a) => a.date_time,
+            Event::Bid(ref b) => b.date_time,
         }
     }
 
@@ -104,10 +104,10 @@ impl Event {
     }
 
     pub fn id(&self) -> Id {
-        match self {
-            &Event::Person(ref p) => p.id,
-            &Event::Auction(ref a) => a.id,
-            &Event::Bid(ref b) => b.auction,    // Bid eventss don't have ids, so use the associated auction id 
+        match *self {
+            Event::Person(ref p) => p.id,
+            Event::Auction(ref a) => a.id,
+            Event::Bid(ref b) => b.auction,    // Bid eventss don't have ids, so use the associated auction id
         }
     }
 

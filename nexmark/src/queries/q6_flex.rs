@@ -18,7 +18,7 @@ pub fn q6_flex<S: Scope<Timestamp=usize>>(input: &NexmarkInput, _nt: NexmarkTime
         let mut session = output.session(&cap);
         let state: &mut HashMap<_, _> = bin.state();
         for (_time, (bidder, price)) in data.drain(..) {
-            let entry = state.entry(bidder).or_insert(Vec::new());
+            let entry = state.entry(bidder).or_insert_with(Vec::new);
             while entry.len() >= 10 { entry.remove(0); }
             entry.push(price);
             let sum: usize = entry.iter().sum();
