@@ -3,7 +3,7 @@ trap "exit" INT TERM ERR
 trap "kill 0" EXIT
 
 CLUSTERUSER="${CLUSTERUSER:-$USER}"
-clusterpath="${CLUSTERPATH:-`git rev-parse --show-toplevel`/nexmark}"
+clusterpath="${CLUSTERPATH:-`git rev-parse --show-toplevel`}/nexmark"
 serverprefix="${CLUSTERUSER}@${SERVER:-fdr}"
 
 function run { # command index groups additional

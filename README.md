@@ -23,6 +23,8 @@ All benchmarks share a set of parameters.
 * The counting benchmarks have different *backend*s to select between hash- and key-count as well as their native implementations.
 * The NEXMark timely implementation executes a set of *queries*, which can be selected from `q0` through `q8` and `q0-flex` to `q8-flex`, where the first is the native timely implementation, and the second `-flex` implementations use Megaphone. (NEXMark differential is not based on Megaphone.)
 
+Benchmarks should always be executed with Rust's release mode by adding `--release` to cargo's options.
+
 To run a key-count experiment with four workers in a single process, a rate of 1000000 keys per second and a domain of 10 million, execute:
 
     $ cargo run --release --bin word_count -- --backend vec --rate 1000000 --duration 30 --migration none --domain 10000000 -- -w4
@@ -296,5 +298,31 @@ The output is a list of tab-separated values on `stdout`.
 
 ## Running the automated benchmarks
 
-Benchmarks are located in `experiments/nexmark` and include a driver harness to run timely computations remotely with mulitple processes on different machines. Also, some word-count-like experiments can be executed.
+Benchmarks are located in `experiments/nexmark` and include a driver harness to run timely computations remotely with multiple processes on different machines. Also, some word-count-like experiments can be executed. The harness is located in [`experiments/nexmark`](experiments/nexmark) and consists of tools to run a set of benchmarks and to plot the results. The quality of the code is debatable but it should serve as a starting point for anyone interested in Megaphone's performance.
 
+All benchmarks are contained in [`bench.py`](experiments/nexmark/bench.py) and require Python 3 to run.
+
+### Directory structure
+
+The benchmark will produce the following directories:
+* `setups` contains a timely dataflow `hostfile` and a migration pattern for each experiment.
+* `results` stores stdout/stderr for each experiment and process.
+* `charts` is the target for all plots.
+
+In general, the harness creates a subdirectory inside each of the above directories with the current GIT revision as name to aid reproducibility.
+
+### Preparation
+We recommend running them from a virtual environment to avoid clobbering the system. Setup the virtual environment using:
+    virtualenv -p python3 venv
+    source venv/bin/activate
+    pip install -r requirements.txt
+
+The source code to Megaphone (this repository) must be available locally on all machines where the benchmark is to be executed. By default, the harness assumes it is the same directory as it is on the local machine. Override the cluster directory by setting the environment variable `CLUSTERPATH`. The user name on the remote machines is `$USER` by default but can be configured by setting `CLUSTERUSER` to the desired value. The remote machines are configured with the `SERVER` symbol and have the numbers 1, 2, 3... appended.
+
+### Running experiments
+
+To run a predefined set of exhaustive experiments, run [`run_paper.sh`](experiments/nexmark/run_paper.sh) after exporting the evironment symbols as described above. This will run a set of benchmarks, if possible in parallel, on a set of remote machines. The name of the benchmarks corresponds to functions defined in `bench.py`. Note that the current set of benchmarks require around 2.5 days to complete!
+
+### Plotting results
+
+Assuming no parameters are changed, the script [`plot_all.sh`](experiments/nexmark/plot_all.sh) can be used to visualize the results. When changing parameters to the benchmark, care must be taken to update the parameters here as well.
