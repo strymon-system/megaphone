@@ -1,6 +1,6 @@
 # Megaphone: Latency-conscious state migration
 
-This is the repository for Megaphone's implementation on timely dataflow together with a set of benchmarks.
+This is the repository for Megaphone's implementation on timely dataflow together with a set of benchmarks. Megaphone is described in "Megaphone: Latency-conscious state migration for distributed streaming dataflows", read it on [https://arxiv.org/abs/1812.01371](https://arxiv.org/abs/1812.01371).
 
 At time of writing, the code has been tested with Rust 1.30 stable. To install Rust, visit [rustup.org](https://rustup.rs/) or obtain Rust via other means.
 
