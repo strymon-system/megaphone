@@ -2,7 +2,7 @@
 
 This is the repository for Megaphone's implementation on timely dataflow together with a set of benchmarks.
 
-At time of writing, the code has been tested with Rust 1.30 stable. To insall Rust, visit [rustup.org](https://rustup.rs/) or obtain Rust via other means.
+At time of writing, the code has been tested with Rust 1.30 stable. To install Rust, visit [rustup.org](https://rustup.rs/) or obtain Rust via other means.
 
 ## Code organization
 
