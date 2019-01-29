@@ -153,6 +153,7 @@ dependencies = [
  "serde_derive 1.0.80 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.33 (registry+https://github.com/rust-lang/crates.io-index)",
  "streaming-harness 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "streaming-harness-hdrhist 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "timely 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 

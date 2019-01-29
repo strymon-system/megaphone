@@ -4,6 +4,7 @@ extern crate rand;
 extern crate timely;
 extern crate nexmark;
 extern crate streaming_harness;
+extern crate streaming_harness_hdrhist;
 extern crate dynamic_scaling_mechanism;
 extern crate abomonation;
 
@@ -12,8 +13,9 @@ use std::alloc::System;
 #[global_allocator]
 static GLOBAL: System = System;
 
-use std::hash::Hash;
-use std::hash::Hasher;
+use std::cell::RefCell;
+use std::hash::{Hash, Hasher};
+use std::rc::Rc;
 
 use clap::{Arg, App};
 
@@ -170,6 +172,9 @@ fn main() {
         let mut input_times_gen =
             ::streaming_harness::input::SyntheticInputTimeGenerator::new(input_times());
 
+        let element_hdr = Rc::new(RefCell::new(::streaming_harness_hdrhist::HDRHist::new()));
+        let element_hdr2 = Rc::clone(&element_hdr);
+
         // Construct the dataflow
         let mut init_handle = worker.dataflow(|scope: &mut ::timely::dataflow::scopes::Child<_, usize>| {
             let control = control_input.to_stream(scope).broadcast();
@@ -187,10 +192,11 @@ fn main() {
                         // Input closed, we're done
                         if input.frontier().is_empty() {
                             cap.take();
-                        } else {
-                            assert!(cap.is_some());
+                        } else if let Some(cap) = cap.as_mut() {
                             let time = input.frontier().frontier()[0];
-                            cap.as_mut().unwrap().downgrade(&time);
+                            if !input.frontier().frontier().less_equal(cap) {
+                                cap.downgrade(&time);
+                            }
                             // Check if there is some initialization data for `count`
                             if count.is_none() {
                                 while let Some(data) = input.next() {
@@ -199,11 +205,16 @@ fn main() {
                                 }
                             } else {
                                 // Produce data, `count` is initialized.
-                                if let Some(it) = input_times_gen.iter_until((time - count.unwrap()) as u64 ) {
-                                    let cap = cap.as_ref().unwrap();
-                                    let mut session = output.session(cap);
-                                    for _t in it {
+                                if let Some(mut it) = input_times_gen.iter_until((time - count.unwrap()) as u64 ) {
+                                    if let Some(_) = it.next() {
+                                        let mut session = output.session(cap);
+                                        let mut count = 1;
                                         session.give((word_generator.word_rand(), 1));
+                                        for _t in it {
+                                            session.give((word_generator.word_rand(), 1));
+                                            count += 1;
+                                        }
+                                        element_hdr2.borrow_mut().add_value(count);
                                     }
                                 }
                             }
@@ -563,6 +574,10 @@ fn main() {
             }
         }
 
+        let element_hdr = element_hdr.borrow();
+        for (value, prob, count) in element_hdr.ccdf() {
+            println!("count_ccdf\t{}\t{}\t{}", value, prob, count);
+        }
         output_metric_collector.into_inner()
     }).expect("unsuccessful execution").join().into_iter().map(|x| x.unwrap()).collect();
 
