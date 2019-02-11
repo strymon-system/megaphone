@@ -5,7 +5,7 @@ use timely::dataflow::{Stream, Scope};
 use timely::communication::message::RefOrMut;
 use timely::dataflow::channels::pact::Exchange;
 use timely::dataflow::channels::pushers::Tee;
-use timely::dataflow::operators::Probe;
+use timely::dataflow::operators::{ConnectLoop, Filter, Map};
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::Data;
 use timely::dataflow::operators::Capability;
@@ -137,7 +137,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
             &mut OutputHandle<G::Timestamp, D2, Tee<G::Timestamp, D2>>) + 'static,    // state update logic
     >(&self, control: &Stream<G, Control>, key: B, name: &str, mut fold: F) -> Stream<G, D2>
     {
-        let mut stateful = self.stateful(key, control);
+        let stateful = self.stateful(key, control);
         let states = stateful.state.clone();
 
         let mut builder = OperatorBuilder::new(name.to_owned(), self.scope());
@@ -189,7 +189,9 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
                 }
             }
         });
-        stream.probe_with(&mut stateful.probe)
+        let progress_stream = stream.filter(|_| false).map(|_| ());
+        progress_stream.connect_loop(stateful.feedback);
+        stream
     }
 
     fn stateful_unary_input<
@@ -209,7 +211,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
             &mut OutputHandle<G::Timestamp, D2, Tee<G::Timestamp, D2>>) + 'static,
     >(&self, control: &Stream<G, Control>, key: B, name: &str, mut consume: C, mut fold: F) -> Stream<G, D2>
     {
-        let mut stateful = self.stateful(key, control);
+        let stateful = self.stateful(key, control);
         let states = stateful.state.clone();
 
         let mut builder = OperatorBuilder::new(name.to_owned(), self.scope());
@@ -261,7 +263,9 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
                 }
             }
         });
-        stream.probe_with(&mut stateful.probe)
+        let progress_stream = stream.filter(|_| false).map(|_| ());
+        progress_stream.connect_loop(stateful.feedback);
+        stream
     }
 
     fn stateful_binary<
@@ -337,8 +341,8 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
             &mut OutputHandle<G::Timestamp, D3, Tee<G::Timestamp, D3>>) + 'static,
     >(&self, control: &Stream<G, Control>, other: &Stream<G, D2>, key1: B1, key2: B2, name: &str, mut consume1: C1, mut consume2: C2, mut fold1: F1, mut fold2: F2) -> Stream<G, D3>
     {
-        let mut stateful1 = self.stateful(key1, &control);
-        let mut stateful2 = other.stateful(key2, &control);
+        let stateful1 = self.stateful(key1, &control);
+        let stateful2 = other.stateful(key2, &control);
         let states1 = stateful1.state.clone();
         let states2 = stateful2.state.clone();
 
@@ -416,7 +420,10 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
                 }
             }
         });
-        stream.probe_with(&mut stateful1.probe).probe_with(&mut stateful2.probe)
+        let progress_stream = stream.filter(|_| false).map(|_| ());
+        progress_stream.connect_loop(stateful1.feedback);
+        progress_stream.connect_loop(stateful2.feedback);
+        stream
     }
 
     fn distribute<B1>(&self, control: &Stream<G, Control>, key: B1, name: &str) -> Stream<G, (usize, Key, D1)>
