@@ -189,7 +189,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         let (mut state_out, state) = builder.new_output_connection(vec![Antichain::new(), Antichain::from_elem(Default::default())]);
 
         let (feedback_handle, feedback_stream) = self.scope().feedback(Default::default());
-        let feedback_in_connection = vec![Antichain::new(); 3];
+        let feedback_in_connection = vec![Antichain::new(); 2];
         let _feedback_in = builder.new_input_connection(&feedback_stream, Pipeline, feedback_in_connection);
 
         // Probe to be attached after the last stateful operator
@@ -282,7 +282,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                 // If the next configuration to install is no longer at all ahead of the state machine output,
                 // then there can be no more records or state updates for any configuration prior to the next.
                 if pending_configurations.get(0).is_some() {
-                    if pending_configurations[0].1.frontier.elements().iter().all(|t| !frontiers[3].less_than(t)) {
+                    if pending_configurations[0].1.frontier.elements().iter().all(|t| !frontiers[2].less_than(t)) {
 
                         // We should now install `pending_configurations[0]` into `active_configuration`!
                         let (time, to_install) = pending_configurations.remove(0);

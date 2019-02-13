@@ -29,7 +29,7 @@ bin-20 = []
 fake_stateful = []
 
 [dependencies]
-timely = { git = "https://github.com/TimelyDataflow/timely-dataflow.git", branch = "broadcast" }
+timely = { git = "https://github.com/TimelyDataflow/timely-dataflow.git", branch = "feedback_relaxation" }
 #timely = { git = "https://github.com/antiguru/timely-dataflow.git", branch = "session_cease"}
 #timely = "0.8"
 #abomonation = { git = "https://github.com/frankmcsherry/abomonation.git" }

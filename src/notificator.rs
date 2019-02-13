@@ -259,7 +259,8 @@ impl<T: Timestamp + TotalOrder, D> Notify<T, D> for TotalOrderFrontierNotificato
                     }
                 }
             }
-        } else {
+        }
+        if self.pending.is_empty() {
             self.capability.take();
         }
 
