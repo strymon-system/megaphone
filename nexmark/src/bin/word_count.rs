@@ -25,8 +25,7 @@ use rand::rngs::SmallRng;
 use streaming_harness::util::ToNanos;
 
 use timely::dataflow::{InputHandle, ProbeHandle};
-use timely::dataflow::operators::{Broadcast, Concat, Input, Operator, Probe};
-use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
+use timely::dataflow::operators::{Broadcast, Operator, Probe};
 
 use timely::dataflow::channels::pact::{Exchange, Pipeline};
 use timely::dataflow::Stream;
@@ -38,6 +37,7 @@ use dynamic_scaling_mechanism::notificator::{Notify, TotalOrderFrontierNotificat
 use dynamic_scaling_mechanism::state_machine::BinnedStateMachine;
 
 use nexmark::tools::ExperimentMapMode;
+use timely::dataflow::operators::input::Handle;
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut h: ::fnv::FnvHasher = Default::default();
@@ -159,11 +159,10 @@ fn main() {
         let index = worker.index();
 
         // Declare re-used input, control and probe handles.
-        let mut input = InputHandle::new();
+        let mut input: Handle<_, ()> = InputHandle::new();
         let mut control_input = InputHandle::new();
         // let mut control_input_2 = InputHandle::new();
         let mut probe = ProbeHandle::new();
-        let mut init_probe = ProbeHandle::new();
 
         // Generate the times at which input should be produced
         let input_times = || streaming_harness::input::ConstantThroughputInputTimes::<u64, u64>::new(
@@ -175,8 +174,17 @@ fn main() {
         let element_hdr = Rc::new(RefCell::new(::streaming_harness_hdrhist::HDRHist::new()));
         let element_hdr2 = Rc::clone(&element_hdr);
 
+        // Calculate how many initialization steps are required to populate all data
+        // The 'staggering' shift parameter, Will stagger at 0xFFF words
+        let stagger = 24;
+        // Calculate the number of initializtion rounds. Vector completes in one round.
+        let count = 1 + match backend {
+            Backend::Vector => 0,
+            _ => (key_space / peers) >> stagger,
+        };
+
         // Construct the dataflow
-        let mut init_handle = worker.dataflow(|scope: &mut ::timely::dataflow::scopes::Child<_, usize>| {
+        worker.dataflow(|scope: &mut ::timely::dataflow::scopes::Child<_, usize>| {
             let control = control_input.to_stream(scope).broadcast();
 
             // Construct the data generator
@@ -186,8 +194,8 @@ fn main() {
                     let mut word_generator = WordGenerator::new_uniform(index, key_space);
                     // Cap is used to track input frontier
                     let mut cap = Some(cap);
-                    // Observe count value. Only start producing data once `count` initialized
-                    let mut count = None;
+                    // word count, used during initialization
+                    let mut word = 0;
                     move |input, output| {
                         // Input closed, we're done
                         if input.frontier().is_empty() {
@@ -197,15 +205,35 @@ fn main() {
                             if !input.frontier().frontier().less_equal(cap) {
                                 cap.downgrade(&time);
                             }
-                            // Check if there is some initialization data for `count`
-                            if count.is_none() {
-                                while let Some(data) = input.next() {
-                                    count = Some(*data.0);
-                                    break;
-                                }
+                            // Are we initializing?
+                            if time < count {
+                                // Yes, select based on backend
+                                match backend {
+                                    Backend::Vector => {
+                                        let mut session = output.session(cap);
+                                        let max_number = (key_space >> ::dynamic_scaling_mechanism::BIN_SHIFT).next_power_of_two();
+                                        println!("max_number: {}", max_number);
+                                        let bin_count = 1 << ::dynamic_scaling_mechanism::BIN_SHIFT;
+                                        for bin in index * bin_count / peers..(index + 1) * bin_count / peers {
+                                            let number = word_generator.word_at((max_number << ::dynamic_scaling_mechanism::BIN_SHIFT) + bin);
+                                            assert!(number < 2 * key_space);
+                                            session.give((number, 1));
+                                        }
+                                    },
+                                    _ => {
+                                        let mut session = output.session(cap);
+                                        for i in index * key_space / peers + word..(index + 1) * key_space / peers {
+                                            session.give((word_generator.word_at(key_space - i - 1), 1));
+                                            word += 1;
+                                            if (word & ((1 << stagger) - 1)) == 0 {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                };
                             } else {
-                                // Produce data, `count` is initialized.
-                                if let Some(mut it) = input_times_gen.iter_until((time - count.unwrap()) as u64 ) {
+                                // Produce data, benchmark running
+                                if let Some(mut it) = input_times_gen.iter_until((time - count) as u64 ) {
                                     if let Some(_) = it.next() {
                                         let mut session = output.session(cap);
                                         let mut count = 1;
@@ -221,81 +249,6 @@ fn main() {
                         }
                     }
                 });
-
-            // Construct initializing operator
-            // The operator has two outputs:
-            // 1. the data output
-            // 2. a `count` output, which will be advanced to `count` when done
-            let (init_handle, init_input) : (_, Stream<_, ()>) = scope.new_input();
-            let mut builder = OperatorBuilder::new("Data initializer".to_owned(), init_input.scope());
-            let _generator_input = builder.new_input(&init_input, Pipeline);
-            let (output, init_input) = builder.new_output();
-            let (_count_output_handle, count_output_stream): (_, Stream<_, ()>) = builder.new_output();
-            let mut output = Some(output);
-            builder.build(move |mut capabilities| {
-                let mut count_output_cap = Some(capabilities.pop().unwrap());
-                let mut count = Some(capabilities.pop().unwrap());
-                count.as_mut().unwrap().downgrade(&1);
-
-                let mut word_generator = WordGenerator::new_uniform(index, key_space);
-                let mut word = 0;
-                move |frontiers| {
-                    let take = if let Some(count) = count.as_mut() {
-                        if !frontiers[0].less_than(count) {
-                            let mut output = output.as_mut().unwrap().activate();
-                            let done = match backend {
-                                Backend::Vector => {
-                                    let mut session = output.session(count);
-                                    let max_number = (key_space >> ::dynamic_scaling_mechanism::BIN_SHIFT).next_power_of_two();
-                                    println!("max_number: {}", max_number);
-                                    let bin_count = 1 << ::dynamic_scaling_mechanism::BIN_SHIFT;
-                                    for bin in index * bin_count / peers..(index + 1) * bin_count / peers {
-                                        let number = word_generator.word_at((max_number << ::dynamic_scaling_mechanism::BIN_SHIFT) + bin);
-                                        assert!(number < 2 * key_space);
-                                        session.give((number, 1));
-                                    }
-                                    true
-                                },
-                                _ => {
-                                    let mut session = output.session(count);
-                                    for i in index * key_space / peers + word..(index + 1) * key_space / peers {
-                                        session.give((word_generator.word_at(key_space - i - 1), 1));
-                                        word += 1;
-                                        if (word & 0xFFF) == 0 {
-                                            break;
-                                        }
-                                    }
-                                    word == key_space / peers
-                                }
-                            };
-                            if done {
-                                true
-                            } else {
-                                let new_time = **count + 1;
-                                count.downgrade(&new_time);
-                                false
-                            }
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    };
-                    if take {
-                        // Indicate on count output what our count is
-                        count_output_cap.as_mut().unwrap().downgrade(&*count.as_ref().unwrap());
-                        // Drop `count` cap because we don't want to produce more output
-                        count.take();
-                    }
-                    // Next time (once the input is closed), we can drop the cap for the count output
-                    if frontiers[0].is_empty() {
-                        count_output_cap.take();
-                    }
-                }
-            });
-
-            count_output_stream.probe_with(&mut init_probe);
-            let input = input.concat(&init_input);
 
             let sst_output = match backend {
                 Backend::HashMap => {
@@ -412,7 +365,6 @@ fn main() {
                     verify(&vec_output, &correct).probe_with(&mut probe);
                 }
             }
-            init_handle
         });
 
         let mut instructions = map_mode.instructions(peers, duration_ns).unwrap();
@@ -449,25 +401,16 @@ fn main() {
             }
         }
 
-        let mut count: usize = 0;
-
-        // Wait for initialization, init_probe will jump to `count` once initialization is done
-        while init_probe.with_frontier(|f| f[0]) == 0 {
-            input.advance_to(count);
-            init_handle.advance_to(count);
+        // Wait for initialization in `count` rounds
+        for i in 1..=count {
+            input.advance_to(i);
             if let Some(control_input) = control_input.as_mut() {
                 control_input.advance_to(count);
             }
-            while probe.less_than(&count) { worker.step(); }
-//            probe.with_frontier(|f| println!("probe: {:?}", f.to_vec()));
-//            init_probe.with_frontier(|f| println!("init_probe: {:?}", f.to_vec()));
-            count += 1;
+            while probe.less_than(&i) { worker.step(); }
         }
-        ::std::mem::drop(init_handle);
 
-        let count = key_space / 0xFFF;
         input.advance_to(count);
-        input.send(());
         if let Some(control_input) = control_input.as_mut() {
             control_input.advance_to(count);
         }
@@ -480,12 +423,7 @@ fn main() {
 
         let mut last_migrated = None;
 
-        let mut last_ns = 0;
-
-        let mut migration_separation = 0;
-
-        let mut did_migrate = 0;
-        let mut migration_time = 0;
+        let mut did_migrate = false;
 
         loop {
 
@@ -495,47 +433,34 @@ fn main() {
             }
 
             let elapsed_ns = timer.elapsed().to_nanos();
-            let wait_ns = last_ns;
-            let target_ns = (elapsed_ns + 1) / tick * tick;
-            last_ns = target_ns;
 
             if index == 0 {
                 // was a migration supplied and the time captured? Is the migration definitely over?
-                if did_migrate == 1 && migration_time < wait_ns {
-                    if did_migrate == 1 {
-                        println!("migration_done\t{}\t{}", target_ns, target_ns - migration_time);
+                if let Some(last_migrated) = last_migrated {
+                    if did_migrate && probe.with_frontier(|f| !f.less_than(&(last_migrated as usize + count))) {
+                        println!("migration_done\t{}\t{}", elapsed_ns, elapsed_ns - last_migrated);
+                        did_migrate = false;
                     }
-                    did_migrate -= 1;
                 }
                 if let Some(control_input) = control_input.as_mut() {
-                    if last_migrated.map_or(true, |time| *control_input.time() != time) {
+                    if last_migrated.map_or(true, |time| probe.with_frontier(|f| !f.less_equal(&(time as usize + count)))) {
                         if instructions.get(0).map(|&(ts, _)| ts as usize + count <= *control_input.time()).unwrap_or(false) {
-                            if migration_separation == 0 {
-                                let (_ts, ctrl_instructions) = instructions.remove(0);
+                            let (_ts, ctrl_instructions) = instructions.remove(0);
 
-                                println!("control_time\t{}", control_input.time() - count);
+                            println!("control_time\t{}", control_input.time() - count);
 
-                                let count = ctrl_instructions.len();
-                                for instruction in ctrl_instructions {
-                                    control_input.send(Control::new(control_sequence, count, instruction));
-                                }
-
-                                control_sequence += 1;
-                                last_migrated = Some(*control_input.time());
-                                migration_separation = 2;
-                                // Mark that we supplied migration instructions, will be picked up further down
-                                did_migrate = 2;
-                            } else {
-                                migration_separation -= 1;
+                            let count = ctrl_instructions.len();
+                            for instruction in ctrl_instructions {
+                                control_input.send(Control::new(control_sequence, count, instruction));
                             }
+
+                            control_sequence += 1;
+                            last_migrated = Some(elapsed_ns);
+                            // Mark that we supplied migration instructions, will be picked up further down
+                            did_migrate = true;
                         }
                     }
                 }
-
-                // FIXME: We have to remember control_input's time, and could use a different variable?!
-//                if instructions.is_empty() {
-//                    control_input.take();
-//                }
             }
 
             output_metric_collector.acknowledge_while(
@@ -548,17 +473,12 @@ fn main() {
                 break;
             }
 
-            if target_ns < duration_ns {
+            if elapsed_ns < duration_ns {
                 let input = input.as_mut().unwrap();
-                input.advance_to(target_ns as usize + count);
+                input.advance_to(elapsed_ns as usize + count);
                 if let Some(control_input) = control_input.as_mut() {
-                    if *control_input.time() < target_ns as usize + count {
-                        control_input.advance_to(target_ns as usize + count);
-                        // A migration was recorded, note down the time and step state
-                        if did_migrate == 2 {
-                            migration_time = target_ns;
-                            did_migrate -= 1;
-                        }
+                    if *control_input.time() < elapsed_ns as usize + count {
+                        control_input.advance_to(elapsed_ns as usize + count);
                     }
                 }
             } else {
@@ -568,7 +488,7 @@ fn main() {
 
             if input.is_some() {
                 worker.step();
-                while probe.less_than(&(wait_ns as usize + count)) { worker.step(); }
+//                while probe.less_than(&(wait_ns as usize + count)) { worker.step(); }
             } else {
                 while worker.step() { }
             }
