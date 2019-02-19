@@ -201,9 +201,6 @@ fn main() {
                             cap.take();
                         } else if let Some(cap) = cap.as_mut() {
                             let current_time = input.frontier().frontier()[0];
-                            if !input.frontier().frontier().less_equal(cap) {
-                                cap.downgrade(&current_time);
-                            }
                             // Are we initializing?
                             if current_time < count {
                                 // Yes, select based on backend
@@ -230,6 +227,7 @@ fn main() {
                                         }
                                     }
                                 };
+                                cap.downgrade(&current_time);
                             } else {
                                 // Produce data, benchmark running
                                 let probe_time = probe2.with_frontier(|f| f[0]);
@@ -252,6 +250,7 @@ fn main() {
                                             last_production_time = current_time;
                                         }
                                     }
+                                    cap.downgrade(&current_time);
                                 }
                             }
                         }
