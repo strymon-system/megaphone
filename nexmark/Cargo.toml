@@ -8,9 +8,9 @@ default = ["dynamic_scaling_mechanism/bin-8"]
 fake_stateful = ["dynamic_scaling_mechanism/fake_stateful"]
 
 [dependencies]
-#differential-dataflow = { git = "https://github.com/TimelyDataflow/differential-dataflow.git" }
+differential-dataflow = { git = "https://github.com/TimelyDataflow/differential-dataflow.git" }
 #differential-dataflow = "0.8"
-timely = { git = "https://github.com/TimelyDataflow/timely-dataflow.git", branch = "feedback_relaxation"}
+timely = { git = "https://github.com/TimelyDataflow/timely-dataflow.git"}
 #timely = { git = "https://github.com/antiguru/timely-dataflow.git", branch = "session_cease"}
 #timely = "0.8"
 #abomonation = { git = "https://github.com/frankmcsherry/abomonation.git" }
@@ -22,7 +22,7 @@ serde_derive = "*"
 rand = "*"
 fnv="1.0"
 streaming-harness = { version = "^0.1", features = ["hdrhist-support"] }
-streaming-harness-hdrhist = "0.2.1"
+hdrhist = "0.5.0"
 dynamic_scaling_mechanism = { version = "0.0.1", path = "..", default_features = false }
 
 [dependencies.clap]

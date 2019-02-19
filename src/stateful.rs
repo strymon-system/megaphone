@@ -407,8 +407,8 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         // construct states, we simply construct all bins on each worker
         let states: Rc<RefCell<State<S::Timestamp, D, M>>> = Rc::new(RefCell::new(State::new(::std::iter::repeat_with(|| Some(Default::default())).take(1 << BIN_SHIFT).collect())));
 
-        // Probe to be attached after the last stateful operator
-        let probe = ProbeHandle::new();
+        // Feedback handle to be attached after the last stateful operator
+        let (feedback_handle, feedback_stream) = self.scope().feedback(Default::default());
 
         use timely::dataflow::operators::{Map, Exchange, Filter};
 
@@ -422,6 +422,6 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         let state_stream = _control
             .filter(|_| false)
             .map(|_| (0, StateProtocol::Prepare(BinId(0))));
-        StateStream::new(stream, state_stream, states, probe)
+        StateStream::new(stream, state_stream, states, feedback_handle)
     }
 }

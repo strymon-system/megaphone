@@ -34,7 +34,7 @@ dependencies = [
  "abomonation_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "timely 0.8.0 (git+https://github.com/TimelyDataflow/timely-dataflow.git?branch=feedback_relaxation)",
+ "timely 0.8.0 (git+https://github.com/TimelyDataflow/timely-dataflow.git)",
  "zipf 4.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -162,40 +162,40 @@ dependencies = [
 [[package]]
 name = "timely"
 version = "0.8.0"
-source = "git+https://github.com/TimelyDataflow/timely-dataflow.git?branch=feedback_relaxation#932943d42377ca0185cee4d05089a2dba394fc99"
+source = "git+https://github.com/TimelyDataflow/timely-dataflow.git#b8c38605d24713ffe921a2a6fbb8ef8c28996f66"
 dependencies = [
  "abomonation 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "abomonation_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.87 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.87 (registry+https://github.com/rust-lang/crates.io-index)",
- "timely_bytes 0.7.0 (git+https://github.com/TimelyDataflow/timely-dataflow.git?branch=feedback_relaxation)",
- "timely_communication 0.8.0 (git+https://github.com/TimelyDataflow/timely-dataflow.git?branch=feedback_relaxation)",
- "timely_logging 0.7.1 (git+https://github.com/TimelyDataflow/timely-dataflow.git?branch=feedback_relaxation)",
+ "timely_bytes 0.7.0 (git+https://github.com/TimelyDataflow/timely-dataflow.git)",
+ "timely_communication 0.8.0 (git+https://github.com/TimelyDataflow/timely-dataflow.git)",
+ "timely_logging 0.7.1 (git+https://github.com/TimelyDataflow/timely-dataflow.git)",
 ]
 
 [[package]]
 name = "timely_bytes"
 version = "0.7.0"
-source = "git+https://github.com/TimelyDataflow/timely-dataflow.git?branch=feedback_relaxation#932943d42377ca0185cee4d05089a2dba394fc99"
+source = "git+https://github.com/TimelyDataflow/timely-dataflow.git#b8c38605d24713ffe921a2a6fbb8ef8c28996f66"
 
 [[package]]
 name = "timely_communication"
 version = "0.8.0"
-source = "git+https://github.com/TimelyDataflow/timely-dataflow.git?branch=feedback_relaxation#932943d42377ca0185cee4d05089a2dba394fc99"
+source = "git+https://github.com/TimelyDataflow/timely-dataflow.git#b8c38605d24713ffe921a2a6fbb8ef8c28996f66"
 dependencies = [
  "abomonation 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "abomonation_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "getopts 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.87 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.87 (registry+https://github.com/rust-lang/crates.io-index)",
- "timely_bytes 0.7.0 (git+https://github.com/TimelyDataflow/timely-dataflow.git?branch=feedback_relaxation)",
- "timely_logging 0.7.1 (git+https://github.com/TimelyDataflow/timely-dataflow.git?branch=feedback_relaxation)",
+ "timely_bytes 0.7.0 (git+https://github.com/TimelyDataflow/timely-dataflow.git)",
+ "timely_logging 0.7.1 (git+https://github.com/TimelyDataflow/timely-dataflow.git)",
 ]
 
 [[package]]
 name = "timely_logging"
 version = "0.7.1"
-source = "git+https://github.com/TimelyDataflow/timely-dataflow.git?branch=feedback_relaxation#932943d42377ca0185cee4d05089a2dba394fc99"
+source = "git+https://github.com/TimelyDataflow/timely-dataflow.git#b8c38605d24713ffe921a2a6fbb8ef8c28996f66"
 
 [[package]]
 name = "unicode-width"
@@ -260,10 +260,10 @@ dependencies = [
 "checksum syn 0.15.26 (registry+https://github.com/rust-lang/crates.io-index)" = "f92e629aa1d9c827b2bb8297046c1ccffc57c99b947a680d3ccff1f136a3bee9"
 "checksum synom 0.11.3 (registry+https://github.com/rust-lang/crates.io-index)" = "a393066ed9010ebaed60b9eafa373d4b1baac186dd7e008555b0f702b51945b6"
 "checksum synstructure 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)" = "3a761d12e6d8dcb4dcf952a7a89b475e3a9d69e4a69307e01a470977642914bd"
-"checksum timely 0.8.0 (git+https://github.com/TimelyDataflow/timely-dataflow.git?branch=feedback_relaxation)" = "<none>"
-"checksum timely_bytes 0.7.0 (git+https://github.com/TimelyDataflow/timely-dataflow.git?branch=feedback_relaxation)" = "<none>"
-"checksum timely_communication 0.8.0 (git+https://github.com/TimelyDataflow/timely-dataflow.git?branch=feedback_relaxation)" = "<none>"
-"checksum timely_logging 0.7.1 (git+https://github.com/TimelyDataflow/timely-dataflow.git?branch=feedback_relaxation)" = "<none>"
+"checksum timely 0.8.0 (git+https://github.com/TimelyDataflow/timely-dataflow.git)" = "<none>"
+"checksum timely_bytes 0.7.0 (git+https://github.com/TimelyDataflow/timely-dataflow.git)" = "<none>"
+"checksum timely_communication 0.8.0 (git+https://github.com/TimelyDataflow/timely-dataflow.git)" = "<none>"
+"checksum timely_logging 0.7.1 (git+https://github.com/TimelyDataflow/timely-dataflow.git)" = "<none>"
 "checksum unicode-width 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "882386231c45df4700b275c7ff55b6f3698780a650026380e72dabe76fa46526"
 "checksum unicode-xid 0.0.4 (registry+https://github.com/rust-lang/crates.io-index)" = "8c1f860d7d29cf02cb2f3f359fd35991af3d30bac52c57d265a3c461074cb4dc"
 "checksum unicode-xid 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "fc72304796d0818e357ead4e000d19c9c174ab23dc11093ac919054d20a6a7fc"
