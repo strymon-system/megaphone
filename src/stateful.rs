@@ -14,10 +14,12 @@ use std::marker::PhantomData;
 use fnv::FnvHashMap as HashMap;
 
 use timely::ExchangeData;
-use timely::dataflow::{Stream, Scope, ProbeHandle};
+use timely::dataflow::{Stream, Scope};
 use timely::dataflow::channels::pact::Pipeline;
 use timely::dataflow::operators::Capability;
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
+use timely::dataflow::operators::Feedback;
+use timely::dataflow::operators::feedback::Handle as FeedbackHandle;
 use timely::order::TotalOrder;
 use timely::progress::Timestamp;
 use timely::progress::frontier::Antichain;
@@ -69,7 +71,7 @@ pub struct StateStream<S, V, D, W, M> where
     /// A handle to the shared state object
     pub state: Rc<RefCell<State<S::Timestamp, D, M>>>,
     /// The probe `stateful` uses to determine completion.
-    pub probe: ProbeHandle<S::Timestamp>,
+    pub feedback: FeedbackHandle<S, ()>,
     _phantom: PhantomData<(*const W)>,
 }
 
@@ -82,12 +84,12 @@ impl<S, V, D, W, M> StateStream<S, V, D, W, M>
         W: ExchangeData,
         M: ExchangeData,
 {
-    pub fn new(stream: Stream<S, (usize, Key, V)>, state_stream: Stream<S, (usize, StateProtocol<S::Timestamp, W, M>)>, state: Rc<RefCell<State<S::Timestamp, D, M>>>, probe: ProbeHandle<S::Timestamp>) -> Self {
+    pub fn new(stream: Stream<S, (usize, Key, V)>, state_stream: Stream<S, (usize, StateProtocol<S::Timestamp, W, M>)>, state: Rc<RefCell<State<S::Timestamp, D, M>>>, feedback: FeedbackHandle<S, ()>) -> Self {
         StateStream {
             stream,
             state_stream,
             state,
-            probe,
+            feedback,
             _phantom: PhantomData,
         }
     }
@@ -186,9 +188,13 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         // State output of the F operator
         let (mut state_out, state) = builder.new_output_connection(vec![Antichain::new(), Antichain::from_elem(Default::default())]);
 
+        let (feedback_handle, feedback_stream) = self.scope().feedback(Default::default());
+        let feedback_in_connection = vec![Antichain::new(); 2];
+        let _feedback_in = builder.new_input_connection(&feedback_stream, Pipeline, feedback_in_connection);
+
         // Probe to be attached after the last stateful operator
-        let probe1 = ProbeHandle::new();
-        let probe2 = probe1.clone();
+//        let probe1 = ProbeHandle::new();
+//        let probe2 = probe1.clone();
 
         // Construct F operator
         builder.build(move |_capability| {
@@ -276,7 +282,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                 // If the next configuration to install is no longer at all ahead of the state machine output,
                 // then there can be no more records or state updates for any configuration prior to the next.
                 if pending_configurations.get(0).is_some() {
-                    if pending_configurations[0].1.frontier.elements().iter().all(|t| !probe2.less_than(t)) {
+                    if pending_configurations[0].1.frontier.elements().iter().all(|t| !frontiers[2].less_than(t)) {
 
                         // We should now install `pending_configurations[0]` into `active_configuration`!
                         let (time, to_install) = pending_configurations.remove(0);
@@ -381,7 +387,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         });
 
         // `stream` is the stateful output stream where data is already correctly partitioned.
-        StateStream::new(stream, state, states, probe1)
+        StateStream::new(stream, state, states, feedback_handle)
     }
 }
 
