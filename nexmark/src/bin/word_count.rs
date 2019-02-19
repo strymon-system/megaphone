@@ -160,6 +160,7 @@ fn main() {
         let mut control_input = InputHandle::new();
         // let mut control_input_2 = InputHandle::new();
         let mut probe = ProbeHandle::new();
+        let probe2 = ProbeHandle::clone(&mut probe);
 
         // Generate the times at which input should be produced
         let input_times = || streaming_harness::input::ConstantThroughputInputTimes::<u64, u64>::new(
@@ -193,17 +194,18 @@ fn main() {
                     let mut cap = Some(cap);
                     // word count, used during initialization
                     let mut word = 0;
+                    let mut last_production_time = 0;
                     move |input, output| {
                         // Input closed, we're done
                         if input.frontier().is_empty() {
                             cap.take();
                         } else if let Some(cap) = cap.as_mut() {
-                            let time = input.frontier().frontier()[0];
+                            let current_time = input.frontier().frontier()[0];
                             if !input.frontier().frontier().less_equal(cap) {
-                                cap.downgrade(&time);
+                                cap.downgrade(&current_time);
                             }
                             // Are we initializing?
-                            if time < count {
+                            if current_time < count {
                                 // Yes, select based on backend
                                 match backend {
                                     Backend::Vector => {
@@ -230,16 +232,25 @@ fn main() {
                                 };
                             } else {
                                 // Produce data, benchmark running
-                                if let Some(mut it) = input_times_gen.iter_until((time - count) as u64 ) {
-                                    if let Some(_) = it.next() {
-                                        let mut session = output.session(cap);
-                                        let mut count = 1;
-                                        session.give((word_generator.word_rand(), 1));
-                                        for _t in it {
+                                let probe_time = probe2.with_frontier(|f| f[0]);
+                                let delta_probe = current_time - probe_time;
+                                let delta_production = current_time - last_production_time;
+                                // if delta to probe is smaller than half of delta to production, consider to produce more data
+                                if delta_probe <= delta_production * 2 {
+                                    if let Some(mut it) = input_times_gen.iter_until((current_time - count) as u64) {
+                                        // `it` is some => we are still running!
+                                        // If there are actual elements to be produced, open a session and produce them
+                                        if let Some(_) = it.next() {
+                                            let mut session = output.session(cap);
                                             session.give((word_generator.word_rand(), 1));
-                                            count += 1;
+                                            let mut word_count = 1;
+                                            for _t in it {
+                                                session.give((word_generator.word_rand(), 1));
+                                                word_count += 1;
+                                            }
+                                            element_hdr2.borrow_mut().add_value(word_count);
+                                            last_production_time = current_time;
                                         }
-                                        element_hdr2.borrow_mut().add_value(count);
                                     }
                                 }
                             }
