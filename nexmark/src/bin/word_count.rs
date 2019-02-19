@@ -4,7 +4,7 @@ extern crate rand;
 extern crate timely;
 extern crate nexmark;
 extern crate streaming_harness;
-extern crate streaming_harness_hdrhist;
+extern crate hdrhist;
 extern crate dynamic_scaling_mechanism;
 extern crate abomonation;
 
@@ -124,7 +124,6 @@ fn main() {
         .arg(Arg::with_name("validate").long("validate"))
         .arg(Arg::with_name("timely").multiple(true))
         .arg(Arg::with_name("backend").long("backend").takes_value(true).possible_values(&["hashmap", "hashmapnative", "vec", "vecnative"]).default_value("hashmap"))
-        .arg(Arg::with_name("tick").long("tick").takes_value(true).default_value("1"))
         .get_matches();
 
     let rate: u64 = matches.value_of("rate").expect("rate absent").parse::<u64>().expect("couldn't parse rate");
@@ -145,8 +144,6 @@ fn main() {
         _ => panic!("Unknown backend"),
     };
     println!("backend\t{:?}", backend);
-
-    let tick: u64 = (matches.value_of("tick").expect("tick absent").parse::<f64>().expect("couldn't parse tick") * 1_000_000f64) as u64;
 
     let timely_args = matches.values_of("timely").map_or(Vec::new(), |vs| vs.map(String::from).collect());
     // Read and report RSS every 100ms
@@ -171,7 +168,7 @@ fn main() {
         let mut input_times_gen =
             ::streaming_harness::input::SyntheticInputTimeGenerator::new(input_times());
 
-        let element_hdr = Rc::new(RefCell::new(::streaming_harness_hdrhist::HDRHist::new()));
+        let element_hdr = Rc::new(RefCell::new(::hdrhist::HDRHist::new()));
         let element_hdr2 = Rc::clone(&element_hdr);
 
         // Calculate how many initialization steps are required to populate all data
