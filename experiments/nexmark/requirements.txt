@@ -1,5 +1,5 @@
 coloredlogs==10.0
-executor==20.0
+executor==21.0
 fasteners==0.14.1
 hopcroftkarp==1.2.4
 humanfriendly==4.12.1

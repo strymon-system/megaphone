@@ -52,6 +52,8 @@ def run_cmd(cmd, redirect=None, stderr=False, background=False, node="", dryrun=
           + (" 2> {}".format(shlex.quote(stderr)) if stderr else "")
     eprint("$ {}".format(cmd), level="run")
     if dryrun:
-        return execute("echo dryrun {}".format(node), async=background)
+        print(node)
+        return execute("echo dryrun {}".format(node), asynchronous=background)
     else:
-        return execute(cmd, async=background)
+        print(cmd)
+        return execute(cmd, asynchronous=background)
