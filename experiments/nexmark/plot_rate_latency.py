@@ -44,6 +44,7 @@ if len(args.filter) > 0:
     # print("experiments", experiments, file=sys.stderr)
 else:
     graph_filtering, data, experiments = plot.latency_plots(results_dir, files, filtering)
+    graph_filtering2, data2, experiments2 = plot.latency_timeline_plots(results_dir, files, filtering)
 # print(type(graph_filtering), type(data), type(experiments), file=sys.stderr)
 
 commit = results_dir.rstrip('/').split('/')[-1]
@@ -94,6 +95,7 @@ if args.gnuplot:
     all_headers = set()
 
     all_primary = defaultdict(list)
+    all_primary2 = defaultdict(list)
 
     for ds in data:
         for d in ds:
@@ -101,6 +103,8 @@ if args.gnuplot:
                 all_headers.add(k)
     for config, ds in zip(iter(experiments), iter(data)):
         all_primary[get_key(config, args.primary_group)].append((config, ds))
+    for config, ds in zip(iter(experiments2), iter(data2)):
+        all_primary2[get_key(config, args.primary_group)].append((config, ds))
 
     if len(all_primary) < 1:
         print("nothing found", file=sys.stderr)
@@ -128,22 +132,35 @@ if args.gnuplot:
 
     all_rates = set()
 
+    migration = duration / 3
+
+    max_steady_state = defaultdict(lambda:0)
+
     with open(dataset_filename, 'w') as c:
         index = 0
         # print(" ".join(all_headers), file=c)
-        for key, item in sorted(all_primary.items()):
+        for (key, item), (key2, item2) in zip(sorted(all_primary.items()), sorted(all_primary2.items())):
             key = format_key(args.primary_group, key)
             print("\"{}\"".format(str(key).replace("_", "\\\\_")), file=c)
+            print(item2[0][1][3], file=sys.stderr)
+            for config, ds in item2:
+                for v in ds:
+                    if v['p'] == 1 and v['time'] < migration and v['migration'] == 'sudden':
+                        max_steady_state[v['rate']] = max(max_steady_state[v['rate']], v['latency'])
+
             for config, ds in item:
                 all_configs.append(config)
                 all_rates.add(dict(config)['rate'] / 1000000)
-                print(config, file=sys.stderr)
+
                 # print("\"{}\"".format(plot.kv_to_name(config).replace("_", "\\\\_")), file=c)
                 print(" ".join(map(plot.quote_str, [ds[-1][k] for k in all_headers])), file=c)
                 # print("\n", file=c)
             index += 1
             print("\n", file=c)
 
+        print("\"non-migrating\"", file=c)
+        for rate, lat in sorted(max_steady_state.items()):
+            print(" ".join(map(plot.quote_str, [0, lat, "NA", rate])), file=c)
     config_reorder = sorted(map(lambda x: (x[1], x[0]), enumerate(all_configs)))
 
     # Generate gnuplot script
@@ -179,7 +196,7 @@ set for [i=1:STATS_blocks] linetype i dashtype i
 # set title "{title}"
 # set yrange [10**floor(log10(STATS_min)): 10**ceil(log10(STATS_max))]
 set xrange [2.5*10**-1:4*10**1]
-set yrange [10**-1: 10**3]
+set yrange [10**-2: 10**3]
 set xtics ({rates})
 
 set ylabel "Max latency [s]"
@@ -187,7 +204,7 @@ set xlabel "Rate [million records/s]"
 # set origin 0, 0
 # set lmargin 0
 # set rmargin at screen .70
-set key at screen .5, screen 0.01 center bottom maxrows 1 maxcols 10 
+set key inside top left maxrows 2 maxcols 10 samplen 4 nobox
 set bmargin at screen 0.24
 plot for [i=0:*] '{dataset_filename}' using (${rate_index}/1000000):(${latency_index}/1000) index (i+0) with linespoints title columnheader(1)
         """.format(dataset_filename=dataset_filename,
