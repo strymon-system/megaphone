@@ -29,10 +29,7 @@ bin-20 = []
 fake_stateful = []
 
 [dependencies]
-timely = { git = "https://github.com/TimelyDataflow/timely-dataflow.git" }
-#timely = { git = "https://github.com/antiguru/timely-dataflow.git", branch = "session_cease"}
-#timely = "0.8"
-#abomonation = { git = "https://github.com/frankmcsherry/abomonation.git" }
+timely = { git = "https://github.com/LorenzSelv/timely-dataflow/", branch = "rescaling-p2p" }
 abomonation = "^0.7"
 abomonation_derive = "^0.3"
 rand = "^0.5"

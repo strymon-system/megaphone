@@ -165,9 +165,14 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
             M: ExchangeData,
     {
         let index = self.scope().index();
-        let peers = self.scope().peers();
+        let peers_rc = self.scope().peers_rc(); // TODO(lorenzo) this will change!
 
-        let map: Vec<usize> = (0..peers).cycle().take(1 << BIN_SHIFT).collect();
+        // TODO(lorenzo): if joining the cluster this is not correct! migration might have already occurred, we must recv the actual map by the bootstrap server
+        //    options:
+        //      1) recv the map as part of the bootstrap protocol
+        //      2) recv the map as a usual rescaling operation (the map is copy of the current state, so nothing will change for the others workers)
+        //    Going with (2)
+        let map: Vec<usize> = (0..*peers_rc.borrow()).cycle().take(1 << BIN_SHIFT).collect();
         // worker-local state, maps bins to state
         let default_elements: Vec<Option<_>> = map.iter().map(|i| if *i == index {
             Some(Default::default())
@@ -298,9 +303,12 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                             for (bin, (old, new)) in old_map.iter().zip(new_map.iter()).enumerate() {
                                 // Migration is needed if a bin is to be moved (`old != new`) and the state
                                 // actually contains data. Also, we must be the current owner of the bin.
+                                let peers = *peers_rc.borrow();
+                                println!("[conf change] index={}, peers={}, bin={}: old={} => new={}", index, peers, bin, old, new);
+                                assert!(*old < peers);
                                 if (*old % peers == index) && (old != new) {
                                     // Capture bin's values as a stream of data
-                                    let mut state = states.bins[bin].take().expect("Instructed to move bin but it is None");
+                                    let state = states.bins[bin].take().expect("Instructed to move bin but it is None");
                                     let Bin { data, notificator } = state;
                                     session.give((*new, StateProtocol::Prepare(BinId(bin))));
                                     let chunk: Vec<_> = data.into_iter().collect();
