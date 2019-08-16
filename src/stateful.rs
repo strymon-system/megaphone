@@ -165,14 +165,21 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
             M: ExchangeData,
     {
         let index = self.scope().index();
-        let peers_rc = self.scope().peers_rc(); // TODO(lorenzo) this will change!
+        let peers_rc = self.scope().peers_rc(); // this will change after a rescaling operation
 
-        // TODO(lorenzo): if joining the cluster this is not correct! migration might have already occurred, we must recv the actual map by the bootstrap server
-        //    options:
-        //      1) recv the map as part of the bootstrap protocol
-        //      2) recv the map as a usual rescaling operation (the map is copy of the current state, so nothing will change for the others workers)
-        //    Going with (2)
-        let map: Vec<usize> = (0..*peers_rc.borrow()).cycle().take(1 << BIN_SHIFT).collect();
+        // If joining the cluster this is not correct! Migration might have already occurred, we must recv the actual map
+        // Options:
+        //   1) recv the map as part of the bootstrap protocol
+        //        - annoying to implement
+        //        - need to make timely aware of "extra state" that needs to be transferred
+        //   2) recv the map as a usual rescaling operation
+        //        - the map is copy of the current state, so nothing will change for the others workers
+        //        - the initial map state of the new worker does not matter, as long as it states that nothing belongs to the new worker
+        //          (would try to transfer the state otherwise)
+        //        - we can use the ControlInst::None, which does exactly this
+        // Going with (2): it will be up to who's issuing configuration updates to send a `None` operation after spawning a new worker process
+        // TODO(lorenzo) we could add a safe check that we don't receive data before the initialization of the map is done.
+        let map: Vec<usize> = (0..self.scope().init_peers()).cycle().take(1 << BIN_SHIFT).collect();
         // worker-local state, maps bins to state
         let default_elements: Vec<Option<_>> = map.iter().map(|i| if *i == index {
             Some(Default::default())
@@ -207,6 +214,10 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
             // distinct notificators for data and control input
             let mut data_notificator = Notificator::new();
             let mut control_notificator = Notificator::new();
+
+            // TODO(lorenzo) double check this is fine
+            //    The state below (data_stash, pending_conf) will be initialized empty for the new worker.
+            //    This should be fine, as past configuration should only affect already-present workers (assuming configurations are correct).
 
             // Data input stash, time -> Vec<Vec<V>>
             let mut data_stash: HashMap<_, Vec<Vec<V>>> = Default::default();
@@ -304,7 +315,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                 // Migration is needed if a bin is to be moved (`old != new`) and the state
                                 // actually contains data. Also, we must be the current owner of the bin.
                                 let peers = *peers_rc.borrow();
-                                println!("[conf change] index={}, peers={}, bin={}: old={} => new={}", index, peers, bin, old, new);
+                                // println!("[conf change] index={}, peers={}, bin={}: old={} => new={}", index, peers, bin, old, new);
                                 assert!(*old < peers);
                                 if (*old % peers == index) && (old != new) {
                                     // Capture bin's values as a stream of data

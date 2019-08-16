@@ -155,9 +155,12 @@ impl<T: PartialOrder> ControlSetBuilder<T> {
 
     /// Build a `ControlSet` by consuming this builder.
     pub fn build(self, previous: &ControlSet<T>) -> ControlSet<T> {
+        // Make sure all messages for this configuration change have been received
         assert_eq!(0, self.count.unwrap_or(0));
         let mut frontier = Antichain::new();
-        for f in self.frontier {frontier.insert(f);}
+        for f in self.frontier {
+            frontier.insert(f);
+        }
 
         let mut map = previous.map().clone();
 
