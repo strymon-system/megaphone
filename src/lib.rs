@@ -83,6 +83,8 @@ pub enum ControlInst {
     Move(BinId, /*worker*/ usize),
     /// No-op
     None,
+    /// Special instruction to inform the bootstrap server that it should send its Map to the new worker using the map_feedback
+    Bootstrap(/*bootstrap_server*/ usize, /*new_worker*/ usize),
 }
 
 impl Control {
@@ -143,6 +145,7 @@ impl<T: PartialOrder> ControlSetBuilder<T> {
         }
         match control.inst {
             ControlInst::None => {},
+            ControlInst::Bootstrap(_,_) => {} // handled as special instruction when received
             inst => self.instructions.push(inst),
         };
 
@@ -176,6 +179,7 @@ impl<T: PartialOrder> ControlSetBuilder<T> {
                     map[bin] = target
                 },
                 ControlInst::None => {},
+                ControlInst::Bootstrap(_,_) => { panic!("handled separately") },
             }
         }
 

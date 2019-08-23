@@ -15,7 +15,7 @@ use fnv::FnvHashMap as HashMap;
 
 use timely::ExchangeData;
 use timely::dataflow::{Stream, Scope};
-use timely::dataflow::channels::pact::Pipeline;
+use timely::dataflow::channels::pact::{Pipeline, Exchange};
 use timely::dataflow::operators::Capability;
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::dataflow::operators::Feedback;
@@ -166,19 +166,23 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
     {
         let index = self.scope().index();
         let peers_rc = self.scope().peers_rc(); // this will change after a rescaling operation
+        let is_rescaling = self.scope().is_rescaling();
 
-        // If joining the cluster this is not correct! Migration might have already occurred, we must recv the actual map
+        // TODO(lorenzo): If joining the cluster this is not correct! Migration might have already occurred, we must recv the actual map
         // Options:
         //   1) recv the map as part of the bootstrap protocol
         //        - annoying to implement
         //        - need to make timely aware of "extra state" that needs to be transferred
         //   2) recv the map as a usual rescaling operation
-        //        - the map is copy of the current state, so nothing will change for the others workers
-        //        - the initial map state of the new worker does not matter, as long as it states that nothing belongs to the new worker
-        //          (would try to transfer the state otherwise)
-        //        - we can use the ControlInst::None, which does exactly this
-        // Going with (2): it will be up to who's issuing configuration updates to send a `None` operation after spawning a new worker process
-        // TODO(lorenzo) we could add a safe check that we don't receive data before the initialization of the map is done.
+        //        - we must not process any `data_in` until the configuration has been: would result in panic or wrong results
+        //
+        //        2.1) external controller send the `Map` instruction with the up-to-date map
+        //               - the map is copy of the current state, so nothing will change for the others workers
+        //               - the controller need to know how many bins, the initial configuration, and apply every change that happened => kinda bad
+        //
+        //        2.2) external controller send a new instruction `Bootstrap(bootstrap_server_index, new_worker_index)`
+        //               - the bootstrap server will send its current map to the new worker => need to use an extra "communication channel"
+        //
         let map: Vec<usize> = (0..self.scope().init_peers()).cycle().take(1 << BIN_SHIFT).collect();
         // worker-local state, maps bins to state
         let default_elements: Vec<Option<_>> = map.iter().map(|i| if *i == index {
@@ -200,8 +204,24 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         // State output of the F operator
         let (mut state_out, state) = builder.new_output_connection(vec![Antichain::new(), Antichain::from_elem(Default::default())]);
 
+        // Routing Map feedback connection for initializing new worker's map. Data format is (target_worker, map_to_implant).
+        let (mut map_feedback_out, map_feedback) = builder.new_output_connection::<(usize, Vec<usize>)>(vec![Antichain::new(), Antichain::from_elem(Default::default())]);
+        let map_feedback_connection = vec![Antichain::new(), Antichain::new(), Antichain::from_elem(Default::default())]; // TODO(lorenzo) default or 1?
+        let exchange_pact = Exchange::new(|(target_worker, _map)| *target_worker as u64);
+        let mut map_feedback_in = builder.new_input_connection(&map_feedback, exchange_pact, map_feedback_connection);
+
+        // TODO(lorenzo):
+        //    - new worker waits for map_feedback_in for the map to implant instead of the arbitrarily initialized one.
+        //    - new worker does not process any input until it has initialized the map
+        //    - Bootstrap(bootstrap_server, new_worker) is received in `control_in` => treat it as a special command
+
+        // TODO(lorenzo):
+        //     map is not the only state that we need to transfer: active_config.frontier pending configurations, pending config data eth
+        //     TODO other stuff?
+
+
         let (feedback_handle, feedback_stream) = self.scope().feedback(Default::default());
-        let feedback_in_connection = vec![Antichain::new(); 2];
+        let feedback_in_connection = vec![Antichain::new(); 2]; // TODO(lorenzo) should be 3
         let _feedback_in = builder.new_input_connection(&feedback_stream, Pipeline, feedback_in_connection);
 
         // Probe to be attached after the last stateful operator
@@ -215,7 +235,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
             let mut data_notificator = Notificator::new();
             let mut control_notificator = Notificator::new();
 
-            // TODO(lorenzo) double check this is fine
+            // TODO(lorenzo) double check this is fine: THIS IS NOT FINE, need to trasfer this as well
             //    The state below (data_stash, pending_conf) will be initialized empty for the new worker.
             //    This should be fine, as past configuration should only affect already-present workers (assuming configurations are correct).
 
@@ -256,9 +276,31 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                         builder
                     });
                     for update in control_data_buffer.drain(..) {
+                        if let crate::ControlInst::Bootstrap(bootstrap_server, new_worker) = update.inst {
+                            if index == bootstrap_server {
+                                let mut map_feedback_out = map_feedback_out.activate();
+                                let cap = &time.delayed_for_output(&*time.time(), 2); // output_port 2 is map_feedback_out
+                                map_feedback_out.session(cap).give((new_worker, active_configuration.map().clone()));
+                            }
+                        }
                         builder.apply(update);
                     }
                     control_notificator.notify_at(&time.retain_for_output(1));
+                });
+
+                map_feedback_in.for_each(|_cap, data| {
+                    let mut buf = vec![];
+                    data.swap(&mut buf);
+                    assert_eq!(buf.len(), 1);
+                    let (new_worker, new_map) = &buf.first().unwrap();
+                    assert!(is_rescaling);
+                    assert_eq!(index, *new_worker, "wrong exchange");
+                    let new_default_elements: Vec<Option<_>> = new_map.iter().map(|i| if *i == index {
+                        Some(Default::default())
+                    } else {
+                        None
+                    }).collect();
+                    *states_f.borrow_mut() = State::new(new_default_elements);
                 });
 
                 // Analyze control frontier
@@ -298,6 +340,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                 // If the next configuration to install is no longer at all ahead of the state machine output,
                 // then there can be no more records or state updates for any configuration prior to the next.
                 if pending_configurations.get(0).is_some() {
+                    // TODO(lorenzo) double-check new worker sees the correct frontier
                     if pending_configurations[0].1.frontier.elements().iter().all(|t| !frontiers[2].less_than(t)) {
 
                         // We should now install `pending_configurations[0]` into `active_configuration`!
