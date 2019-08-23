@@ -221,7 +221,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
 
         let (feedback_handle, feedback_stream) = self.scope().feedback(Default::default());
-        let feedback_in_connection = vec![Antichain::new(); 2]; // TODO(lorenzo) should be 3
+        let feedback_in_connection = vec![Antichain::new(); 3]; // TODO(lorenzo) should be 3
         let _feedback_in = builder.new_input_connection(&feedback_stream, Pipeline, feedback_in_connection);
 
         // Probe to be attached after the last stateful operator
