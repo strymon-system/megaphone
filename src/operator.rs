@@ -15,12 +15,15 @@ use timely::order::TotalOrder;
 use ::{Bin, Control, Key, State};
 use stateful::{Stateful, apply_state_updates, Notificator};
 use notificator::{Notify};
+use timely::progress::Timestamp;
+use num::One;
 
 /// Building blocks for single- and dual-input stateful operators.
 pub trait StatefulOperator<G, D1>
     where
         G: Scope,
         G::Timestamp: TotalOrder,
+        <<G as timely::dataflow::ScopeParent>::Timestamp as Timestamp>::Summary: One,
         D1: ExchangeData + Eq,
 {
     /// Stateful operator with a single input.
@@ -124,6 +127,7 @@ impl<G, D1> StatefulOperator<G, D1> for Stream<G, D1>
     where
         G: Scope, // The containing scope
         G::Timestamp: TotalOrder,
+        <<G as timely::dataflow::ScopeParent>::Timestamp as Timestamp>::Summary: One,
         D1: ExchangeData+Eq, // Input data
 {
     fn stateful_unary<

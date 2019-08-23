@@ -5,6 +5,7 @@ extern crate fnv;
 extern crate timely;
 extern crate abomonation;
 #[macro_use] extern crate abomonation_derive;
+extern crate num;
 
 mod stateful;
 pub mod state_machine;

@@ -8,6 +8,8 @@ use timely::dataflow::{Stream, Scope};
 
 use operator::StatefulOperator;
 use ::Bin;
+use timely::progress::Timestamp;
+use num::One;
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     use ::std::hash::Hasher;
@@ -33,6 +35,7 @@ impl<S, K, V> BinarySkeleton<S, K, V> for Stream<S, (K, V)>
 where
     S: Scope, // The containing scope
     S::Timestamp: ::timely::order::TotalOrder,
+    <<S as timely::dataflow::ScopeParent>::Timestamp as Timestamp>::Summary: One,
     K: ExchangeData+Hash+Eq,
     V: ExchangeData+Eq, // Input data
 {

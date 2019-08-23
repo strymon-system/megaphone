@@ -35,6 +35,7 @@ abomonation_derive = "^0.3"
 rand = "^0.5"
 fnv="1.0"
 zipf = "^4.0"
+num = "0.2.0"
 
 [profile.release]
 # opt-level = 3

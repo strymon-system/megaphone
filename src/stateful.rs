@@ -25,6 +25,8 @@ use timely::progress::Timestamp;
 use timely::progress::frontier::Antichain;
 
 use ::{BIN_SHIFT, Bin, BinId, Control, ControlSetBuilder, ControlSet, Key, key_to_bin, State};
+use std::ops::Add;
+use num::One;
 
 const BUFFER_CAP: usize = 16;
 
@@ -140,6 +142,7 @@ pub trait Stateful<S: Scope, V: ExchangeData> {
     fn stateful<W, D, B, M>(&self, key: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W, M>
         where
             S::Timestamp: Hash+Eq+TotalOrder,
+            <<S as timely::dataflow::ScopeParent>::Timestamp as Timestamp>::Summary: One,
             // State format on the wire
             W: ExchangeData,
             // per-key state (data)
@@ -156,6 +159,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
     fn stateful<W, D, B, M>(&self, key: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W, M>
         where
             S::Timestamp: Hash+Eq+TotalOrder,
+            <<S as timely::dataflow::ScopeParent>::Timestamp as Timestamp>::Summary: One,
             // State format on the wire
             W: ExchangeData,
             // per-key state (data)
@@ -206,7 +210,8 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
         // Routing Map feedback connection for initializing new worker's map. Data format is (target_worker, map_to_implant).
         let (mut map_feedback_out, map_feedback) = builder.new_output_connection::<(usize, Vec<usize>)>(vec![Antichain::new(), Antichain::from_elem(Default::default())]);
-        let map_feedback_connection = vec![Antichain::new(), Antichain::new(), Antichain::from_elem(Default::default())]; // TODO(lorenzo) default or 1?
+        let one_summary = <<S as timely::dataflow::ScopeParent>::Timestamp as Timestamp>::Summary::one();
+        let map_feedback_connection = vec![Antichain::new(), Antichain::new(), Antichain::from_elem(one_summary)]; // TODO(lorenzo) default or 1?
         let exchange_pact = Exchange::new(|(target_worker, _map)| *target_worker as u64);
         let mut map_feedback_in = builder.new_input_connection(&map_feedback, exchange_pact, map_feedback_connection);
 

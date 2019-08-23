@@ -9,6 +9,8 @@ use timely::Data;
 
 use operator::StatefulOperator;
 use ::Control;
+use timely::progress::Timestamp;
+use num::One;
 
 /// Provide a general-purpose state machine operator that can be migrated without changes to the
 /// `fold` implementation.
@@ -41,6 +43,7 @@ impl<S, K, V, D> BinnedStateMachine<S, K, V, D> for Stream<S, (K, V)>
 where
     S: Scope,
     S::Timestamp: ::timely::order::TotalOrder,
+    <<S as timely::dataflow::ScopeParent>::Timestamp as Timestamp>::Summary: One,
     K: ExchangeData+Hash+Eq,
     V: ExchangeData+Eq,
     D: ExchangeData + Default + 'static,
