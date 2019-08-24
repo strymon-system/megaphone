@@ -96,7 +96,7 @@ impl Control {
 }
 
 /// A compiled set of control instructions
-#[derive(Debug)]
+#[derive(Abomonation, Clone, Debug)]
 pub struct ControlSet<T> {
     /// Its sequence number
     pub sequence: u64,
@@ -116,7 +116,7 @@ impl<T> ControlSet<T> {
 }
 
 /// A builder to compile `ControlSet`s.
-#[derive(Default)]
+#[derive(Abomonation, Clone, Default)]
 pub struct ControlSetBuilder<T> {
     sequence: Option<u64>,
     frontier: Vec<T>,

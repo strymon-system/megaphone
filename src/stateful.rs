@@ -25,8 +25,10 @@ use timely::progress::Timestamp;
 use timely::progress::frontier::Antichain;
 
 use ::{BIN_SHIFT, Bin, BinId, Control, ControlSetBuilder, ControlSet, Key, key_to_bin, State};
-use std::ops::Add;
 use num::One;
+use abomonation::Abomonation;
+use ControlInst;
+use std::collections::HashSet;
 
 const BUFFER_CAP: usize = 16;
 
@@ -141,7 +143,7 @@ pub trait Stateful<S: Scope, V: ExchangeData> {
     /// * `B`: Key function
     fn stateful<W, D, B, M>(&self, key: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W, M>
         where
-            S::Timestamp: Hash+Eq+TotalOrder,
+            S::Timestamp: Hash+Eq+TotalOrder+Abomonation,
             <<S as timely::dataflow::ScopeParent>::Timestamp as Timestamp>::Summary: One,
             // State format on the wire
             W: ExchangeData,
@@ -158,7 +160,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
     fn stateful<W, D, B, M>(&self, key: B, control: &Stream<S, Control>) -> StateStream<S, V, D, W, M>
         where
-            S::Timestamp: Hash+Eq+TotalOrder,
+            S::Timestamp: Hash+Eq+TotalOrder+Abomonation,
             <<S as timely::dataflow::ScopeParent>::Timestamp as Timestamp>::Summary: One,
             // State format on the wire
             W: ExchangeData,
@@ -170,7 +172,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
     {
         let index = self.scope().index();
         let peers_rc = self.scope().peers_rc(); // this will change after a rescaling operation
-        let is_rescaling = self.scope().is_rescaling();
+        let mut routing_state_init = !self.scope().is_rescaling(); // a new worker joining the cluster should initialize its routing state
 
         // TODO(lorenzo): If joining the cluster this is not correct! Migration might have already occurred, we must recv the actual map
         // Options:
@@ -208,30 +210,30 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         // State output of the F operator
         let (mut state_out, state) = builder.new_output_connection(vec![Antichain::new(), Antichain::from_elem(Default::default())]);
 
-        // Routing Map feedback connection for initializing new worker's map. Data format is (target_worker, map_to_implant).
-        let (mut map_feedback_out, map_feedback) = builder.new_output_connection::<(usize, Vec<usize>)>(vec![Antichain::new(), Antichain::from_elem(Default::default())]);
-        let one_summary = <<S as timely::dataflow::ScopeParent>::Timestamp as Timestamp>::Summary::one();
-        let map_feedback_connection = vec![Antichain::new(), Antichain::new(), Antichain::from_elem(one_summary)]; // TODO(lorenzo) default or 1?
-        let exchange_pact = Exchange::new(|(target_worker, _map)| *target_worker as u64);
-        let mut map_feedback_in = builder.new_input_connection(&map_feedback, exchange_pact, map_feedback_connection);
-
         // TODO(lorenzo):
-        //    - new worker waits for map_feedback_in for the map to implant instead of the arbitrarily initialized one.
+        //    - new worker waits for routing_state_in  for the map to implant instead of the arbitrarily initialized one.
         //    - new worker does not process any input until it has initialized the map
         //    - Bootstrap(bootstrap_server, new_worker) is received in `control_in` => treat it as a special command
 
-        // TODO(lorenzo):
-        //     map is not the only state that we need to transfer: active_config.frontier pending configurations, pending config data eth
-        //     TODO other stuff?
+        #[derive(Abomonation, Clone)]
+        struct RoutingState<T: Timestamp+Hash+Eq+TotalOrder+Abomonation> {
+            active_configuration: ControlSet<T>,
+            // We cannot transfer capabilities. Thus, we require that during a rescaling operation
+            // there are no pending configurations for which the associated control notification has been delivered already
+            // pending_configurations: Vec<(Capability<T>, ControlSet<T>)>,
+            pending_configuration_data: Vec<(T, ControlSetBuilder<T>)>,
+        }
 
+        // Feedback connection to initialize new worker's routing state
+        let (mut routing_state_out, routing_state) = builder.new_output_connection::<(usize, RoutingState<S::Timestamp>)>(vec![Antichain::new(), Antichain::from_elem(Default::default())]);
+        let one_summary = <<S as timely::dataflow::ScopeParent>::Timestamp as Timestamp>::Summary::one();
+        let routing_state_connection = vec![Antichain::new(), Antichain::new(), Antichain::from_elem(one_summary)]; // TODO(lorenzo) try with 1?
+        let to_new_worker = Exchange::new(|(new_worker, _map)| *new_worker as u64);
+        let mut routing_state_in = builder.new_input_connection(&routing_state, to_new_worker, routing_state_connection);
 
         let (feedback_handle, feedback_stream) = self.scope().feedback(Default::default());
-        let feedback_in_connection = vec![Antichain::new(); 3]; // TODO(lorenzo) should be 3
+        let feedback_in_connection = vec![Antichain::new(); 3];
         let _feedback_in = builder.new_input_connection(&feedback_stream, Pipeline, feedback_in_connection);
-
-        // Probe to be attached after the last stateful operator
-//        let probe1 = ProbeHandle::new();
-//        let probe2 = probe1.clone();
 
         // Construct F operator
         builder.build(move |_capability| {
@@ -239,10 +241,6 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
             // distinct notificators for data and control input
             let mut data_notificator = Notificator::new();
             let mut control_notificator = Notificator::new();
-
-            // TODO(lorenzo) double check this is fine: THIS IS NOT FINE, need to trasfer this as well
-            //    The state below (data_stash, pending_conf) will be initialized empty for the new worker.
-            //    This should be fine, as past configuration should only affect already-present workers (assuming configurations are correct).
 
             // Data input stash, time -> Vec<Vec<V>>
             let mut data_stash: HashMap<_, Vec<Vec<V>>> = Default::default();
@@ -253,8 +251,10 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
             let mut pending_configuration_data: HashMap<S::Timestamp, ControlSetBuilder<S::Timestamp>> = Default::default();
 
+            let mut bootstrap_timestamps: HashSet<S::Timestamp> = HashSet::new();
+
             // TODO : default configuration may be poorly chosen.
-            let mut active_configuration: ControlSet<S::Timestamp> = ControlSet { 
+            let mut active_configuration: ControlSet<S::Timestamp> = ControlSet {
                 sequence: 0,
                 frontier: Antichain::from_elem(Default::default()),
                 map,
@@ -270,42 +270,94 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                 let mut data_out = data_out.activate();
                 let mut state_out = state_out.activate();
 
-                // Read control input
-                control_in.for_each(|time, data| {
-                    data.swap(&mut control_data_buffer);
-                    // Append to pending control instructions
-                    let builder = pending_configuration_data.entry(time.time().clone()).or_insert_with(|| {
-                        let mut builder: ControlSetBuilder<S::Timestamp> = Default::default();
-                        // TODO: We don't know the frontier at the time the command was received.
-                        builder.frontier(vec![time.time().clone()].into_iter());
-                        builder
-                    });
-                    for update in control_data_buffer.drain(..) {
-                        if let crate::ControlInst::Bootstrap(bootstrap_server, new_worker) = update.inst {
-                            if index == bootstrap_server {
-                                let mut map_feedback_out = map_feedback_out.activate();
-                                let cap = &time.delayed_for_output(&*time.time(), 2); // output_port 2 is map_feedback_out
-                                map_feedback_out.session(cap).give((new_worker, active_configuration.map().clone()));
-                            }
-                        }
-                        builder.apply(update);
-                    }
-                    control_notificator.notify_at(&time.retain_for_output(1));
-                });
+                // TODO(lorenzo) try to use megaphone with nested scopes, does timestamp `Product` implement `num::One` ?
+                //               `Product` should implement `one` if the InnerTimestamp::Summary implements `num::One`
+                //               => need to change timely code
 
-                map_feedback_in.for_each(|_cap, data| {
+                routing_state_in.for_each(|bootstrap_time_plus_one, data| {
                     let mut buf = vec![];
                     data.swap(&mut buf);
                     assert_eq!(buf.len(), 1);
-                    let (new_worker, new_map) = &buf.first().unwrap();
-                    assert!(is_rescaling);
+                    let (new_worker, routing_state) = &buf[0];
+
+                    assert!(!routing_state_init, "only new worker should receive the routing state (and only once)");
                     assert_eq!(index, *new_worker, "wrong exchange");
-                    let new_default_elements: Vec<Option<_>> = new_map.iter().map(|i| if *i == index {
-                        Some(Default::default())
+
+                    // implant routing state received by the bootstrap worker
+                    active_configuration = routing_state.active_configuration.clone();
+                    pending_configuration_data = routing_state.pending_configuration_data.iter().map(|x| x.clone()).collect();
+
+                    // Setup notifications for pending configurations.
+                    // `bootstrap_time_plus_one` is the timestamp at which the `Bootstrap` command was received + 1 (timestamp is incremented in the feedback loop).
+                    // Since:
+                    //   1) we ensure that there are no other control commands associated with the same time of the `Bootstrap` message,
+                    //   2) control commands in `pending_configuration_data` are associated with times for which a notification was not delivered yet
+                    // then:
+                    //   1) `bootstrap_time` is strictly smaller than any other time in `pending_configuration_data`
+                    //   2) `bootstrap_time_plus_one` is smaller or equal than any other time in `pending_configuration_data`
+                    // which means it can be used to setup notifications.
+                    use timely::PartialOrder;
+                    assert!(pending_configuration_data.keys().all(|config_time| bootstrap_time_plus_one.time().less_equal(config_time)));
+
+                    pending_configuration_data.keys().for_each(|config_time| {
+                        control_notificator.notify_at(&bootstrap_time_plus_one.delayed_for_output(config_time, 1));
+                    });
+
+                    // reset `states` to all none bins
+                    assert!(active_configuration.map().iter().all(|i| *i != index), "new worker should not own anything");
+                    let none_bins = (0..active_configuration.map().len()).map(|_| None).collect();
+                    *states_f.borrow_mut() = State::new(none_bins);
+
+                    routing_state_init = true;
+                });
+
+                // if initialization is not complete, we should perform any other operation
+                if !routing_state_init { return }
+
+                // Read control input
+                control_in.for_each(|time, data| {
+                    data.swap(&mut control_data_buffer);
+
+                    let contains_bootstrap = control_data_buffer.iter().any(|x| if let ControlInst::Bootstrap(_, _) = x.inst { true } else { false });
+
+                    if contains_bootstrap {
+                        // Assert assumptions, some of them could be relaxed if we do things smarter/differently
+                        assert_eq!(control_data_buffer.len(), 1, "bootstrap command should be the only command at its timestamp");
+                        assert!(bootstrap_timestamps.insert(time.time().clone()), "two bootstrap commands with the same timestamp are not allowed");
+                        assert!(!pending_configuration_data.contains_key(time.time()), "no other control instruction is allowed for the same timestamp of a bootstrap instruction");
+                        // Since we cannot transfer capability across workers, we also require that there are no pending configuration
+                        // for which a notification by the control notificator has already been delivered (and the configuration "built")
+                        assert!(pending_configurations.is_empty(), "no pending configurations are allowed for the same timestamp of a bootstrap instruction");
+
+                        let bootstrap = &control_data_buffer[0].inst;
+                        if let crate::ControlInst::Bootstrap(bootstrap_server, new_worker) = bootstrap {
+                            if index == *bootstrap_server {
+                                let mut routing_state_out = routing_state_out.activate();
+                                let routing_state = RoutingState {
+                                    active_configuration: active_configuration.clone(),
+                                    pending_configuration_data: pending_configuration_data.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+                                };
+                                // We require that there are no pending configuration for which a notification by
+                                // the control notificator has already been delivered (and the configuration "built")
+                                assert!(pending_configurations.is_empty());
+                                let cap = &time.delayed_for_output(time.time(), 2); // output_port 2 is routing_state_out
+                                routing_state_out.session(cap).give((*new_worker, routing_state));
+                            }
+                        }
                     } else {
-                        None
-                    }).collect();
-                    *states_f.borrow_mut() = State::new(new_default_elements);
+                        assert!(!bootstrap_timestamps.contains(time.time()), "no other control instruction is allowed for the same timestamp of a bootstrap instruction");
+                        // Append to pending control instructions
+                        let builder = pending_configuration_data.entry(time.time().clone()).or_insert_with(|| {
+                            let mut builder: ControlSetBuilder<S::Timestamp> = Default::default();
+                            // TODO: We don't know the frontier at the time the command was received.
+                            builder.frontier(vec![time.time().clone()].into_iter());
+                            builder
+                        });
+                        for update in control_data_buffer.drain(..) {
+                            builder.apply(update);
+                        }
+                        control_notificator.notify_at(&time.retain_for_output(1));
+                    }
                 });
 
                 // Analyze control frontier
@@ -386,7 +438,6 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                 data_notificator.for_each(&[&frontiers[0], &frontiers[1]], |cap, time, _not| {
                     // Check for stashed data - now control input has to have advanced
                     if let Some(vec) = data_stash.remove(&time) {
-
                         let map =
                             pending_configurations
                                 .iter()
@@ -449,7 +500,6 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                         session.give_iterator(data_iter);
                     }
                 });
-
             }
         });
 
