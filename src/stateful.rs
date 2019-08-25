@@ -174,22 +174,19 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         let peers_rc = self.scope().peers_rc(); // this will change after a rescaling operation
         let mut routing_state_init = !self.scope().is_rescaling(); // a new worker joining the cluster should initialize its routing state
 
-        // TODO(lorenzo): If joining the cluster this is not correct! Migration might have already occurred, we must recv the actual map
+        // If joining the cluster, migration might have already occurred => we must recv the actual map
         // Options:
         //   1) recv the map as part of the bootstrap protocol
         //        - annoying to implement
         //        - need to make timely aware of "extra state" that needs to be transferred
-        //   2) recv the map as a usual rescaling operation
-        //        - we must not process any `data_in` until the configuration has been: would result in panic or wrong results
-        //
-        //        2.1) external controller send the `Map` instruction with the up-to-date map
-        //               - the map is copy of the current state, so nothing will change for the others workers
-        //               - the controller need to know how many bins, the initial configuration, and apply every change that happened => kinda bad
-        //
-        //        2.2) external controller send a new instruction `Bootstrap(bootstrap_server_index, new_worker_index)`
-        //               - the bootstrap server will send its current map to the new worker => need to use an extra "communication channel"
+        //   2) recv the map from the bootstrap server after a specific `Bootstrap` instruction has been issued by the controller
+        //        - we must wait for initializing the routing state before doing anything else: would result in panic or wrong results
+        //        - external controller send a new instruction `Bootstrap(bootstrap_server_index, new_worker_index)`
+        //        - the bootstrap server will send its current map to the new worker
+        //          => need to use an extra "communication channel" between the F operators of peer workers
         //
         let map: Vec<usize> = (0..self.scope().init_peers()).cycle().take(1 << BIN_SHIFT).collect();
+
         // worker-local state, maps bins to state
         let default_elements: Vec<Option<_>> = map.iter().map(|i| if *i == index {
             Some(Default::default())
@@ -210,18 +207,13 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         // State output of the F operator
         let (mut state_out, state) = builder.new_output_connection(vec![Antichain::new(), Antichain::from_elem(Default::default())]);
 
-        // TODO(lorenzo):
-        //    - new worker waits for routing_state_in  for the map to implant instead of the arbitrarily initialized one.
-        //    - new worker does not process any input until it has initialized the map
-        //    - Bootstrap(bootstrap_server, new_worker) is received in `control_in` => treat it as a special command
-
         #[derive(Abomonation, Clone)]
         struct RoutingState<T: Timestamp+Hash+Eq+TotalOrder+Abomonation> {
             active_configuration: ControlSet<T>,
             // We cannot transfer capabilities. Thus, we require that during a rescaling operation
             // there are no pending configurations for which the associated control notification has been delivered already
             // pending_configurations: Vec<(Capability<T>, ControlSet<T>)>,
-            pending_configuration_data: Vec<(T, ControlSetBuilder<T>)>,
+            pending_configuration_data: Vec<(T, ControlSetBuilder<T>)>, // send HashMap as Vec to make it Abomonatable
         }
 
         // Feedback connection to initialize new worker's routing state
@@ -251,6 +243,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
 
             let mut pending_configuration_data: HashMap<S::Timestamp, ControlSetBuilder<S::Timestamp>> = Default::default();
 
+            // Keep track of which timestamps are being "occupied" for bootstrap operations
             let mut bootstrap_timestamps: HashSet<S::Timestamp> = HashSet::new();
 
             // TODO : default configuration may be poorly chosen.
@@ -274,6 +267,8 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                 //               `Product` should implement `one` if the InnerTimestamp::Summary implements `num::One`
                 //               => need to change timely code
 
+                // Check if any input is available on the feedback loop used to initialize the routing state
+                // of a new worker joining the cluster.
                 routing_state_in.for_each(|bootstrap_time_plus_one, data| {
                     let mut buf = vec![];
                     data.swap(&mut buf);
@@ -311,7 +306,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                     routing_state_init = true;
                 });
 
-                // if initialization is not complete, we should perform any other operation
+                // if initialization is not complete, we should not perform any other operation
                 if !routing_state_init { return }
 
                 // Read control input
