@@ -171,6 +171,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
             M: ExchangeData,
     {
         let index = self.scope().index();
+        let inner_peers = self.scope().inner_peers(); // this is fixed
         let peers_rc = self.scope().peers_rc(); // this will change after a rescaling operation
         let mut routing_state_init = !self.scope().is_rescaling(); // a new worker joining the cluster should initialize its routing state
 
@@ -313,32 +314,36 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                 control_in.for_each(|time, data| {
                     data.swap(&mut control_data_buffer);
 
-                    let contains_bootstrap = control_data_buffer.iter().any(|x| if let ControlInst::Bootstrap(_, _) = x.inst { true } else { false });
+                    let contains_any_bootstrap = control_data_buffer.iter().any(|x| if let ControlInst::Bootstrap(_, _) = x.inst { true } else { false });
+                    let contains_all_bootstrap = control_data_buffer.iter().all(|x| if let ControlInst::Bootstrap(_, _) = x.inst { true } else { false });
 
-                    if contains_bootstrap {
+                    if contains_any_bootstrap {
                         // Assert assumptions, some of them could be relaxed if we do things smarter/differently
-                        assert_eq!(control_data_buffer.len(), 1, "bootstrap command should be the only command at its timestamp");
+                        assert!(contains_all_bootstrap);
+                        assert_eq!(control_data_buffer.len(), inner_peers, "there should be a bootstrap command for each new worker");
                         assert!(bootstrap_timestamps.insert(time.time().clone()), "two bootstrap commands with the same timestamp are not allowed");
                         assert!(!pending_configuration_data.contains_key(time.time()), "no other control instruction is allowed for the same timestamp of a bootstrap instruction");
                         // Since we cannot transfer capability across workers, we also require that there are no pending configuration
                         // for which a notification by the control notificator has already been delivered (and the configuration "built")
                         assert!(pending_configurations.is_empty(), "no pending configurations are allowed for the same timestamp of a bootstrap instruction");
 
-                        let bootstrap = &control_data_buffer[0].inst;
-                        if let crate::ControlInst::Bootstrap(bootstrap_server, new_worker) = bootstrap {
-                            if index == *bootstrap_server {
-                                let mut routing_state_out = routing_state_out.activate();
-                                let routing_state = RoutingState {
-                                    active_configuration: active_configuration.clone(),
-                                    pending_configuration_data: pending_configuration_data.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
-                                };
-                                // We require that there are no pending configuration for which a notification by
-                                // the control notificator has already been delivered (and the configuration "built")
-                                assert!(pending_configurations.is_empty());
-                                let cap = &time.delayed_for_output(time.time(), 2); // output_port 2 is routing_state_out
-                                routing_state_out.session(cap).give((*new_worker, routing_state));
+                        control_data_buffer.iter().for_each(|control| {
+                            let bootstrap = &control.inst;
+                            if let crate::ControlInst::Bootstrap(bootstrap_server, new_worker) = bootstrap {
+                                if index == *bootstrap_server {
+                                    let mut routing_state_out = routing_state_out.activate();
+                                    let routing_state = RoutingState {
+                                        active_configuration: active_configuration.clone(),
+                                        pending_configuration_data: pending_configuration_data.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+                                    };
+                                    // We require that there are no pending configuration for which a notification by
+                                    // the control notificator has already been delivered (and the configuration "built")
+                                    assert!(pending_configurations.is_empty());
+                                    let cap = &time.delayed_for_output(time.time(), 2); // output_port 2 is routing_state_out
+                                    routing_state_out.session(cap).give((*new_worker, routing_state));
+                                }
                             }
-                        }
+                        });
                     } else {
                         assert!(!bootstrap_timestamps.contains(time.time()), "no other control instruction is allowed for the same timestamp of a bootstrap instruction");
                         // Append to pending control instructions
