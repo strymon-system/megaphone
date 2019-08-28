@@ -208,6 +208,10 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         // State output of the F operator
         let (mut state_out, state) = builder.new_output_connection(vec![Antichain::new(), Antichain::from_elem(Default::default())]);
 
+        let (feedback_handle, feedback_stream) = self.scope().feedback(Default::default());
+        let feedback_in_connection = vec![Antichain::new(); 2];
+        let _feedback_in = builder.new_input_connection(&feedback_stream, Pipeline, feedback_in_connection);
+
         #[derive(Abomonation, Clone)]
         struct RoutingState<T: Timestamp+Hash+Eq+TotalOrder+Abomonation> {
             active_configuration: ControlSet<T>,
@@ -218,15 +222,11 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
         }
 
         // Feedback connection to initialize new worker's routing state
-        let (mut routing_state_out, routing_state) = builder.new_output_connection::<(usize, RoutingState<S::Timestamp>)>(vec![Antichain::new(), Antichain::from_elem(Default::default())]);
+        let (mut routing_state_out, routing_state) = builder.new_output_connection::<(usize, RoutingState<S::Timestamp>)>(vec![Antichain::new(), Antichain::from_elem(Default::default()), Antichain::new()]); // depends only by control_input which is input at index 1
         let one_summary = <<S as timely::dataflow::ScopeParent>::Timestamp as Timestamp>::Summary::one();
-        let routing_state_connection = vec![Antichain::new(), Antichain::new(), Antichain::from_elem(one_summary)]; // TODO(lorenzo) try with 1?
+        let routing_state_connection = vec![Antichain::new(), Antichain::new(), Antichain::from_elem(one_summary)];
         let to_new_worker = Exchange::new(|(new_worker, _map)| *new_worker as u64);
         let mut routing_state_in = builder.new_input_connection(&routing_state, to_new_worker, routing_state_connection);
-
-        let (feedback_handle, feedback_stream) = self.scope().feedback(Default::default());
-        let feedback_in_connection = vec![Antichain::new(); 3];
-        let _feedback_in = builder.new_input_connection(&feedback_stream, Pipeline, feedback_in_connection);
 
         // Construct F operator
         builder.build(move |_capability| {
@@ -339,7 +339,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                     // We require that there are no pending configuration for which a notification by
                                     // the control notificator has already been delivered (and the configuration "built")
                                     assert!(pending_configurations.is_empty());
-                                    let cap = &time.delayed_for_output(time.time(), 2); // output_port 2 is routing_state_out
+                                    let cap = &time.delayed_for_output(time.time(), 2); // output_port 2 (0-based) is routing_state_out (feedback does not count?)
                                     routing_state_out.session(cap).give((*new_worker, routing_state));
                                 }
                             }
@@ -423,7 +423,7 @@ impl<S: Scope, V: ExchangeData> Stateful<S, V> for Stream<S, V> {
                                     let Bin { data, notificator } = state;
                                     session.give((*new, StateProtocol::Prepare(BinId(bin))));
                                     let chunk: Vec<_> = data.into_iter().collect();
-                                    println!("migration\t{}\t{}\t{}\t{}", bin, old, new, chunk.len());
+                                    println!("migration@time={:?}\tbin={}\told={}\tnew={}\tchunck.len()={}", *time.time(), bin, old, new, chunk.len());
                                     session.give((*new, StateProtocol::State(BinId(bin), chunk)));
                                     session.give_iterator(notificator.pending().map(|(t, d)| (*new, StateProtocol::Pending(BinId(bin), t, d))));
                                 }
