@@ -29,7 +29,7 @@ bin-20 = []
 fake_stateful = []
 
 [dependencies]
-timely = { git = "https://github.com/LorenzSelv/timely-dataflow/", branch = "rescaling-p2p" }
+timely = { git = "https://github.com/strymon-system/timely-dataflow/", branch = "rescaling-p2p" }
 abomonation = "^0.7"
 abomonation_derive = "^0.3"
 rand = "^0.5"

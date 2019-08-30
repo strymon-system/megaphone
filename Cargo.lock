@@ -77,7 +77,7 @@ dependencies = [
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "num 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "timely 0.10.0 (git+https://github.com/LorenzSelv/timely-dataflow/?branch=rescaling-p2p)",
+ "timely 0.10.0 (git+https://github.com/strymon-system/timely-dataflow/?branch=rescaling-p2p)",
  "zipf 4.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -349,41 +349,41 @@ dependencies = [
 [[package]]
 name = "timely"
 version = "0.10.0"
-source = "git+https://github.com/LorenzSelv/timely-dataflow/?branch=rescaling-p2p#a8b3b93efe9befcc0cba6e78c5e7c38676a39c67"
+source = "git+https://github.com/strymon-system/timely-dataflow/?branch=rescaling-p2p#a8b3b93efe9befcc0cba6e78c5e7c38676a39c67"
 dependencies = [
  "abomonation 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "abomonation_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "colored 1.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.99 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.99 (registry+https://github.com/rust-lang/crates.io-index)",
- "timely_bytes 0.10.0 (git+https://github.com/LorenzSelv/timely-dataflow/?branch=rescaling-p2p)",
- "timely_communication 0.10.0 (git+https://github.com/LorenzSelv/timely-dataflow/?branch=rescaling-p2p)",
- "timely_logging 0.10.0 (git+https://github.com/LorenzSelv/timely-dataflow/?branch=rescaling-p2p)",
+ "timely_bytes 0.10.0 (git+https://github.com/strymon-system/timely-dataflow/?branch=rescaling-p2p)",
+ "timely_communication 0.10.0 (git+https://github.com/strymon-system/timely-dataflow/?branch=rescaling-p2p)",
+ "timely_logging 0.10.0 (git+https://github.com/strymon-system/timely-dataflow/?branch=rescaling-p2p)",
 ]
 
 [[package]]
 name = "timely_bytes"
 version = "0.10.0"
-source = "git+https://github.com/LorenzSelv/timely-dataflow/?branch=rescaling-p2p#a8b3b93efe9befcc0cba6e78c5e7c38676a39c67"
+source = "git+https://github.com/strymon-system/timely-dataflow/?branch=rescaling-p2p#a8b3b93efe9befcc0cba6e78c5e7c38676a39c67"
 
 [[package]]
 name = "timely_communication"
 version = "0.10.0"
-source = "git+https://github.com/LorenzSelv/timely-dataflow/?branch=rescaling-p2p#a8b3b93efe9befcc0cba6e78c5e7c38676a39c67"
+source = "git+https://github.com/strymon-system/timely-dataflow/?branch=rescaling-p2p#a8b3b93efe9befcc0cba6e78c5e7c38676a39c67"
 dependencies = [
  "abomonation 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "abomonation_derive 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "getopts 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.99 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.99 (registry+https://github.com/rust-lang/crates.io-index)",
- "timely_bytes 0.10.0 (git+https://github.com/LorenzSelv/timely-dataflow/?branch=rescaling-p2p)",
- "timely_logging 0.10.0 (git+https://github.com/LorenzSelv/timely-dataflow/?branch=rescaling-p2p)",
+ "timely_bytes 0.10.0 (git+https://github.com/strymon-system/timely-dataflow/?branch=rescaling-p2p)",
+ "timely_logging 0.10.0 (git+https://github.com/strymon-system/timely-dataflow/?branch=rescaling-p2p)",
 ]
 
 [[package]]
 name = "timely_logging"
 version = "0.10.0"
-source = "git+https://github.com/LorenzSelv/timely-dataflow/?branch=rescaling-p2p#a8b3b93efe9befcc0cba6e78c5e7c38676a39c67"
+source = "git+https://github.com/strymon-system/timely-dataflow/?branch=rescaling-p2p#a8b3b93efe9befcc0cba6e78c5e7c38676a39c67"
 
 [[package]]
 name = "unicode-width"
@@ -485,10 +485,10 @@ dependencies = [
 "checksum synom 0.11.3 (registry+https://github.com/rust-lang/crates.io-index)" = "a393066ed9010ebaed60b9eafa373d4b1baac186dd7e008555b0f702b51945b6"
 "checksum synstructure 0.10.2 (registry+https://github.com/rust-lang/crates.io-index)" = "02353edf96d6e4dc81aea2d8490a7e9db177bf8acb0e951c24940bf866cb313f"
 "checksum synstructure 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)" = "3a761d12e6d8dcb4dcf952a7a89b475e3a9d69e4a69307e01a470977642914bd"
-"checksum timely 0.10.0 (git+https://github.com/LorenzSelv/timely-dataflow/?branch=rescaling-p2p)" = "<none>"
-"checksum timely_bytes 0.10.0 (git+https://github.com/LorenzSelv/timely-dataflow/?branch=rescaling-p2p)" = "<none>"
-"checksum timely_communication 0.10.0 (git+https://github.com/LorenzSelv/timely-dataflow/?branch=rescaling-p2p)" = "<none>"
-"checksum timely_logging 0.10.0 (git+https://github.com/LorenzSelv/timely-dataflow/?branch=rescaling-p2p)" = "<none>"
+"checksum timely 0.10.0 (git+https://github.com/strymon-system/timely-dataflow/?branch=rescaling-p2p)" = "<none>"
+"checksum timely_bytes 0.10.0 (git+https://github.com/strymon-system/timely-dataflow/?branch=rescaling-p2p)" = "<none>"
+"checksum timely_communication 0.10.0 (git+https://github.com/strymon-system/timely-dataflow/?branch=rescaling-p2p)" = "<none>"
+"checksum timely_logging 0.10.0 (git+https://github.com/strymon-system/timely-dataflow/?branch=rescaling-p2p)" = "<none>"
 "checksum unicode-width 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "7007dbd421b92cc6e28410fe7362e2e0a2503394908f417b68ec8d1c364c4e20"
 "checksum unicode-xid 0.0.4 (registry+https://github.com/rust-lang/crates.io-index)" = "8c1f860d7d29cf02cb2f3f359fd35991af3d30bac52c57d265a3c461074cb4dc"
 "checksum unicode-xid 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "fc72304796d0818e357ead4e000d19c9c174ab23dc11093ac919054d20a6a7fc"
