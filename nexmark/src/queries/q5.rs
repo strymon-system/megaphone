@@ -2,7 +2,7 @@
 use ::std::collections::HashMap;
 use ::timely::dataflow::{Scope, Stream};
 use timely::dataflow::channels::pact::Exchange;
-use timely::dataflow::operators::{Capability, Map, Operator};
+use timely::dataflow::operators::{Map, Operator, CapabilitySet};
 
 use ::event::Date;
 
@@ -14,7 +14,10 @@ pub fn q5<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, sco
         .map(move |b| (b.auction, Date::new(((*b.date_time / window_slide_ns) + 1) * window_slide_ns)))
         // TODO: Could pre-aggregate pre-exchange, if there was reason to do so.
         .unary_frontier(Exchange::new(|b: &(usize, _)| b.0 as u64), "Q5 Accumulate",
-                        |_capability, _info| {
+                        |capability, _info| {
+                            let mut cap_set = CapabilitySet::new();
+                            cap_set.insert(capability);
+
                             let mut additions = HashMap::new();
                             let mut deletions = HashMap::new();
                             let mut accumulations = HashMap::new();
@@ -24,34 +27,22 @@ pub fn q5<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, sco
                             move |input, output| {
                                 input.for_each(|time, data| {
                                     data.swap(&mut bids_buffer);
-                                    let slide = Date::new(((*nt.to_nexmark_time(*time.time()) / window_slide_ns) + 1) * window_slide_ns);
-                                    let downgrade = time.delayed(&nt.from_nexmark_time(slide));
 
-                                    // Collect all bids in a different slide.
-                                    for &(auction, a_time) in bids_buffer.iter() {
-                                        if a_time != slide {
-                                            additions
-                                                .entry(time.delayed(&nt.from_nexmark_time(a_time)))
-                                                .or_insert_with(Vec::new)
-                                                .push(auction);
-                                        }
+                                    for (auction, a_time) in bids_buffer.drain(..) {
+                                        additions
+                                            .entry(nt.from_nexmark_time(a_time))
+                                            .or_insert_with(Vec::new)
+                                            .push(auction);
                                     }
-                                    bids_buffer.retain(|&(_, a_time)| a_time == slide);
-
-                                    // Collect all bids in the same slide.
-                                    additions
-                                        .entry(downgrade)
-                                        .or_insert_with(Vec::new)
-                                        .extend(bids_buffer.drain(..).map(|(b, _)| b));
                                 });
 
                                 // Extract and order times we can now process.
                                 let mut times = {
-                                    let add_times = additions.keys().filter(|t| !input.frontier.less_equal(t.time())).cloned();
-                                    let del_times = deletions.keys().filter(|t: &&Capability<usize>| !input.frontier.less_equal(t.time())).cloned();
+                                    let add_times = additions.keys().filter(|t| !input.frontier.less_equal(t)).cloned();
+                                    let del_times = deletions.keys().filter(|t| !input.frontier.less_equal(t)).cloned();
                                     add_times.chain(del_times).collect::<Vec<_>>()
                                 };
-                                times.sort_by(|x, y| x.time().cmp(&y.time()));
+                                times.sort();
                                 times.dedup();
 
                                 for time in times.drain(..) {
@@ -59,8 +50,8 @@ pub fn q5<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, sco
                                         for &auction in additions.iter() {
                                             *accumulations.entry(auction).or_insert(0) += 1;
                                         }
-                                        let new_time = time.time() + (window_slice_count * window_slide_ns);
-                                        deletions.insert(time.delayed(&new_time), additions);
+                                        let new_time = time + (window_slice_count * window_slide_ns);
+                                        deletions.insert(new_time, additions);
                                     }
                                     if let Some(deletions) = deletions.remove(&time) {
                                         for auction in deletions.into_iter() {
@@ -76,11 +67,13 @@ pub fn q5<S: Scope<Timestamp=usize>>(input: &NexmarkInput, nt: NexmarkTimer, sco
                                             }
                                         }
                                     }
+                                    let time = cap_set.delayed(&time);
                                     // TODO: This only accumulates per *worker*, not globally!
                                     if let Some((_count, auction)) = accumulations.iter().map(|(&a, &c)| (c, a)).max() {
                                         output.session(&time).give(auction);
                                     }
                                 }
+                                cap_set.downgrade(&input.frontier.frontier());
                             }
                         })
 }
